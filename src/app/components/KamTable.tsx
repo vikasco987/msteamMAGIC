@@ -280,8 +280,11 @@ export default function KamTableView() {
           aValue = a.assignerName || '';
           bValue = b.assignerName || '';
         } else if (sortConfig.key === "assigneeName") {
-          const aAssignee = a.assignees?.[0]?.name || a.assigneeName || '';
-          const bAssignee = b.assignees?.[0]?.name || b.assigneeName || '';
+          // const aAssignee = a.assignees?.[0]?.name || a.assigneeName || '';
+          // const bAssignee = b.assignees?.[0]?.name || b.assigneeName || '';
+          const aAssignee = (a.assignees?.[0]?.name ?? a.assigneeName) ?? '';
+          const bAssignee = (b.assignees?.[0]?.name ?? b.assigneeName) ?? '';
+
           aValue = aAssignee;
           bValue = bAssignee;
         }
@@ -576,10 +579,16 @@ export default function KamTableView() {
       "Days Left": task.endDate ? differenceInDays(new Date(task.endDate), new Date()) : "",
       Timeline: task.timeline,
       Assigner: task.assignerName,
+      // Assignee:
+      //   task.assignees?.map((a) => a?.name || a?.email).filter(Boolean).join(", ") ||
+      //   task.assigneeName ||
+      //   "—",
+
       Assignee:
-        task.assignees?.map((a) => a?.name || a?.email).filter(Boolean).join(", ") ||
-        task.assigneeName ||
-        "—",
+  (task.assignees?.map((a) => a?.name ?? a?.email).filter(Boolean).join(", ")) ??
+  task.assigneeName ??
+  "—",
+
       Amount: task.amount,
       Received: task.received,
       "Pending Amount": (Number(task.amount) || 0) - (Number(task.received) || 0),
@@ -1045,7 +1054,7 @@ export default function KamTableView() {
                       <div className="relative">
                         <select
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition modern-select"
-                          value={editedStatusValues[t.id] ?? t.status || "todo"}
+                          value={(editedStatusValues[t.id] ?? t.status) || "todo"}
                           onChange={(e) =>
                             handleStatusChange(
                               t.id,
