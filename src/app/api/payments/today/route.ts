@@ -620,6 +620,109 @@
 
 
 
+// import { NextRequest, NextResponse } from "next/server";
+// import { prisma } from "../../../../../lib/prisma";
+
+// export async function GET(req: NextRequest) {
+//   try {
+//     const { searchParams } = new URL(req.url);
+//     const dateParam = searchParams.get("date");
+
+//     const baseDate = dateParam ? new Date(dateParam) : new Date();
+
+//     const startOfDay = new Date(baseDate);
+//     startOfDay.setUTCHours(0, 0, 0, 0);
+
+//     const endOfDay = new Date(baseDate);
+//     endOfDay.setUTCHours(23, 59, 59, 999);
+
+//     const tasks = await prisma.task.findMany({
+//       select: {
+//         id: true,
+//         title: true,
+//         assignerName: true,
+//         paymentHistory: true,
+//       },
+//     });
+
+//     const paymentsToday: any[] = [];
+//     const summaryByAssigner: Record<string, number> = {};
+//     let totalUpdatedAmount = 0; // 🔥 NEW
+
+//     for (const task of tasks) {
+//       if (!Array.isArray(task.paymentHistory)) continue;
+
+//       const history = task.paymentHistory as any[];
+
+//       for (let i = 0; i < history.length; i++) {
+//         const p = history[i];
+//         if (!p?.updatedAt) continue;
+
+//         const updatedAt = new Date(p.updatedAt);
+//         if (updatedAt < startOfDay || updatedAt > endOfDay) continue;
+
+//         const previousReceived =
+//           i > 0 ? Number(history[i - 1].received || 0) : 0;
+
+//         const currentReceived = Number(p.received || 0);
+
+//         const amountUpdated =
+//           i === 0 ? currentReceived : currentReceived - previousReceived;
+
+//         const assigner =
+//           p.assignerName || task.assignerName || "Unknown";
+
+//         paymentsToday.push({
+//           paymentId: `${task.id}_${updatedAt.getTime()}`,
+//           taskId: task.id,
+//           taskTitle: task.title,
+//           assignerName: assigner,
+
+//           received: currentReceived,     // total till now
+//           amountUpdated,                 // 🔥 change only
+
+//           updatedAt,
+//           updatedBy: p.updatedBy || "Unknown",
+//           fileUrl: p.fileUrl || null,
+//         });
+
+//         // ✅ assigner-wise total
+//         summaryByAssigner[assigner] =
+//           (summaryByAssigner[assigner] || 0) + amountUpdated;
+
+//         // ✅ overall total updated
+//         totalUpdatedAmount += amountUpdated;
+//       }
+//     }
+
+//     return NextResponse.json({
+//       date: startOfDay.toISOString().slice(0, 10),
+//       paymentsToday,
+//       summaryByAssigner,
+//       totalUpdatedAmount, // 🔥 SEND TO FRONTEND
+//     });
+//   } catch (err) {
+//     console.error("❌ Error fetching payments:", err);
+//     return NextResponse.json(
+//       { error: "Failed to fetch payments" },
+//       { status: 500 }
+//     );
+//   }
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../../lib/prisma";
 
@@ -636,12 +739,14 @@ export async function GET(req: NextRequest) {
     const endOfDay = new Date(baseDate);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
+    // Fetch tasks including customFields for phone/shopName
     const tasks = await prisma.task.findMany({
       select: {
         id: true,
         title: true,
         assignerName: true,
         paymentHistory: true,
+        customFields: true, // 🔥 Include customFields
       },
     });
 
@@ -653,6 +758,10 @@ export async function GET(req: NextRequest) {
       if (!Array.isArray(task.paymentHistory)) continue;
 
       const history = task.paymentHistory as any[];
+
+      // Extract phone and shopName from customFields
+      const phone = task.customFields?.phone || null;
+      const shopName = task.customFields?.shopName || null;
 
       for (let i = 0; i < history.length; i++) {
         const p = history[i];
@@ -678,12 +787,15 @@ export async function GET(req: NextRequest) {
           taskTitle: task.title,
           assignerName: assigner,
 
-          received: currentReceived,     // total till now
-          amountUpdated,                 // 🔥 change only
+          received: currentReceived, // total till now
+          amountUpdated,             // delta
 
           updatedAt,
           updatedBy: p.updatedBy || "Unknown",
           fileUrl: p.fileUrl || null,
+
+          phone,       // 🔥 new field
+          shopName,    // 🔥 new field
         });
 
         // ✅ assigner-wise total
