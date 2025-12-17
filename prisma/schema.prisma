@@ -183,3 +183,12 @@ model AttendanceSummary {
   overtimeHours  Float    @default(0)
   updatedAt      DateTime @updatedAt
 }
+
+model DeletedPayment {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  originalTask String   // taskId from Task
+  paymentData  Json     // the actual payment entry that was deleted
+  deletedBy    String?  // userId / email of the person who deleted
+  deletedAt    DateTime @default(now())
+}
+

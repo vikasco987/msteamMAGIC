@@ -169,13 +169,76 @@
 
 
 
+// // /components/PaymentHistory.tsx
+// "use client";
+
+// import React, { useEffect, useState } from "react";
+
+// export default function PaymentHistory({ taskId }: { taskId: string }) {
+//   const [payments, setPayments] = useState<any[]>([]);
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     if (!taskId) return;
+
+//     const fetchPayments = async () => {
+//       try {
+//         const res = await fetch(`/api/payment-history?taskId=${taskId}`);
+//         const data = await res.json();
+//         setPayments(data.payments || []);
+//       } catch (err) {
+//         console.error("Failed to fetch payments", err);
+//       } finally {
+//         setLoading(false);
+//       }
+//     };
+
+//     fetchPayments();
+//   }, [taskId]);
+
+//   if (loading) return <p className="text-sm text-gray-500">Loading payment history...</p>;
+
+//   if (!payments.length) {
+//     return <p className="text-sm text-gray-500">No payment history available.</p>;
+//   }
+
+//   return (
+//     <div>
+//       <h3 className="text-md font-semibold text-gray-600 mb-2">Payment History</h3>
+//       <ul className="space-y-2">
+//         {payments.map((payment) => (
+//           <li key={payment.id} className="border p-2 rounded bg-gray-50">
+//             <div className="flex justify-between text-sm">
+//               <span>Amount: ₹{payment.amount}</span>
+//               <span className="text-gray-400">{new Date(payment.createdAt).toLocaleString()}</span>
+//             </div>
+//           </li>
+//         ))}
+//       </ul>
+//     </div>
+//   );
+// }
+//;poiuytrertyuiop
+
+
+
 // /components/PaymentHistory.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 
+interface Payment {
+  id: string;
+  amount: number;
+  received: number;
+  updatedAt: string;
+  updatedBy: string;
+  fileUrl?: string;
+  assignerName?: string;
+}
+
 export default function PaymentHistory({ taskId }: { taskId: string }) {
-  const [payments, setPayments] = useState<any[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -185,7 +248,19 @@ export default function PaymentHistory({ taskId }: { taskId: string }) {
       try {
         const res = await fetch(`/api/payment-history?taskId=${taskId}`);
         const data = await res.json();
-        setPayments(data.payments || []);
+
+        // Map payments to include assignerName for fallback
+        const mappedPayments = (data.payments || []).map((p: any) => ({
+          id: p._id || p.id,
+          amount: p.amount,
+          received: p.received,
+          updatedAt: p.updatedAt,
+          updatedBy: p.updatedBy,
+          fileUrl: p.fileUrl,
+          assignerName: data.assignerName || "Unknown",
+        }));
+
+        setPayments(mappedPayments);
       } catch (err) {
         console.error("Failed to fetch payments", err);
       } finally {
@@ -196,7 +271,8 @@ export default function PaymentHistory({ taskId }: { taskId: string }) {
     fetchPayments();
   }, [taskId]);
 
-  if (loading) return <p className="text-sm text-gray-500">Loading payment history...</p>;
+  if (loading)
+    return <p className="text-sm text-gray-500">Loading payment history...</p>;
 
   if (!payments.length) {
     return <p className="text-sm text-gray-500">No payment history available.</p>;
@@ -204,13 +280,36 @@ export default function PaymentHistory({ taskId }: { taskId: string }) {
 
   return (
     <div>
-      <h3 className="text-md font-semibold text-gray-600 mb-2">Payment History</h3>
+      <h3 className="text-md font-semibold text-gray-600 mb-2">
+        Payment History
+      </h3>
       <ul className="space-y-2">
         {payments.map((payment) => (
-          <li key={payment.id} className="border p-2 rounded bg-gray-50">
-            <div className="flex justify-between text-sm">
-              <span>Amount: ₹{payment.amount}</span>
-              <span className="text-gray-400">{new Date(payment.createdAt).toLocaleString()}</span>
+          <li
+            key={payment.id}
+            className="border p-2 rounded bg-gray-50"
+          >
+            <div className="flex flex-col text-sm space-y-1">
+              <div className="flex justify-between">
+                <span>Amount: ₹{payment.amount}</span>
+                <span className="text-gray-400">
+                  {new Date(payment.updatedAt).toLocaleString()}
+                </span>
+              </div>
+              <div>
+                <strong>Received:</strong> ₹{payment.received} <br />
+                <strong>Updated By:</strong>{" "}
+                {payment.updatedBy !== "Unknown User"
+                  ? payment.updatedBy
+                  : payment.assignerName}
+              </div>
+              {payment.fileUrl && (
+                <img
+                  src={payment.fileUrl}
+                  alt="Payment Proof"
+                  className="mt-1 max-w-xs rounded border"
+                />
+              )}
             </div>
           </li>
         ))}
