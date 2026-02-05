@@ -95,7 +95,3 @@ export async function GET(req: Request) {
   }
 }
 
-//loiuyghuio
-//lkjhfhghjbnj
-//lkhytygjhkj
-//;lkjuygutrtygjhjk

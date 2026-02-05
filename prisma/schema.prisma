@@ -157,21 +157,28 @@ model Attendance {
   id             String   @id @default(auto()) @map("_id") @db.ObjectId
   userId         String
   employeeName   String?
-  faceImage      String?  
+  faceImage      String?
   location       Json?
-  deviceInfo     String?  
+  deviceInfo     String?
+
   checkIn        DateTime?
   checkOut       DateTime?
-  checkInReason  String?  
-  checkOutReason String?  
-  date           DateTime @default(now())
-  status         String?   
-  verified       Boolean   @default(false) 
+
+  checkInReason  String?
+  checkOutReason String?
+
+  date           DateTime        // ✅ NO default
+  status         String?
+  verified       Boolean   @default(false)
+
   workingHours   Float?
   overtimeHours  Float?
   remarks        String?
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+ 
 }
 
 model AttendanceSummary {
