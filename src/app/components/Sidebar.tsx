@@ -1594,7 +1594,7 @@ const allNavItems = [
   { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller'] },
   { label: 'KAM', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller'] },
   { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller', 'temp'] },
-  { label: 'MySales Dashboard', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin'] },
+  { label: 'MySales Dashboard', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin','master'] },
   { label: 'Sales Dashboard', icon: BarChart3, href: '/sales-dashboard', roles: ['master'] },
 
   // Agreement
