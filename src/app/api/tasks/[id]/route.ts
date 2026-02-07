@@ -1413,7 +1413,7 @@ export async function GET(req: NextRequest, context: { params: { id: string } })
 
 // --- PATCH Task ---
 export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
-  const { id: taskId } = context.params;
+  const { id: taskId } = await context.params;
   const { userId, sessionClaims } = await getAuth(req);
 
   if (!taskId) {
@@ -1529,7 +1529,7 @@ export async function PATCH(req: NextRequest, context: { params: { id: string } 
 
 // --- DELETE Task ---
 export async function DELETE(req: NextRequest, context: { params: { id: string } }) {
-  const { id: taskId } = context.params;
+  const { id: taskId } = await context.params;
   const { userId } = await getAuth(req);
 
   if (!taskId || !userId) {
