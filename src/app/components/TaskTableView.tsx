@@ -6871,7 +6871,7 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
   field: "amount" | "received"
 ) => {
   // Only allow admin to update amount or received
-  if ((field === "amount" || field === "received") && role !== "admin") {
+  if ((field === "amount" || field === "received") && role !== "master") {
     toast.error("Only admins can edit this field.");
     // Remove edited value since it’s not allowed
     setEditedValues((prev) => {

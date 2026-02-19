@@ -1181,7 +1181,7 @@ export default function KamTableView() {
                       </span>
                     )} */}
 
-                    {editMode && userRole === "admin" ? (
+                    {editMode && userRole === "master" ? (
   <div className="relative flex items-center justify-end">
     <input
       type="number"
@@ -1246,7 +1246,7 @@ export default function KamTableView() {
 
  */}
 
-{editMode && userRole === "admin" ? (
+{editMode && userRole === "master" ? (
   <div className="relative flex items-center justify-end">
     <input
       type="number"
