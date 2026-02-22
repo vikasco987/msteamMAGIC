@@ -15,12 +15,15 @@ export async function GET(req: NextRequest) {
         const page = parseInt(searchParams.get("page") || "1");
         const skip = (page - 1) * limit;
 
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
         const where: any = {};
         if (!isAdmin) {
             where.authorId = userId;
         }
 
-        const [activities, total] = await Promise.all([
+        const [activities, total, todayCount, typeDistribution] = await Promise.all([
             prisma.activity.findMany({
                 where,
                 include: {
@@ -34,12 +37,32 @@ export async function GET(req: NextRequest) {
                 skip,
                 take: limit
             }),
-            prisma.activity.count({ where })
+            prisma.activity.count({ where }),
+            prisma.activity.count({
+                where: {
+                    ...where,
+                    createdAt: { gte: todayStart }
+                }
+            }),
+            prisma.activity.groupBy({
+                by: ['type'],
+                where,
+                _count: {
+                    type: true
+                }
+            })
         ]);
 
         return NextResponse.json({
             activities,
             total,
+            stats: {
+                todayCount,
+                typeDistribution: typeDistribution.reduce((acc: any, curr) => {
+                    acc[curr.type] = curr._count.type;
+                    return acc;
+                }, {})
+            },
             page,
             totalPages: Math.ceil(total / limit)
         });
