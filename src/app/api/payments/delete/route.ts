@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // export async function DELETE(req: Request) {
 //   try {
@@ -63,7 +63,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // export async function DELETE(req: Request) {
 //   try {
@@ -118,7 +118,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -290,7 +290,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -410,7 +410,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -574,7 +574,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -718,7 +718,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -833,7 +833,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -964,7 +964,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // /**
 //  * DELETE /api/payments/delete
@@ -1098,7 +1098,7 @@
 
 
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 /**
  * DELETE /api/payments/delete

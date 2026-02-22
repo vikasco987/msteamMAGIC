@@ -1,6 +1,6 @@
 // // src/app/api/attendance/today/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 
 // // Helper: get start & end of today in UTC corresponding to local day
@@ -67,7 +67,7 @@
 
 // // src/app/api/attendance/today/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import moment from "moment-timezone";
 
@@ -193,7 +193,7 @@
 
 // // src/app/api/attendance/today/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import moment from "moment-timezone";
 
@@ -314,7 +314,7 @@
 
 // // src/app/api/attendance/today/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import moment from "moment-timezone";
 
@@ -428,7 +428,7 @@
 
 // // src/app/api/attendance/today/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import moment from "moment-timezone";
 
@@ -549,7 +549,7 @@
 
 // src/app/api/attendance/today/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { getAuth } from "@clerk/nextjs/server";
 import moment from "moment-timezone";
 

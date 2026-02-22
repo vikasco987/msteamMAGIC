@@ -1,7 +1,7 @@
 // FILE: src/app/api/tasks/highlight/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma"; // ← based on your pattern
-import { getAuth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma"; // ← based on your pattern
+import { auth } from "@clerk/nextjs/server";
 
 // Define the interface for the expected request body
 interface PatchRequestBody {
@@ -11,7 +11,7 @@ interface PatchRequestBody {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { userId } = getAuth(req);
+    const { userId } = auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

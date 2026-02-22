@@ -1,6 +1,6 @@
 // // FILE: src/app/api/stats/user-performance/category-sales/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // // Known categories mapping
 // const categoryLabels: Record<string, string> = {
@@ -112,7 +112,7 @@
 
 // FILE: src/app/api/stats/user-performance/category-sales/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Known categories mapping
 const categoryLabels: Record<string, string> = {

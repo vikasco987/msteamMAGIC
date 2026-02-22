@@ -1,6 +1,6 @@
 // // src/app/api/attendance/list/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // export async function GET() {
 //   try {
@@ -19,7 +19,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth, clerkClient } from "@clerk/nextjs/server";
 
 // export async function GET(req: Request) {
@@ -67,7 +67,7 @@
 
 // // src/app/api/attendance/list/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/nextjs/server";
 
 // export async function GET() {
@@ -128,7 +128,7 @@
 
 // // src/app/api/attendance/list/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // export async function GET() {
@@ -190,7 +190,7 @@
 
 // // src/app/api/attendance/list/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // export async function GET(req: Request) {
@@ -277,7 +277,7 @@
 
 // // src/app/api/attendance/list/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // export async function GET(req: Request) {
@@ -373,7 +373,7 @@
 
 // src/app/api/attendance/list/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 function calculateHours(checkIn?: Date | null, checkOut?: Date | null) {

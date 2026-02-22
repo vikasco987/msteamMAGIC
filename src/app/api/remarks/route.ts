@@ -1,7 +1,7 @@
 // // File: src/app/api/remarks/route.ts
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 
 // export const dynamic = "force-dynamic";
 
@@ -47,7 +47,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -119,8 +119,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node"; // ✅ import Clerk users helper
 
 // export const dynamic = "force-dynamic";
@@ -167,7 +167,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -251,8 +251,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -304,7 +304,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -414,8 +414,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -467,7 +467,7 @@
 // // POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 
 //     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -531,8 +531,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -611,7 +611,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -691,8 +691,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -782,7 +782,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -860,8 +860,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -934,7 +934,7 @@
 // // ✅ POST new remark (Clerk-authenticated)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 //     const body = await req.json();
@@ -1002,8 +1002,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -1079,7 +1079,7 @@
 // // ✅ POST new remark (authenticated via Clerk)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -1144,8 +1144,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -1227,7 +1227,7 @@
 // // ✅ POST new remark (authenticated via Clerk)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -1295,8 +1295,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -1377,7 +1377,7 @@
 // // ✅ POST new remark (authenticated via Clerk)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -1451,8 +1451,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export const dynamic = "force-dynamic";
@@ -1542,7 +1542,7 @@
 // // ✅ POST new remark (authenticated via Clerk)
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 //     if (!userId)
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -1646,8 +1646,8 @@
 
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import { getAuth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
 
 export const dynamic = "force-dynamic";
@@ -1739,7 +1739,7 @@ export async function GET(req: NextRequest) {
 // ✅ POST new remark (authenticated via Clerk)
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = getAuth(req);
+    const { userId } = auth();
     if (!userId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

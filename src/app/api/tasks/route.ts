@@ -1,8 +1,8 @@
 // 'use server';
 // import { NextRequest, NextResponse } from "next/server";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // // Define an interface for the metadata that contains the role
 // interface UserPublicMetadata {
@@ -29,7 +29,7 @@
 
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -186,7 +186,7 @@
 
 // export async function GET(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -304,9 +304,9 @@
 
 // // use server';
 // import { NextRequest, NextResponse } from "next/server";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // // Define an interface for the metadata that contains the role
 // interface UserPublicMetadata {
@@ -359,7 +359,7 @@
 
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -530,7 +530,7 @@
 
 // export async function GET(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -705,9 +705,9 @@
 
 // use server';
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // Define an interface for the metadata that contains the role
 interface UserPublicMetadata {
@@ -760,7 +760,7 @@ function toNullableString(val: unknown): string | null {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -931,7 +931,7 @@ async function getUserRole(userId: string): Promise<string | null> {
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

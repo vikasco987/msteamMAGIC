@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // export async function GET() {
@@ -64,7 +64,7 @@
 // //C:\Users\VIKASH\OneDrive\Desktop\local\syaram\msteam\src\app\api\dashboard\assignee-summary\route.ts
 
 // import { NextResponse } from "next/server";
-// import {prisma }from "../../../../../lib/prisma";
+// import {prisma }from "@/lib/prisma";
 
 // export async function GET() {
 //   try {
@@ -118,7 +118,7 @@
 
 // app/api/tasks/stats/route.ts
 import { NextResponse } from "next/server";
-import {prisma} from "../../../../../lib/prisma";
+import {prisma} from "@/lib/prisma";
 
 export async function GET() {
   try {

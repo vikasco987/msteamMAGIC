@@ -1,22 +1,33 @@
-/// next.config.js
+const path = require('path');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: [
-      'res.cloudinary.com',   // For Cloudinary images
-      'img.clerk.com',        // For Clerk avatars
-      'images.clerk.dev',     // (Optional, for Clerk dev images)
-      'api.dicebear.com',     // For Dicebear Avatars
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.clerk.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.clerk.dev',
+      },
+      {
+        protocol: 'https',
+        hostname: 'api.dicebear.com',
+      },
     ],
-    remotePatterns: [],
   },
   typescript: {
-    ignoreBuildErrors: true, // ✅ Ignore TypeScript build errors
+    ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true, // ✅ Ignore ESLint errors during build
+  turbopack: {
+    root: path.resolve(__dirname),
   },
 };
 

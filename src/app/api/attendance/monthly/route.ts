@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/nextjs/server";
 
 // // GET /api/attendance/monthly?month=2025-09
@@ -117,7 +117,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/nextjs/server";
 
 // // GET /api/attendance/monthly?month=2025-09
@@ -235,7 +235,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { clerkClient } from "@clerk/nextjs/server";
 
 // // GET /api/attendance/monthly?month=2025-09
@@ -350,7 +350,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node"; // ✅ use correct import
 
 // // GET /api/attendance/monthly?month=YYYY-MM
@@ -433,7 +433,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // // Helper: format date in IST as YYYY-MM-DD
@@ -520,7 +520,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node"; // ✅ correct import
 
 // // GET /api/attendance/monthly?month=YYYY-MM
@@ -631,7 +631,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // // Helper: convert UTC date to IST date (YYYY-MM-DD)
@@ -746,7 +746,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // // -------------------- Helpers --------------------
@@ -883,7 +883,7 @@
 
 // // File: src/app/api/attendance/monthly/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs";
 
 // // Helper: convert UTC date to IST and normalize to start of day
@@ -971,7 +971,7 @@
 
 // // File: src/app/api/attendance/monthly/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs";
 
 // // Convert UTC date to IST and normalize to start of day
@@ -1061,7 +1061,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // export async function GET(req: Request) {
@@ -1168,7 +1168,7 @@
 
 // // src/app/api/attendance/monthly/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // export async function GET(req: Request) {
@@ -1264,7 +1264,7 @@
 
 // // src/app/api/attendance/monthly/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // export async function GET(req: Request) {
@@ -1373,7 +1373,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // // Helper: calculate working hours excluding lunch 2–3 PM
@@ -1511,7 +1511,7 @@
 
 
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { users } from "@clerk/clerk-sdk-node";
 
 // -------------------- Helpers --------------------

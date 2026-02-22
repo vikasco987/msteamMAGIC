@@ -91,9 +91,9 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { InputJsonValue } from "@prisma/client"; // ✅ import correct type
 
 // type JsonTaskBody = {
@@ -112,7 +112,7 @@
 // // ✅ GET: Fetch tasks for a user
 // export async function GET(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -135,7 +135,7 @@
 // // ✅ POST: Create task
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -188,9 +188,9 @@
 
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client"; // <-- Add this import
 
 type JsonTaskBody = {
@@ -209,7 +209,7 @@ type JsonTaskBody = {
 // GET handler
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -232,7 +232,7 @@ export async function GET(req: NextRequest) {
 // POST handler
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

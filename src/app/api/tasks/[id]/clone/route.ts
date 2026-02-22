@@ -1,7 +1,7 @@
 // // src/app/api/tasks/[id]/clone/route.ts
 // import { NextRequest, NextResponse } from "next/server";
-// import {prisma} from "../../../../../../lib/prisma"; // Make sure this matches your actual prisma import
-// import { getAuth } from "@clerk/nextjs/server";
+// import {prisma} from "@/lib/prisma"; // Make sure this matches your actual prisma import
+// import { auth } from "@clerk/nextjs/server";
 // import { clerkClient } from "@clerk/nextjs/server"; // To fetch user details
 
 // export async function POST(
@@ -9,7 +9,7 @@
 //   { params }: { params: { id: string } }
 // ) {
 //   const { id: taskId } = params;
-//   const { userId } = getAuth(req); // Clerk user ID of the cloner
+//   const { userId } = auth(); // Clerk user ID of the cloner
 
 //   if (!userId) {
 //     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -112,7 +112,7 @@
 
 // src/app/api/tasks/[id]/clone/route.ts
 // import { NextRequest, NextResponse } from "next/server";
-// import {prisma} from "../../../../../../lib/prisma"; 
+// import {prisma} from "@/lib/prisma"; 
 
 
 
@@ -131,8 +131,8 @@
 
 // // src/app/api/tasks/[id]/clone/route.ts
 // import { NextRequest, NextResponse } from "next/server";
-// import {prisma} from "../../../../../../lib/prisma"; 
-// import { getAuth } from "@clerk/nextjs/server";
+// import {prisma} from "@/lib/prisma"; 
+// import { auth } from "@clerk/nextjs/server";
 // import { clerkClient } from "@clerk/clerk-sdk-node"; // ✅ FIXED
 
 // export async function POST(
@@ -143,7 +143,7 @@
 //   const { id: taskId } = await context.params;
 
 //   // ✅ Get Clerk user ID
-//   const { userId } = getAuth(req);
+//   const { userId } = auth();
 
 //   if (!userId) {
 //     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -244,8 +244,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // export async function POST(
@@ -254,7 +254,7 @@
 // ) {
 //   const { id: taskId } = context.params;
 
-//   const { userId } = getAuth(req);
+//   const { userId } = auth();
 //   if (!userId) {
 //     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //   }
@@ -365,8 +365,8 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { clerkClient } from "@clerk/clerk-sdk-node";
 
 // export async function POST(
@@ -375,7 +375,7 @@
 // ) {
 //   const { id: taskId } = context.params;
 
-//   const { userId } = getAuth(req);
+//   const { userId } = auth();
 //   if (!userId) {
 //     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //   }
@@ -474,8 +474,8 @@
 
 // src/app/api/tasks/[id]/clone/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/prisma";
-import { getAuth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 export async function POST(
@@ -484,7 +484,7 @@ export async function POST(
 ) {
   const { id: taskId } = context.params;
 
-  const { userId } = getAuth(req);
+  const { userId } = auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

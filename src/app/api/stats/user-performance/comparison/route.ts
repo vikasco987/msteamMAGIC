@@ -1,6 +1,6 @@
 // FILE: src/app/api/stats/user-performance/comparison/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { subDays, subWeeks, subMonths } from "date-fns";
 
 // Assuming you have a Task model defined in Prisma.

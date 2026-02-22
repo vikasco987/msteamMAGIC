@@ -15,21 +15,39 @@ export async function POST(req: NextRequest) {
           imageUrl: user.imageUrl,
         };
       } catch {
-        // Fallback for users not found in Clerk or other errors
         return {
           id,
           name: "Unknown",
-          email: "", // We can't determine email if user not found
+          email: "",
           imageUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`,
         };
       }
     });
 
     const assignees = await Promise.all(promises);
-
     return NextResponse.json({ assignees });
   } catch (err) {
     console.error("Error in /api/assignees:", err);
-    return NextResponse.json({ error: "Failed to fetch assignees", details: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch assignees" }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  try {
+    const clerkUsers = await users.getUserList({
+      limit: 100,
+    });
+
+    const assignees = clerkUsers.map((user: any) => ({
+      id: user.id,
+      name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Unnamed",
+      email: user.emailAddresses[0]?.emailAddress || "",
+      imageUrl: user.imageUrl,
+    }));
+
+    return NextResponse.json({ assignees });
+  } catch (err) {
+    console.error("Error in /api/assignees GET:", err);
+    return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 });
   }
 }

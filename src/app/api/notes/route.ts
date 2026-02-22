@@ -1,4 +1,4 @@
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { NextRequest, NextResponse } from "next/server";
 // import { ObjectId } from "mongodb";
 
@@ -74,7 +74,7 @@
 
 
 // FILE: /app/api/notes/route.ts
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 

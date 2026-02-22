@@ -1430,7 +1430,7 @@
 // { label: 'Attendance', icon: CalendarCheck, href: '/dashboard/attendance', roles: ['admin', 'master', 'seller'] },
 // { label: 'Tish', icon: CalendarCheck, href: '/dashboard/attendance/tish', roles: ['admin', 'master'] },
 
-  
+
 
 //   // ✅ NEW: Attendance Admin Link
 // //   { label: 'Attendance', icon: CalendarCheck, href: '/admin/attendance', roles: ['admin', 'master'] },
@@ -1564,7 +1564,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -1585,6 +1585,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { BarChart3 } from "lucide-react";
 import { motion } from 'framer-motion';
 import { useUser } from '@clerk/nextjs';
+import NotificationBell from './NotificationBell';
 
 // ✅ Navigation Items
 const allNavItems = [
@@ -1594,7 +1595,7 @@ const allNavItems = [
   { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller'] },
   { label: 'KAM', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller'] },
   { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller', 'temp'] },
-  { label: 'MySales Dashboard', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin','master'] },
+  { label: 'MySales Dashboard', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master'] },
   { label: 'Sales Dashboard', icon: BarChart3, href: '/sales-dashboard', roles: ['master'] },
 
   // Agreement
@@ -1613,12 +1614,17 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const { user, isLoaded } = useUser();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const userRole = isLoaded ? (user?.publicMetadata?.role || 'guest') : 'guest';
   const visibleNavItems = allNavItems.filter((item) => item.roles.includes(userRole));
 
   // Add logout when user is loaded
-  if (isLoaded && user) {
+  if (isLoaded && user && !visibleNavItems.find(i => i.label === 'Logout')) {
     visibleNavItems.push({
       label: 'Logout',
       icon: LogOut,
@@ -1626,6 +1632,8 @@ export default function Sidebar() {
       roles: ['admin', 'master', 'seller', 'guest'],
     });
   }
+
+  if (!mounted) return <div className="w-20 md:w-20 lg:w-20 h-screen bg-[#1e1b4b]" />; // Plain placeholder
 
   return (
     <>
@@ -1657,15 +1665,15 @@ export default function Sidebar() {
         <div className="flex flex-col h-full p-4 relative">
           {/* Logo */}
           <div
-            className={`text-3xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent mb-8 transition-opacity duration-300 ${
-              isCollapsed ? 'opacity-0 w-0' : 'opacity-100'
-            }`}
+            className={`text-3xl font-extrabold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent mb-8 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'
+              }`}
           >
             TaskNova
           </div>
 
           {/* Navigation */}
           <nav className="flex flex-col gap-2">
+            <NotificationBell isCollapsed={isCollapsed} />
             {visibleNavItems.map((item) => {
               const isActive = pathname === item.href;
               return (
@@ -1675,11 +1683,10 @@ export default function Sidebar() {
                       <Link
                         href={item.href}
                         onClick={() => setIsMobileOpen(false)}
-                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-all font-medium ${
-                          isActive
-                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
-                            : 'text-gray-300 hover:text-purple-300 hover:bg-white/5'
-                        }`}
+                        className={`flex items-center gap-3 px-4 py-2 rounded-md transition-all font-medium ${isActive
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
+                          : 'text-gray-300 hover:text-purple-300 hover:bg-white/5'
+                          }`}
                       >
                         <item.icon size={22} />
                         {!isCollapsed && (

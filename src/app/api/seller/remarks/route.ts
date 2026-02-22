@@ -1,6 +1,6 @@
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 
 // export const dynamic = "force-dynamic";
 
@@ -62,7 +62,7 @@
 //   req: NextRequest,
 //   { params }: { params: { id: string } }
 // ) {
-//   const { userId } = await getAuth(req);
+//   const { userId } = await auth();
 //   const { id: taskId } = params;
 
 //   if (!userId) {
@@ -110,7 +110,7 @@
 
 // File: src/app/api/remarks/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
 export const dynamic = "force-dynamic";

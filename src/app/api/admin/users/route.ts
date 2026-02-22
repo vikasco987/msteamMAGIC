@@ -31,13 +31,13 @@
 
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
 
 export async function GET(req: NextRequest) {
   try {
     // ✅ SAME AUTH STYLE AS YOUR WORKING FILE
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

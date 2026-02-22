@@ -5,9 +5,9 @@
 
 // // use server';
 // import { NextRequest, NextResponse } from "next/server";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // // ========== INTERFACES ==========
 // interface UserPublicMetadata {
@@ -67,7 +67,7 @@
 // // ========== POST: CREATE NEW TASK ==========
 // export async function POST(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 //     const body = await req.json();
@@ -191,7 +191,7 @@
 // // ========== GET: FETCH TASKS (with Pagination + Enrichment) ==========
 // export async function GET(req: NextRequest) {
 //   try {
-//     const { userId } = await getAuth(req);
+//     const { userId } = await auth();
 //     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
 //     const role = await getUserRole(userId);
@@ -326,9 +326,9 @@
 "use server";
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAuth } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 // ========== HELPERS ==========
 interface UserPublicMetadata { role?: string }
@@ -350,7 +350,7 @@ async function getUserRole(userId: string): Promise<string | null> {
 // ========== POST: CREATE TASK ==========
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
@@ -392,7 +392,7 @@ export async function POST(req: NextRequest) {
 // ========== GET: PAGINATED TASKS + LATEST 5 PAYMENT REMARKS ==========
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await getAuth(req);
+    const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = await getUserRole(userId);

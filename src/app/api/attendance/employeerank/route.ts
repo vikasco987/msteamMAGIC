@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // // Helper: calculate working hours with lunch deduction
 // const calcWorkingHours = (checkIn: Date, checkOut: Date) => {
@@ -164,7 +164,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { toZonedTime } from "date-fns-tz";
 
 // const TIME_ZONE = "Asia/Kolkata"; // Force IST timezone
@@ -329,7 +329,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { toZonedTime } from "date-fns-tz";
 
 // const TIME_ZONE = "Asia/Kolkata"; // Force IST timezone
@@ -492,7 +492,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { toZonedTime } from "date-fns-tz";
 
 // const TIME_ZONE = "Asia/Kolkata"; // Force IST timezone
@@ -671,7 +671,7 @@
 
 
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { toZonedTime } from "date-fns-tz";
 
 const TIME_ZONE = "Asia/Kolkata"; // Force IST timezone

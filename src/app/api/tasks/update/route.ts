@@ -3,7 +3,7 @@
 
 
 
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { NextRequest, NextResponse } from "next/server";
 
 // export async function POST(req: NextRequest) {
@@ -60,7 +60,7 @@
 
 
 
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { NextRequest, NextResponse } from "next/server";
 // import { Prisma } from "@prisma/client"; // Import Prisma for JsonValue type
 
@@ -121,7 +121,7 @@
 
 
 // // src/app/api/tasks/update/route.ts
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { NextRequest, NextResponse } from "next/server";
 // import { Prisma } from "@prisma/client";
 
@@ -220,7 +220,7 @@
 
 
 
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
 
 
 
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { NextRequest, NextResponse } from "next/server";
 // import { Prisma } from "@prisma/client";
 // import Pusher from "pusher";

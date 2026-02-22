@@ -1,6 +1,6 @@
 // app/api/kam/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client"; // Import Prisma for JsonValue type
 
 // 1. Define the type for the customFields object

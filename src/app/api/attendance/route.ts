@@ -6,7 +6,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
@@ -166,7 +166,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -332,7 +332,7 @@
 
 // // src/app/api/attendance/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -489,7 +489,7 @@
 // //   }
 // // }// src/app/api/attendance/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -651,7 +651,7 @@
 
 // // src/app/api/attendance/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -812,7 +812,7 @@
 
 // // src/app/api/attendance/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -965,7 +965,7 @@
 
 // // src/app/api/attendance/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { getAuth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 // import moment from "moment-timezone";
@@ -1126,7 +1126,7 @@
 
 // src/app/api/attendance/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { getAuth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
 import moment from "moment-timezone";

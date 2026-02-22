@@ -63,6 +63,7 @@ model Task {
   notes           Note[]
   subtasks        Subtask[]       @relation("TaskSubtasks")
   paymentRemarks  PaymentRemark[] // 👈 NEW relation for multiple remarks
+  activities      Activity[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime?
@@ -84,6 +85,7 @@ model Note {
 
   authorName   String?
   authorEmail  String?
+  mentions     String[] @default([]) // Array of Clerk user IDs
 
   taskId       String @db.ObjectId
   task         Task   @relation(fields: [taskId], references: [id])
@@ -208,4 +210,27 @@ model Customer {
   remarks     String[]  @default([]) 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Activity {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  type      String   // "STATUS_CHANGE", "NOTE_ADDED", "PAYMENT_ADDED", "SUBTASK_TOGGLED", "TASK_UPDATED"
+  content   String
+  author    String
+  authorId  String   // Clerk userId
+
+  taskId    String   @db.ObjectId
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   // Clerk user ID of the recipient
+  type      String   // "MENTION", "TASK_COMPLETED", "PAYMENT_ADDED"
+  content   String   // The notification message
+  taskId    String?  @db.ObjectId
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

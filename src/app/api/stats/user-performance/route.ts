@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-//import { prisma as db } from "../../../../../lib/prisma";
-import { prisma as db } from "../../../../../lib/prisma"; // ✅ correct
+//import { prisma as db } from "@/lib/prisma";
+import { prisma as db } from "@/lib/prisma"; // ✅ correct
 
 // Fixed path
 

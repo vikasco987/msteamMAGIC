@@ -1,6 +1,6 @@
 // FILE: src/app/api/stats/goals/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma"; // Adjust path if needed
+import { prisma } from "@/lib/prisma"; // Adjust path if needed
 
 // GET handler – fetch all goals or filter by ?period=2025-07
 export async function GET(req: NextRequest) {

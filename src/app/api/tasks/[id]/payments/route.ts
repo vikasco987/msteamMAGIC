@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/prisma";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import cloudinary from "cloudinary";
 import { Readable } from "stream";
 import { Prisma } from "@prisma/client";
+import { logActivity } from "@/lib/activity";
 
 cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
@@ -36,7 +37,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   const { id: taskId } = await context.params;
   if (!taskId) return NextResponse.json({ error: "Missing task ID" }, { status: 400 });
 
-  const userName = (sessionClaims?.firstName as string) || (sessionClaims?.email as string) || "Unknown User";
+  const user = await currentUser();
+  const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
   const originalTaskId = await getEffectiveTaskId(taskId);
 
   try {
@@ -130,6 +132,32 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       where: { id: originalTaskId },
       data: updateData,
     });
+
+    await logActivity({
+      taskId: originalTaskId,
+      type: "PAYMENT_ADDED",
+      content: `₹${newReceived || 0} payment recorded. Total received: ₹${updatedReceivedToSave}`,
+      author: userName,
+      authorId: userId
+    });
+
+    // Create notifications for assignees and creator
+    const recipientIds = new Set([
+      ...(updatedTask.assigneeIds || []),
+      updatedTask.assigneeId,
+      updatedTask.createdByClerkId
+    ].filter(id => id && id !== userId));
+
+    await Promise.all(Array.from(recipientIds).map(recipientId =>
+      prisma.notification.create({
+        data: {
+          userId: recipientId as string,
+          type: "PAYMENT_ADDED",
+          content: `${userName} recorded a ₹${newReceived || 0} payment for "${updatedTask.title}".`,
+          taskId: originalTaskId
+        }
+      }).catch(err => console.error("Payment alert error:", err))
+    ));
 
     return NextResponse.json({ success: true, task: updatedTask, fileUrl: uploadedFileUrl });
   } catch (err: any) {

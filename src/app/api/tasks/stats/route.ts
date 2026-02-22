@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import {prisma} from "../../../../../lib/prisma"; // adjust path to your prisma client
+// import {prisma} from "@/lib/prisma"; // adjust path to your prisma client
 
 // // GET /api/tasks/stats
 // export async function GET() {
@@ -61,7 +61,7 @@
 
 // // src/app/api/tasks/stats/route.ts
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 
 // export async function GET() {
 //   try {
@@ -166,7 +166,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import {prisma} from "../../../../../lib/prisma";// make sure prisma client is here
+// import {prisma} from "@/lib/prisma";// make sure prisma client is here
 
 // export async function GET() {
 //   try {
@@ -233,7 +233,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import {prisma} from "../../../../../lib/prisma";
+// import {prisma} from "@/lib/prisma";
 
 // export async function GET() {
 //   try {
@@ -295,7 +295,7 @@
 
 // import { NextResponse } from "next/server";
 // // If your prisma export is `export const prisma = new PrismaClient()`
-// import {prisma} from "../../../../../lib/prisma";
+// import {prisma} from "@/lib/prisma";
 // // If yours is default export, use: import prisma from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
@@ -417,7 +417,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import {prisma} from "../../../../../lib/prisma";// ✅ use default export (your lib/prisma.ts should `export default prisma`)
+// import {prisma} from "@/lib/prisma";// ✅ use default export (your lib/prisma.ts should `export default prisma`)
 // import { auth } from "@clerk/nextjs/server";
 
 // type Row = {
@@ -536,7 +536,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth, clerkClient } from "@clerk/nextjs/server";
 
 // type Row = {
@@ -649,7 +649,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth, clerkClient } from "@clerk/nextjs/server";
 
 // type Row = {
@@ -777,7 +777,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth } from "@clerk/nextjs/server";
 
 // type Row = {
@@ -891,7 +891,7 @@
 
 
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // type Row = {
@@ -933,7 +933,7 @@
 //       )
 //     );
 
-  
+
 //     // 4️⃣ map id → name
 //     const userMap: Record<string, string> = {};
 //     clerkUsers.forEach(u => {
@@ -984,7 +984,7 @@
 
 
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { users } from "@clerk/clerk-sdk-node";
 
 type Row = {
@@ -1059,7 +1059,7 @@ export async function GET(req: Request) {
     let data = Object.values(map).sort((a, b) => a.assignee.localeCompare(b.assignee));
 
     // ✅ Filter to default 6 persons only
-    const defaultAssignees = ["Akash Verma","Prince","Ravi kant","Rishi","Sachin","Vikash Bidawat"];
+    const defaultAssignees = ["Akash Verma", "Prince", "Ravi kant", "Rishi", "Sachin", "Vikash Bidawat"];
     data = data.filter(d => defaultAssignees.includes(d.assignee));
 
     // 6️⃣ calculate totals across filtered assignees

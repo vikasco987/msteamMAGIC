@@ -1,5 +1,5 @@
 // import { NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
+// import { prisma } from "@/lib/prisma";
 // import { auth, clerkClient } from "@clerk/nextjs/server";
 
 // export async function POST(req: Request) {
@@ -102,14 +102,14 @@
 
 
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export async function POST(req: NextRequest) {
 //   try {
 //     // ✅ SAME AUTH STYLE AS WORKING FILE
-//     const { userId } = getAuth(req);
+//     const { userId } = auth();
 
 //     if (!userId) {
 //       return NextResponse.json(
@@ -212,14 +212,14 @@
 
 // // app/api/admin/attendance/update/route.ts
 // import { NextRequest, NextResponse } from "next/server";
-// import { prisma } from "../../../../../../lib/prisma";
-// import { getAuth } from "@clerk/nextjs/server";
+// import { prisma } from "@/lib/prisma";
+// import { auth } from "@clerk/nextjs/server";
 // import { users } from "@clerk/clerk-sdk-node";
 
 // export async function POST(req: NextRequest) {
 //   try {
 //     // ✅ Auth using Tish style
-//     const { userId: adminId } = getAuth(req);
+//     const { userId: adminId } = auth();
 //     if (!adminId) {
 //       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 //     }
@@ -322,13 +322,13 @@
 
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/prisma";
-import { getAuth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 
 export async function POST(req: NextRequest) {
   try {
     // ✅ Authenticate (ANY logged-in user)
-    const { userId } = getAuth(req);
+    const { userId } = auth();
 
     if (!userId) {
       return NextResponse.json(

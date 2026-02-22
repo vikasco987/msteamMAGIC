@@ -8,9 +8,11 @@ import Image from "next/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { uploadToCloudinary } from "@/app/components/TaskForm/utils";
 import { useUser, useAuth } from "@clerk/nextjs";
-import { FaFilePdf, FaRedoAlt, FaTrashAlt, FaPlus, FaCheckCircle, FaRegCircle } from "react-icons/fa";
+import { FaRegCircle, FaCheckCircle, FaPlus, FaFileImage, FaFilePdf, FaImage, FaFileAlt, FaVideo, FaTrashAlt, FaRedoAlt, FaHistory } from "react-icons/fa";
+import TaskActivityFeed from "./TaskActivityFeed";
 import PaymentHistory from "./PaymentHistory";
 import PaymentSection from "../components/PaymentSection";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Subtask {
   id: string;
@@ -156,8 +158,9 @@ const fetchAssigneeDetails = async (ids: string[]): Promise<AssigneeDetails[]> =
 };
 
 export default function TaskTimeline() {
-  const { user, sessionClaims } = useUser();
+  const { user } = useUser();
   const { getToken } = useAuth();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -178,6 +181,79 @@ export default function TaskTimeline() {
   const [currentAmountInput, setCurrentAmountInput] = useState("");
   const [currentReceivedInput, setCurrentReceivedInput] = useState("");
   const [showPaymentHistory, setShowPaymentHistory] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [mentionSearch, setMentionSearch] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const [cursorPos, setCursorPos] = useState(0);
+
+  useEffect(() => {
+    const fetchAllUsers = async () => {
+      try {
+        const res = await fetch("/api/assignees");
+        if (res.ok) {
+          const data = await res.json();
+          setAllUsers(data.assignees || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch users for mentions:", err);
+      }
+    };
+    fetchAllUsers();
+  }, []);
+
+  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const position = e.target.selectionStart;
+    setNewNote(value);
+    setCursorPos(position);
+
+    const textBeforeCursor = value.substring(0, position);
+    const lastAt = textBeforeCursor.lastIndexOf("@");
+
+    if (lastAt !== -1 && (lastAt === 0 || textBeforeCursor[lastAt - 1] === " ")) {
+      const searchPart = textBeforeCursor.substring(lastAt + 1);
+      if (!searchPart.includes(" ")) {
+        setMentionSearch(searchPart);
+        setShowMentions(true);
+        return;
+      }
+    }
+    setShowMentions(false);
+  };
+
+  const insertMention = (targetUser: any) => {
+    const textBeforeAt = newNote.substring(0, newNote.lastIndexOf("@", cursorPos - 1));
+    const textAfterMention = newNote.substring(cursorPos);
+    const mentionText = `@[${targetUser.name}](${targetUser.id}) `;
+    setNewNote(textBeforeAt + mentionText + textAfterMention);
+    setShowMentions(false);
+  };
+
+  const formatMentions = (text: string) => {
+    if (!text) return "";
+    const parts = text.split(/(@\[[^\]]+\]\([^)]+\))/g);
+    return parts.map((part, i) => {
+      const match = part.match(/@\[([^\]]+)\]\(([^)]+)\)/);
+      if (match) {
+        return <span key={i} className="text-blue-600 font-bold">@{match[1]}</span>;
+      }
+      return part;
+    });
+  };
+
+  const updateSelectedTaskFromFetched = useCallback(async () => {
+    if (!selectedTaskId) return;
+    const token = await getToken();
+    const updatedRes = await fetch(`/api/timeline?id=${selectedTaskId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (updatedRes.ok) {
+      const updatedData = await updatedRes.json();
+      const updatedTask = updatedData.tasks?.[0];
+      if (updatedTask) setSelectedTask(updatedTask);
+    }
+  }, [selectedTaskId, getToken]);
+
 
   useEffect(() => {
     if (selectedTask) {
@@ -212,7 +288,18 @@ export default function TaskTimeline() {
 
   useEffect(() => {
     fetchTasks();
-  }, [currentPage, tasksPerPage, fetchTasks]);
+
+    // 🕒 Real-time Board Update (Polling)
+    // Refreshes the board for everyone every 60 seconds
+    const pollInterval = setInterval(() => {
+      fetchTasks();
+      if (isPanelOpen && selectedTaskId) {
+        updateSelectedTaskFromFetched();
+      }
+    }, 60000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentPage, tasksPerPage, fetchTasks, isPanelOpen, selectedTaskId, updateSelectedTaskFromFetched]);
 
   // Update selected task separately to avoid loops
   useEffect(() => {
@@ -286,19 +373,6 @@ export default function TaskTimeline() {
       console.error("Failed to fetch full task data:", err);
     }
   }, [getToken]);
-
-  const updateSelectedTaskFromFetched = useCallback(async () => {
-    if (!selectedTaskId) return;
-    const token = await getToken();
-    const updatedRes = await fetch(`/api/timeline?id=${selectedTaskId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (updatedRes.ok) {
-      const updatedData = await updatedRes.json();
-      const updatedTask = updatedData.tasks?.[0];
-      if (updatedTask) setSelectedTask(updatedTask);
-    }
-  }, [selectedTaskId, getToken]);
 
   const toggleSubtask = async (taskId: string, subtaskId: string) => {
     // Optimistic update
@@ -495,7 +569,7 @@ export default function TaskTimeline() {
       formData.append("file", fileInput.files[0]);
     }
 
-    const userName = sessionClaims?.firstName || sessionClaims?.email || "Unknown User";
+    const userName = user?.firstName || user?.primaryEmailAddress?.emailAddress || "Unknown User";
     formData.append("updatedBy", String(userName));
     formData.append("updatedAt", new Date().toISOString());
 
@@ -770,18 +844,53 @@ export default function TaskTimeline() {
                   <h3 className="font-semibold text-gray-800">Notes</h3>
                   <div className="max-h-60 overflow-y-auto space-y-3">
                     {selectedTask.notes?.map((note, idx) => (
-                      <div key={idx} className="p-3 bg-gray-50 rounded-lg text-sm">
-                        <p className="text-gray-700">{note.content}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{note.authorName} • {note.createdAt ? format(parseISO(note.createdAt), "MMM dd, HH:mm") : ""}</p>
+                      <div key={idx} className="p-3 bg-gray-50 rounded-lg text-sm border-l-4 border-blue-400">
+                        <p className="text-gray-700 whitespace-pre-wrap">{formatMentions(note.content)}</p>
+                        <p className="text-[10px] text-gray-500 mt-2 font-medium">{note.authorName} • {note.createdAt ? format(parseISO(note.createdAt), "MMM dd, HH:mm") : ""}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
+                    <AnimatePresence>
+                      {showMentions && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          className="absolute bottom-full left-0 mb-2 w-64 bg-white border rounded-lg shadow-xl z-50 overflow-hidden"
+                        >
+                          <div className="p-2 bg-gray-50 border-b text-[10px] font-bold text-gray-500 uppercase">Suggesting Teammates</div>
+                          <div className="max-h-48 overflow-y-auto">
+                            {allUsers
+                              .filter(u => u.name.toLowerCase().includes(mentionSearch.toLowerCase()))
+                              .map(u => (
+                                <button
+                                  key={u.id}
+                                  onClick={() => insertMention(u)}
+                                  className="w-full text-left p-2 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+                                >
+                                  <Image src={u.imageUrl} alt={u.name} width={24} height={24} className="rounded-full" />
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-800">{u.name}</div>
+                                    <div className="text-[10px] text-gray-400">{u.email}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            {allUsers.filter(u => u.name.toLowerCase().includes(mentionSearch.toLowerCase())).length === 0 && (
+                              <div className="p-4 text-center text-xs text-gray-400">No users found</div>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <textarea
-                      value={newNote} onChange={e => setNewNote(e.target.value)}
-                      placeholder="Add a note..." rows={2} className="w-full px-3 py-2 border rounded-lg text-sm"
+                      value={newNote}
+                      onChange={handleNoteChange}
+                      placeholder="Add a note... use @ to mention teammates"
+                      rows={2}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 transition-all"
                     />
-                    <button onClick={addNote} disabled={!newNote.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">Post</button>
+                    <button onClick={addNote} disabled={!newNote.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50 w-full">Post Note</button>
                   </div>
                 </div>
 
@@ -799,6 +908,8 @@ export default function TaskTimeline() {
                   setShowPaymentHistory={setShowPaymentHistory}
                   handleTogglePaymentHistory={handleTogglePaymentHistory}
                 />
+
+                <TaskActivityFeed taskId={selectedTask.id} />
               </div>
             )}
           </Dialog.Content>
