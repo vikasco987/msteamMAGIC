@@ -1580,6 +1580,7 @@ import {
   FileSpreadsheet,
   CalendarCheck,
   UserSquare2,
+  History,
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { BarChart3 } from "lucide-react";
@@ -1607,6 +1608,7 @@ const allNavItems = [
 
   // ✅ NEW: Customers Page
   { label: 'Customers', icon: UserSquare2, href: '/customers', roles: ['admin', 'master', 'seller'] },
+  { label: 'Activity Log', icon: History, href: '/activities', roles: ['admin', 'master', 'seller', 'user'] },
 ];
 
 export default function Sidebar() {
