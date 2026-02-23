@@ -128,7 +128,7 @@ export async function GET(req: NextRequest) {
         }
 
         // --- AUTOMATED CHASING LOGIC (Notifications) ---
-        // This runs on every dashboard fetch to ensure reminders are fresh
+        // Throttled: Only run for a subset to prevent request timeouts
         try {
             // 1. Follow-ups DUE TODAY
             const dueFollowUps = await prisma.paymentRemark.findMany({
@@ -137,86 +137,75 @@ export async function GET(req: NextRequest) {
                     reminderSent: false,
                     followUpStatus: { not: "completed" }
                 },
-                include: { task: true }
+                include: { task: true },
+                take: 10 // Limit per request
             });
 
             if (dueFollowUps.length > 0) {
                 await Promise.all(dueFollowUps.map(async (remark) => {
-                    const targets = new Set([
-                        remark.task.createdByClerkId
-                    ].filter(Boolean));
-
-                    for (const tid of targets) {
-                        await prisma.notification.create({
-                            data: {
-                                userId: tid as string,
-                                type: "COLLECTION_REMINDER",
-                                content: `⏰ COLLECTION DUE: ${remark.task.shopName || remark.task.title}. Follow-up was scheduled for today. Outstanding: ₹${(remark.task.amount || 0) - (remark.task.received || 0)}`,
-                                taskId: remark.taskId
-                            }
-                        });
-                    }
+                    await prisma.notification.create({
+                        data: {
+                            userId: remark.task.createdByClerkId,
+                            type: "COLLECTION_REMINDER",
+                            content: `⏰ COLLECTION DUE: ${remark.task.shopName || remark.task.title}. Follow-up scheduled. Outstanding: ₹${(remark.task.amount || 0) - (remark.task.received || 0)}`,
+                            taskId: remark.taskId
+                        }
+                    });
                     await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } });
                 }));
             }
 
             // 2. IGNORED TASKS (No update in 5 days)
-            // We only do this for tasks with pending > 0
             const fiveDaysAgo = new Date();
             fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
             const ignoredTasks = await prisma.task.findMany({
                 where: {
                     amount: { gt: 0 },
-                    // Simplified: check if no remark exists at all OR last remark is old
                     OR: [
                         { paymentRemarks: { none: {} } },
                         { paymentRemarks: { none: { createdAt: { gte: fiveDaysAgo } } } }
-                    ],
-                    // Don't spam: check if we already sent an "ignored" notification recently
-                    NOT: {
-                        notifications: {
-                            some: {
-                                type: "COLLECTION_IGNORE_WARNING",
-                                createdAt: { gte: new Date(new Date().setDate(new Date().getDate() - 1)) } // Only once per 24h
-                            }
-                        }
-                    }
+                    ]
                 },
+                take: 5, // Strictly limit to prevent dashboard lag
                 select: { id: true, shopName: true, title: true, createdByClerkId: true }
             });
 
             if (ignoredTasks.length > 0) {
-                await Promise.all(ignoredTasks.map(async (t) => {
-                    const targets = new Set([t.createdByClerkId].filter(Boolean));
-                    for (const tid of targets) {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+
+                for (const t of ignoredTasks) {
+                    const recentNotif = await prisma.notification.findFirst({
+                        where: { taskId: t.id, type: "COLLECTION_IGNORE_WARNING", createdAt: { gte: yesterday } }
+                    });
+
+                    if (!recentNotif) {
                         await prisma.notification.create({
                             data: {
-                                userId: tid as string,
+                                userId: t.createdByClerkId,
                                 type: "COLLECTION_IGNORE_WARNING",
-                                content: `🚨 IGNORED COLLECTION: ${t.shopName || t.title} has not been updated in over 5 days. Please follow up immediately.`,
+                                content: `🚨 IGNORED: ${t.shopName || t.title} has no updates in 5 days.`,
                                 taskId: t.id
                             }
                         });
                     }
-                }));
+                }
             }
         } catch (remErr) {
             console.warn("Automated chasing error:", remErr);
         }
         // --- END AUTOMATED CHASING ---
 
-        // We still need the global summary for the dashboard cards
-        // This is the part that might be slow if there are 10k tasks
-        // But we only fetch IDs/Amounts for calculation
-        const allPendingTasks = await prisma.task.findMany({
+        // Efficient Summary Aggregation
+        const summaryResult = await prisma.task.aggregate({
             where: whereClause,
-            select: { amount: true, received: true }
+            _sum: { amount: true, received: true },
+            _count: { id: true }
         });
 
-        const pendingList = allPendingTasks.filter(t => (t.amount || 0) - (t.received || 0) > 0);
-        const totalPendingAmount = pendingList.reduce((sum, t) => sum + ((t.amount || 0) - (t.received || 0)), 0);
-        const totalTaskCount = pendingList.length;
+        const totalItems = summaryResult._count.id;
+        const totalPendingAmount = (summaryResult._sum.amount || 0) - (summaryResult._sum.received || 0);
 
         // Fetch paginated tasks
         const tasks = await prisma.task.findMany({
@@ -226,9 +215,6 @@ export async function GET(req: NextRequest) {
                 activities: { where: { type: "PAYMENT_ADDED" }, orderBy: { createdAt: "desc" }, take: 5 }
             },
             orderBy: { createdAt: "desc" },
-            // Note: DB-level pagination might include tasks with pending=0. 
-            // We increase limit slightly to compensate or eventually filter in app.
-            // For now, let's keep it simple with skip/take on the amount>0 subset.
             skip: skip,
             take: limit
         });
@@ -260,20 +246,20 @@ export async function GET(req: NextRequest) {
                 dueDate: task.dueDate,
                 customFields: task.customFields,
             };
-        }).filter(t => t.pending > 0);
+        });
 
         return NextResponse.json({
             tasks: recoveryTasks,
             role,
             summary: {
                 totalPending: totalPendingAmount,
-                taskCount: totalTaskCount
+                taskCount: totalItems
             },
             pagination: {
                 page,
                 limit,
-                totalPages: Math.ceil(totalTaskCount / limit),
-                totalItems: totalTaskCount
+                totalPages: Math.ceil(totalItems / limit),
+                totalItems: totalItems
             }
         });
 

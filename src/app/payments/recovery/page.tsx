@@ -105,7 +105,9 @@ export default function PaymentRecoveryPage() {
                 setTasks(data.tasks || []);
                 setSummary(data.summary || { totalPending: 0, taskCount: 0 });
                 setRole(data.role || "");
-                if (data.pagination) setPagination(data.pagination);
+                if (data.pagination) {
+                    setPagination(data.pagination);
+                }
             }
         } catch (err) {
             console.error("Fetch error:", err);
@@ -113,7 +115,7 @@ export default function PaymentRecoveryPage() {
         } finally {
             setLoading(false);
         }
-    }, [pagination.page, searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth]);
+    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth]); // REMOVED pagination.page
 
     useEffect(() => {
         const timer = setTimeout(() => fetchRecoveryData(1), 500);
@@ -121,9 +123,9 @@ export default function PaymentRecoveryPage() {
     }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData]);
 
     const handlePageChange = (newPage: number) => {
-        if (newPage >= 1 && newPage <= pagination.totalPages) {
-            setPagination(prev => ({ ...prev, page: newPage }));
+        if (newPage >= 1 && newPage <= pagination.totalPages && !loading) {
             fetchRecoveryData(newPage);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
 
@@ -392,8 +394,23 @@ export default function PaymentRecoveryPage() {
             </div>
 
             {/* --- RECOVERY MATRIX TABLE --- */}
-            <div className="bg-white rounded-[40px] shadow-2xl shadow-slate-200/20 border border-slate-50 overflow-hidden">
-                <div className="overflow-x-auto">
+            <div className="bg-white rounded-[40px] shadow-2xl shadow-slate-200/20 border border-slate-50 overflow-hidden relative min-h-[400px]">
+                {/* LOADING OVERLAY */}
+                <AnimatePresence>
+                    {loading && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-50 bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-4"
+                        >
+                            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em]">Refreshing Matrix...</p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <div className={`overflow-x-auto transition-all duration-500 ${loading ? 'blur-[4px] opacity-40 grayscale' : 'blur-0 opacity-100 grayscale-0'}`}>
                     <table className="w-full text-left">
                         <thead className="bg-[#fcfdfe] border-b border-slate-100">
                             <tr>
