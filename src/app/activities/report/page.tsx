@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import { 
-    Clock, 
-    User, 
-    History, 
-    AlertCircle, 
-    Timer, 
+import {
+    Clock,
+    User,
+    History,
+    AlertCircle,
+    Timer,
     UserPlus,
     ChevronDown,
     ChevronUp,
@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, formatDistanceToNow } from "date-fns";
 import toast from "react-hot-toast";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import EditTaskModal from "../../../components/EditTaskModal";
+import EditTaskModal from "../../components/EditTaskModal";
 import { Task } from "@/types/task";
 
 interface StatusLog {
@@ -80,7 +80,7 @@ export default function DeepAnalysisPage() {
     const [loading, setLoading] = useState(true);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
-    
+
     // Filters
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("all");
@@ -95,7 +95,7 @@ export default function DeepAnalysisPage() {
             try {
                 const res = await fetch("/api/tasks/audit");
                 const data = await res.json();
-                
+
                 if (res.ok) {
                     setAuditData(data.auditData || []);
                     setBottleneckData(data.bottleneckData || []);
@@ -120,7 +120,7 @@ export default function DeepAnalysisPage() {
 
     const filteredData = useMemo(() => {
         return auditData.filter(task => {
-            const matchesSearch = 
+            const matchesSearch =
                 task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 task.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 task.createdByName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -189,8 +189,8 @@ export default function DeepAnalysisPage() {
                         {/* Search Bar - Tracking ID style */}
                         <div className="relative group min-w-[300px] lg:min-w-[400px]">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 placeholder="Search Tracking ID, Shop, or Staff..."
                                 className="w-full pl-14 pr-6 py-4 bg-white border-2 border-transparent rounded-[24px] shadow-sm focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 transition-all font-bold text-slate-700 placeholder:text-slate-400"
                                 value={searchTerm}
@@ -204,8 +204,8 @@ export default function DeepAnalysisPage() {
                         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm text-xs font-black text-slate-500 uppercase tracking-wider">
                             <Filter size={14} /> Filters:
                         </div>
-                        
-                        <select 
+
+                        <select
                             value={selectedStatus}
                             onChange={(e) => setSelectedStatus(e.target.value)}
                             className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
@@ -216,7 +216,7 @@ export default function DeepAnalysisPage() {
                             <option value="done">Done</option>
                         </select>
 
-                        <select 
+                        <select
                             value={selectedPriority}
                             onChange={(e) => setSelectedPriority(e.target.value)}
                             className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
@@ -227,7 +227,7 @@ export default function DeepAnalysisPage() {
                             <option value="low">Low Priority</option>
                         </select>
 
-                        <select 
+                        <select
                             value={selectedStale}
                             onChange={(e) => setSelectedStale(e.target.value)}
                             className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
@@ -236,9 +236,9 @@ export default function DeepAnalysisPage() {
                             <option value="stale">Stale Only (Red Zone)</option>
                             <option value="active">Active Recently</option>
                         </select>
-                        
+
                         {(searchTerm || selectedStatus !== "all" || selectedPriority !== "all" || selectedStale !== "all") && (
-                            <button 
+                            <button
                                 onClick={() => {
                                     setSearchTerm("");
                                     setSelectedStatus("all");
@@ -291,7 +291,7 @@ export default function DeepAnalysisPage() {
                                                 <span className="text-indigo-600">{b.avgDays} Days Avg</span>
                                             </div>
                                             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                                <motion.div 
+                                                <motion.div
                                                     initial={{ width: 0 }}
                                                     animate={{ width: `${Math.min(100, (b.avgDays / 7) * 100)}%` }}
                                                     className="h-full bg-indigo-500 rounded-full"
@@ -338,7 +338,7 @@ export default function DeepAnalysisPage() {
 
                             <AnimatePresence mode="popLayout">
                                 {filteredData.map((task) => (
-                                    <motion.div 
+                                    <motion.div
                                         layout
                                         initial={{ opacity: 0, scale: 0.98 }}
                                         animate={{ opacity: 1, scale: 1 }}
@@ -381,7 +381,7 @@ export default function DeepAnalysisPage() {
                                                         <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{task.currentStatus}</p>
                                                     </div>
                                                     <div className="flex flex-col items-end gap-2">
-                                                        <button 
+                                                        <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setSelectedTaskForModal(task.task);
@@ -398,23 +398,23 @@ export default function DeepAnalysisPage() {
                                             {/* Minimal Progress Bar */}
                                             <div className="mt-8 flex items-center gap-3">
                                                 <div className="flex-1 h-3 bg-slate-50 rounded-full overflow-hidden border border-slate-100 relative">
-                                                    <motion.div 
+                                                    <motion.div
                                                         initial={{ width: 0 }}
-                                                        animate={{ 
-                                                            width: task.currentStatus.toLowerCase().includes('done') ? '100%' : 
-                                                                   task.currentStatus.toLowerCase().includes('progress') ? '60%' : '15%' 
+                                                        animate={{
+                                                            width: task.currentStatus.toLowerCase().includes('done') ? '100%' :
+                                                                task.currentStatus.toLowerCase().includes('progress') ? '60%' : '15%'
                                                         }}
                                                         className={`h-full transition-all duration-1000 
-                                                            ${task.currentStatus.toLowerCase().includes('done') ? 'bg-emerald-500' : 
-                                                              task.currentStatus.toLowerCase().includes('progress') ? 'bg-amber-500' : 'bg-blue-500'}`}
+                                                            ${task.currentStatus.toLowerCase().includes('done') ? 'bg-emerald-500' :
+                                                                task.currentStatus.toLowerCase().includes('progress') ? 'bg-amber-500' : 'bg-blue-500'}`}
                                                     />
                                                 </div>
                                                 <div className="flex gap-1">
                                                     {[1, 2, 3].map(i => (
                                                         <div key={i} className={`w-3 h-3 rounded-full border-2 
-                                                            ${i === 3 && task.currentStatus.toLowerCase().includes('done') ? 'bg-emerald-500 border-emerald-500' : 
-                                                              i === 2 && (task.currentStatus.toLowerCase().includes('progress') || task.currentStatus.toLowerCase().includes('done')) ? 'bg-amber-500 border-amber-500' : 
-                                                              i === 1 ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-200'}`} 
+                                                            ${i === 3 && task.currentStatus.toLowerCase().includes('done') ? 'bg-emerald-500 border-emerald-500' :
+                                                                i === 2 && (task.currentStatus.toLowerCase().includes('progress') || task.currentStatus.toLowerCase().includes('done')) ? 'bg-amber-500 border-amber-500' :
+                                                                    i === 1 ? 'bg-blue-500 border-blue-500' : 'bg-white border-slate-200'}`}
                                                         />
                                                     ))}
                                                 </div>
@@ -424,7 +424,7 @@ export default function DeepAnalysisPage() {
                                         {/* Expanded Detailed Milestone Tracker */}
                                         <AnimatePresence>
                                             {expandedTaskId === task.id && (
-                                                <motion.div 
+                                                <motion.div
                                                     initial={{ height: 0, opacity: 0 }}
                                                     animate={{ height: "auto", opacity: 1 }}
                                                     exit={{ height: 0, opacity: 0 }}
@@ -450,8 +450,8 @@ export default function DeepAnalysisPage() {
                                                                                 </span>
                                                                             </div>
                                                                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                                                                 {format(new Date(log.enterTime), "dd MMM yyyy, HH:mm")}
-                                                                                 {log.exitTime && <><ArrowRight size={10} /> {format(new Date(log.exitTime), "dd MMM yyyy, HH:mm")}</>}
+                                                                                {format(new Date(log.enterTime), "dd MMM yyyy, HH:mm")}
+                                                                                {log.exitTime && <><ArrowRight size={10} /> {format(new Date(log.exitTime), "dd MMM yyyy, HH:mm")}</>}
                                                                             </p>
                                                                         </div>
                                                                     </div>
@@ -498,18 +498,18 @@ export default function DeepAnalysisPage() {
                                                                 </div>
                                                                 <div className="relative z-10">
                                                                     <h5 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-indigo-400 flex items-center gap-2">
-                                                                         Manifest Summary
+                                                                        Manifest Summary
                                                                     </h5>
                                                                     <div className="grid grid-cols-2 gap-4">
                                                                         <div className="bg-white/5 p-4 rounded-2xl">
                                                                             <div className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-1.5 flex items-center gap-1">
-                                                                                 Interaction
+                                                                                Interaction
                                                                             </div>
                                                                             <div className="text-lg font-black">{task.totalActivities} Touchpoints</div>
                                                                         </div>
                                                                         <div className="bg-white/5 p-4 rounded-2xl">
                                                                             <div className="text-[9px] font-black uppercase tracking-widest opacity-40 mb-1.5 flex items-center gap-1">
-                                                                                 Financial Status
+                                                                                Financial Status
                                                                             </div>
                                                                             <div className="text-lg font-black">₹{task.received} / ₹{task.amount}</div>
                                                                         </div>
@@ -553,7 +553,7 @@ export default function DeepAnalysisPage() {
 
             {/* Task Detail Modal Integration */}
             {selectedTaskForModal && (
-                <EditTaskModal 
+                <EditTaskModal
                     task={selectedTaskForModal}
                     onClose={() => setSelectedTaskForModal(null)}
                     onSave={handleSaveTask}
