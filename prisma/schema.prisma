@@ -268,17 +268,21 @@ model FormField {
 }
 
 model FormResponse {
-  id          String      @id @default(auto()) @map("_id") @db.ObjectId
-  formId      String      @db.ObjectId
-  form        DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  formId          String      @db.ObjectId
+  form            DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
 
-  submittedBy String?     // Clerk userId (if logged in)
+  submittedBy     String?     // Clerk userId (if logged in)
   submittedByName String?
   
-  values      ResponseValue[]
-  internalValues InternalValue[]
+  values          ResponseValue[]
+  internalValues  InternalValue[]
 
-  submittedAt DateTime    @default(now())
+  // Permission Controls
+  visibleToRoles  String[]    @default([])
+  visibleToUsers  String[]    @default([])
+
+  submittedAt     DateTime    @default(now())
 }
 
 model ResponseValue {
@@ -308,6 +312,10 @@ model InternalColumn {
   formula         String?     // For dynamic calculations
   defaultValue    String?
   settings        Json?       // Any other type-specific settings
+
+  // Permission Controls
+  visibleToRoles  String[]    @default([])
+  visibleToUsers  String[]    @default([])
   
   formId          String      @db.ObjectId
   form            DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)

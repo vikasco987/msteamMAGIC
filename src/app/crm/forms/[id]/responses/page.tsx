@@ -45,7 +45,9 @@ import {
     Phone,
     Mail,
     Trash2,
-    Settings
+    Settings,
+    Check,
+    GripVertical
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -117,6 +119,8 @@ const COLUMN_TYPES = [
     { title: "Attachment Hub", id: "file", icon: Paperclip, color: "text-slate-400" },
 ];
 
+const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
+
 export default function CRMSpreadsheetPage() {
     const router = useRouter();
     const params = useParams();
@@ -134,18 +138,38 @@ export default function CRMSpreadsheetPage() {
     const [conditions, setConditions] = useState<{ colId: string, op: string, val: string }[]>([]);
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
+    const [selectedRows, setSelectedRows] = useState<string[]>([]);
+    const [userRole, setUserRole] = useState<string>("GUEST");
+    const [isMaster, setIsMaster] = useState(false);
 
     // New Column Advanced State
     const [newColLabel, setNewColLabel] = useState("");
     const [newColType, setNewColType] = useState("text");
     const [newColOptions, setNewColOptions] = useState<{ label: string, color: string }[]>([]);
     const [newColSettings, setNewColSettings] = useState({ isRequired: false, isLocked: false, showInPublic: false });
+    const [newColPermissions, setNewColPermissions] = useState<{ roles: string[], users: string[] }>({ roles: [], users: [] });
+
+    // Visibility & User Search
+    const [userSearchQuery, setUserSearchQuery] = useState("");
+    const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
+
+    const searchUsers = async (q: string) => {
+        setUserSearchQuery(q);
+        if (q.length < 2) { setUserResults([]); return; }
+        try {
+            const res = await fetch(`/api/crm/users?q=${q}`);
+            const json = await res.json();
+            setUserResults(json);
+        } catch (err) { console.error(err); }
+    };
 
     const fetchData = async () => {
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/responses`);
             const json = await res.json();
             setData(json);
+            setUserRole(json.userRole);
+            setIsMaster(json.isMaster);
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
             if (!groupByColId) {
@@ -237,7 +261,9 @@ export default function CRMSpreadsheetPage() {
                     options: newColOptions,
                     isRequired: newColSettings.isRequired,
                     isLocked: newColSettings.isLocked,
-                    showInPublic: newColSettings.showInPublic
+                    showInPublic: newColSettings.showInPublic,
+                    visibleToRoles: newColPermissions.roles,
+                    visibleToUsers: newColPermissions.users
                 })
             });
             if (res.ok) {
@@ -245,11 +271,41 @@ export default function CRMSpreadsheetPage() {
                 setIsAddColumnOpen(false);
                 setNewColLabel("");
                 setNewColOptions([]);
+                setNewColPermissions({ roles: [], users: [] });
                 fetchData();
             }
         } catch (err) {
             toast.error("Failed to add column");
         }
+    };
+
+    const handleBulkVisibilityUpdate = async (type: "COLUMN" | "ROW", roles: string[]) => {
+        const ids = type === "ROW" ? selectedRows : []; // Add column selection later if needed
+        if (ids.length === 0) return;
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids, type, visibleToRoles: roles, visibleToUsers: [] })
+            });
+            if (res.ok) {
+                toast.success(`Access updated for ${ids.length} items`);
+                setSelectedRows([]);
+                fetchData();
+            }
+        } catch (err) {
+            toast.error("Bulk update failed");
+        }
+    };
+
+    const toggleRowSelection = (id: string) => {
+        setSelectedRows(prev => prev.includes(id) ? prev.filter(rid => rid !== id) : [...prev, id]);
+    };
+
+    const toggleAllRows = () => {
+        if (selectedRows.length === filteredResponses.length) setSelectedRows([]);
+        else setSelectedRows(filteredResponses.map(r => r.id));
     };
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
@@ -393,8 +449,15 @@ export default function CRMSpreadsheetPage() {
                             <table className="border-separate border-spacing-0 w-full min-w-[max-content]">
                                 <thead className="sticky top-0 z-20">
                                     <tr className="bg-white/80 backdrop-blur-xl">
-                                        <th className="px-12 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] text-center sticky left-0 bg-white z-30 min-w-[140px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">Profile</th>
-                                        <th className="px-14 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] sticky left-[140px] bg-white z-30 min-w-[300px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">Primary Contributor</th>
+                                        {isMaster && (
+                                            <th className="px-10 py-8 border-b border-r border-slate-100 sticky left-0 bg-white z-[35] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
+                                                <div onClick={toggleAllRows} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
+                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={14} className="text-white" />}
+                                                </div>
+                                            </th>
+                                        )}
+                                        <th className={`px-12 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white z-30 min-w-[140px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>Profile</th>
+                                        <th className={`px-14 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white z-30 min-w-[300px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>Primary Contributor</th>
                                         {data?.form?.fields?.map(f => (
                                             <th key={f.id} className="px-14 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] min-w-[280px] bg-white">
                                                 <div className="flex items-center gap-4">
@@ -406,8 +469,13 @@ export default function CRMSpreadsheetPage() {
                                             const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
                                             return (
                                                 <th key={ic.id} className="px-14 py-8 border-b border-r border-slate-200 text-[11px] font-black text-slate-900 uppercase tracking-[0.3em] bg-indigo-50/10 min-w-[280px]">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="p-2.5 bg-white rounded-xl text-indigo-600 shadow-sm border border-indigo-50"><TypeIcon size={18} /></div> {ic.label}
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="p-2.5 bg-white rounded-xl text-indigo-600 shadow-sm border border-indigo-50"><TypeIcon size={18} /></div> {ic.label}
+                                                        </div>
+                                                        {(ic.visibleToRoles?.length > 0 || ic.visibleToUsers?.length > 0) && (
+                                                            <ShieldCheck size={14} className="text-indigo-400" />
+                                                        )}
                                                     </div>
                                                 </th>
                                             );
@@ -417,12 +485,19 @@ export default function CRMSpreadsheetPage() {
                                 <tbody>
                                     {filteredResponses.map((res) => (
                                         <tr key={res.id} className="group hover:bg-indigo-50/5 transition-all">
-                                            <td className="px-12 py-8 border-b border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
+                                            {isMaster && (
+                                                <td className="px-10 py-8 border-b border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
+                                                    <div onClick={() => toggleRowSelection(res.id)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
+                                                        {selectedRows.includes(res.id) && <Check size={14} className="text-white" />}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            <td className={`px-12 py-8 border-b border-r border-slate-100 text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
                                                 <button onClick={() => setSelectedResponse(res)} className="p-4 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-[22px] transition-all bg-white shadow-sm border border-slate-100 hover:border-indigo-100">
                                                     <Maximize2 size={20} />
                                                 </button>
                                             </td>
-                                            <td className="px-14 py-8 border-b border-r border-slate-100 sticky left-[140px] bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
+                                            <td className={`px-14 py-8 border-b border-r border-slate-100 sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
                                                 <div className="flex items-center gap-5">
                                                     <div className="w-12 h-12 rounded-[20px] bg-slate-900 text-white flex items-center justify-center text-xs font-black uppercase ring-4 ring-slate-50">
                                                         {res.submittedByName ? res.submittedByName[0] : "?"}
@@ -724,11 +799,70 @@ export default function CRMSpreadsheetPage() {
                                                         <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isLocked ? 'left-7' : 'left-1'}`} />
                                                     </button>
                                                 </div>
-                                                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
-                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><ExternalLink size={16} className="text-blue-500" /> Public Access</span>
-                                                    <button onClick={() => setNewColSettings({ ...newColSettings, showInPublic: !newColSettings.showInPublic })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.showInPublic ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.showInPublic ? 'left-7' : 'left-1'}`} />
-                                                    </button>
+                                            </div>
+
+                                            <div className="pt-8">
+                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Access Control (RBAC)</h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {AVAILABLE_ROLES.map(role => (
+                                                        <button
+                                                            key={role}
+                                                            onClick={() => {
+                                                                const roles = newColPermissions.roles.includes(role)
+                                                                    ? newColPermissions.roles.filter(r => r !== role)
+                                                                    : [...newColPermissions.roles, role];
+                                                                setNewColPermissions({ ...newColPermissions, roles });
+                                                            }}
+                                                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${newColPermissions.roles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                                        >
+                                                            {role}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-8 relative">
+                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Individual Analytics Access</h4>
+                                                <div className="space-y-4">
+                                                    <div className="relative">
+                                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                        <input
+                                                            value={userSearchQuery}
+                                                            onChange={(e) => searchUsers(e.target.value)}
+                                                            placeholder="Search users by email..."
+                                                            className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
+                                                        />
+                                                    </div>
+
+                                                    {userResults.length > 0 && (
+                                                        <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto">
+                                                            {userResults.map(u => (
+                                                                <button
+                                                                    key={u.clerkId}
+                                                                    onClick={() => {
+                                                                        if (!newColPermissions.users.includes(u.clerkId)) {
+                                                                            setNewColPermissions({ ...newColPermissions, users: [...newColPermissions.users, u.clerkId] });
+                                                                        }
+                                                                        setUserResults([]);
+                                                                        setUserSearchQuery("");
+                                                                    }}
+                                                                    className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between"
+                                                                >
+                                                                    <span className="text-[10px] font-black text-slate-700">{u.email}</span>
+                                                                    <Plus size={14} className="text-indigo-600" />
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {newColPermissions.users.map(uid => (
+                                                            <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
+                                                                <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
+                                                                <X size={12} className="cursor-pointer" onClick={() => setNewColPermissions({ ...newColPermissions, users: newColPermissions.users.filter(x => x !== uid) })} />
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
@@ -770,6 +904,64 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </motion.div>
                     </div>
+                )}
+            </AnimatePresence>
+
+            {/* Bulk Action Bar — Floating Permission Lab */}
+            <AnimatePresence>
+                {selectedRows.length > 0 && (
+                    <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-6 bg-slate-900 border border-slate-800 p-4 px-8 rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                        <div className="flex items-center gap-4 border-r border-slate-800 pr-6 mr-2">
+                            <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">{selectedRows.length}</div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Records Selected</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black uppercase text-indigo-400 mr-2 tracking-tighter">Set Visibility:</span>
+                            {AVAILABLE_ROLES.map(role => (
+                                <button key={role} onClick={() => handleBulkVisibilityUpdate("ROW", [role])} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Visible to {role}</button>
+                            ))}
+                            <div className="relative">
+                                <input
+                                    className="bg-slate-800 border-none rounded-xl px-4 py-2 text-[9px] font-black uppercase text-white outline-none w-[150px] focus:ring-1 ring-indigo-500"
+                                    placeholder="Search User..."
+                                    value={userSearchQuery}
+                                    onChange={(e) => searchUsers(e.target.value)}
+                                />
+                                {userResults.length > 0 && (
+                                    <div className="absolute bottom-full mb-4 left-0 w-[200px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 overflow-hidden">
+                                        {userResults.map(u => (
+                                            <button
+                                                key={u.clerkId}
+                                                onClick={() => {
+                                                    // For bulk, we'll just set it to this one user for now as a quick action
+                                                    const res = fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                                                        method: "PATCH",
+                                                        headers: { "Content-Type": "application/json" },
+                                                        body: JSON.stringify({ ids: selectedRows, type: "ROW", visibleToRoles: [], visibleToUsers: [u.clerkId] })
+                                                    }).then(() => {
+                                                        toast.success(`Exclusive access granted to ${u.email.split('@')[0]}`);
+                                                        setSelectedRows([]);
+                                                        fetchData();
+                                                    });
+                                                    setUserResults([]);
+                                                    setUserSearchQuery("");
+                                                }}
+                                                className="w-full px-4 py-2 text-left hover:bg-indigo-600 text-[9px] font-black uppercase text-slate-300 hover:text-white"
+                                            >
+                                                {u.email}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <button onClick={() => handleBulkVisibilityUpdate("ROW", [])} className="px-4 py-2 bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-900/50 transition-all">Make Public</button>
+                        </div>
+
+                        <div className="h-6 w-[1px] bg-slate-800 mx-2" />
+
+                        <button onClick={() => setSelectedRows([])} className="p-3 text-slate-400 hover:text-white transition-colors"><X size={20} /></button>
+                    </motion.div>
                 )}
             </AnimatePresence>
 

@@ -44,8 +44,22 @@ export async function GET(
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        // Fetch user from our DB to get their role
+        const dbUser = await prisma.user.findUnique({
+            where: { clerkId: userId }
+        });
+        const userRole = dbUser?.role || "GUEST";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+
         const responses = await prisma.formResponse.findMany({
-            where: { formId },
+            where: {
+                formId,
+                OR: isMaster ? undefined : [
+                    { visibleToRoles: { has: userRole } },
+                    { visibleToUsers: { has: userId } },
+                    { visibleToRoles: { set: [] }, visibleToUsers: { set: [] } } // Public if no restrictions
+                ]
+            },
             include: { values: true },
             orderBy: { submittedAt: "desc" }
         });
@@ -56,14 +70,32 @@ export async function GET(
         });
 
         // We also need the internal columns for the form
-        const internalColumns = await prisma.internalColumn.findMany({
+        let internalColumns = await prisma.internalColumn.findMany({
             where: { formId },
             orderBy: { order: "asc" }
         });
 
+        // Filter columns for non-masters
+        if (!isMaster) {
+            internalColumns = internalColumns.filter(col => {
+                const roles = col.visibleToRoles || [];
+                const users = col.visibleToUsers || [];
+                if (roles.length === 0 && users.length === 0) return true;
+                return roles.includes(userRole) || users.includes(userId);
+            });
+
+            // Filter form fields if any (though currently they don't have permission fields, it's good practice)
+            // if (form?.fields) {
+            //      ...
+            // }
+        }
+
         // And all internal values for these responses
         const internalValues = await prisma.internalValue.findMany({
-            where: { responseId: { in: responses.map(r => r.id) } }
+            where: {
+                responseId: { in: responses.map(r => r.id) },
+                columnId: { in: internalColumns.map(c => c.id) }
+            }
         });
 
         // And all activities (Audit Trail)
@@ -72,7 +104,15 @@ export async function GET(
             orderBy: { createdAt: "desc" }
         });
 
-        return NextResponse.json({ responses, form, internalColumns, internalValues, activities });
+        return NextResponse.json({
+            responses,
+            form,
+            internalColumns,
+            internalValues,
+            activities,
+            userRole,
+            isMaster
+        });
     } catch (error) {
         console.error("GET Responses Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
