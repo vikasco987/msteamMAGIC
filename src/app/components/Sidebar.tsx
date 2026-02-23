@@ -48,7 +48,7 @@ const NAVIGATION_GROUPS = [
     items: [
       { label: 'Recovery Hub', icon: HandCoins, href: '/payments/recovery', roles: ['admin', 'master', 'seller'] },
       { label: 'KAM Strategy', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller'] },
-      { label: 'Sales Matrix', icon: TrendingUp, href: '/sales-dashboard', roles: ['master', 'admin'] },
+      { label: 'Sales Matrix', icon: TrendingUp, href: '/sales-dashboard', roles: ['master'] },
       { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master'] },
     ]
   },
