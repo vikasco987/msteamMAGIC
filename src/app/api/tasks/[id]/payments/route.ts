@@ -141,19 +141,26 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       authorId: userId
     });
 
-    // Create notifications for assignees and creator
-    const recipientIds = new Set([
-      ...(updatedTask.assigneeIds || []),
-      updatedTask.assigneeId,
-      updatedTask.createdByClerkId
-    ].filter(id => id && id !== userId));
+    // 🚀 NEW: Notify ONLY Admin and Master
+    const client = await clerkClient();
+    const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
+    const adminMasterIds = clerkUsersResponse.data
+      .filter(u => {
+        const role = (u.publicMetadata?.role as string)?.toLowerCase();
+        return role === 'admin' || role === 'master';
+      })
+      .map(u => u.id)
+      .filter(id => id !== userId);
 
-    await Promise.all(Array.from(recipientIds).map(recipientId =>
+    const cf = (updatedTask.customFields as any) || {};
+    const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+
+    await Promise.all(adminMasterIds.map(recipientId =>
       prisma.notification.create({
         data: {
-          userId: recipientId as string,
+          userId: recipientId,
           type: "PAYMENT_ADDED",
-          content: `${userName} recorded a ₹${newReceived || 0} payment for "${updatedTask.title}".`,
+          content: `Payment Alert: ₹${newReceived || 0} recorded for ${details}. User: ${userName}`,
           taskId: originalTaskId
         }
       }).catch(err => console.error("Payment alert error:", err))
@@ -220,6 +227,31 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       where: { id: originalTaskId },
       data: updateData,
     });
+
+    // 🚀 NEW: Notify ONLY Admin and Master
+    const client = await clerkClient();
+    const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
+    const adminMasterIds = clerkUsersResponse.data
+      .filter(u => {
+        const role = (u.publicMetadata?.role as string)?.toLowerCase();
+        return role === 'admin' || role === 'master';
+      })
+      .map(u => u.id)
+      .filter(id => id !== userId);
+
+    const cf = (updatedTask.customFields as any) || {};
+    const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+
+    await Promise.all(adminMasterIds.map(recipientId =>
+      prisma.notification.create({
+        data: {
+          userId: recipientId,
+          type: "PAYMENT_ADDED",
+          content: `Payment Override: Total ₹${updatedReceivedToSave} for ${details}. User: ${userName}`,
+          taskId: originalTaskId
+        }
+      }).catch(err => console.error("Payment alert error:", err))
+    ));
 
     return NextResponse.json({ success: true, task: updatedTask });
   } catch (err: any) {

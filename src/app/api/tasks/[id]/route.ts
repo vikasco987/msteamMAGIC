@@ -147,6 +147,33 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       });
     }
 
+    // 🚀 NEW: Notify ONLY Admin and Master for payment updates
+    if (updateData.amount !== undefined || updateData.received !== undefined) {
+      const client = await clerkClient();
+      const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
+      const adminMasterIds = clerkUsersResponse.data
+        .filter(u => {
+          const role = (u.publicMetadata?.role as string)?.toLowerCase();
+          return role === 'admin' || role === 'master';
+        })
+        .map(u => u.id)
+        .filter(id => id !== userId);
+
+      const cf = (updated.customFields as any) || {};
+      const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+
+      await Promise.all(adminMasterIds.map(recipientId =>
+        prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "PAYMENT_ADDED",
+            content: `Payment Update: ${details}. Total: ₹${updated.amount || 0}, Received: ₹${updated.received || 0}. By: ${userName}`,
+            taskId: updated.id
+          }
+        }).catch(err => console.error("Payment alert error:", err))
+      ));
+    }
+
     // Trigger notification if status becomes "done"
     if (updateData.status === "done" && currentTask.status !== "done") {
       const recipientIds = new Set([

@@ -168,9 +168,11 @@ export default function Sidebar() {
         {/* Multi-tier Navigation */}
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 scrollbar-hide relative z-10">
 
-          <div className="space-y-2">
-            <NotificationBell isCollapsed={isCollapsed} />
-          </div>
+          {userRole !== 'user' && (
+            <div className="space-y-2">
+              <NotificationBell isCollapsed={isCollapsed} />
+            </div>
+          )}
 
           {NAVIGATION_GROUPS.map((group, gIdx) => {
             // Filter group items by role
