@@ -42,7 +42,19 @@ export async function GET(req: NextRequest) {
         const isAdminOrMaster = role === "admin" || role === "master";
         const isSeller = role === "seller";
 
-        let whereClause: any = { amount: { gt: 0 } };
+        // Match only tasks with pending balance (amount > received)
+        // Using mongo expression to filter on computed value
+        let whereClause: any = {
+            AND: [
+                { amount: { gt: 0 } },
+                {
+                    OR: [
+                        { received: { lt: prisma.task.fields.amount } },
+                        { received: null }
+                    ]
+                }
+            ]
+        };
 
         // Date Filter
         if (startDate || endDate) {

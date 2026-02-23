@@ -71,10 +71,11 @@ export default function PaymentRecoveryPage() {
     const [showHistoryTask, setShowHistoryTask] = useState<RecoveryTask | null>(null);
     const [showEditModal, setShowEditModal] = useState<string | null>(null);
 
-    const fetchRecoveryData = useCallback(async (pageOverride?: number) => {
+    const fetchRecoveryData = useCallback(async (pageOverride?: number, limitOverride?: number) => {
         setLoading(true);
         try {
             const page = pageOverride || pagination.page;
+            const limit = limitOverride || pagination.limit;
 
             let finalStart = startDate;
             let finalEnd = endDate;
@@ -87,7 +88,7 @@ export default function PaymentRecoveryPage() {
 
             const params = new URLSearchParams({
                 page: page.toString(),
-                limit: "50",
+                limit: limit.toString(),
                 searchTerm,
                 filterAssigner,
                 filterTaskStatus,
@@ -115,12 +116,12 @@ export default function PaymentRecoveryPage() {
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth]); // REMOVED pagination.page
+    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, pagination.limit]);
 
     useEffect(() => {
         const timer = setTimeout(() => fetchRecoveryData(1), 500);
         return () => clearTimeout(timer);
-    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData]);
+    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData, pagination.limit]);
 
     const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= pagination.totalPages && !loading) {
@@ -379,13 +380,30 @@ export default function PaymentRecoveryPage() {
                             <option value="danger">Risk/Ignored</option>
                         </select>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-6">
                         {hasFilters && (
-                            <button onClick={clearFilters} className="flex-1 px-6 py-4 bg-rose-50 text-rose-600 font-black text-[10px] uppercase tracking-widest rounded-2xl border border-rose-100 hover:bg-rose-100 transition-all">
+                            <button onClick={clearFilters} className="px-6 py-4 bg-rose-50 text-rose-600 font-black text-[10px] uppercase tracking-widest rounded-2xl border border-rose-100 hover:bg-rose-100 transition-all">
                                 Reset
                             </button>
                         )}
-                        <div className="text-right flex-1">
+                        <div className="flex-1 space-y-2 min-w-[100px]">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Show Rows</label>
+                            <select 
+                                value={pagination.limit} 
+                                onChange={e => {
+                                    const newLimit = parseInt(e.target.value);
+                                    setPagination(p => ({ ...p, limit: newLimit, page: 1 }));
+                                    fetchRecoveryData(1, newLimit);
+                                }}
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-xs font-black text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all"
+                            >
+                                <option value={10}>10 Rows</option>
+                                <option value={25}>25 Rows</option>
+                                <option value={50}>50 Rows</option>
+                                <option value={100}>100 Rows</option>
+                            </select>
+                        </div>
+                        <div className="text-right">
                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1">MATCHING</p>
                             <p className="text-2xl font-black text-slate-900 leading-none">{pagination.totalItems}</p>
                         </div>
