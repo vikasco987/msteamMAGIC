@@ -22,14 +22,13 @@ import {
     ChevronRight,
     Users,
     Eye,
-    ExternalLink,
     IndianRupee,
     CalendarDays,
     LayoutPanelTop,
     MoreHorizontal
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isValid } from "date-fns";
 import toast from "react-hot-toast";
 import EditTaskModal from "../../components/EditTaskModal";
 import { Task } from "@/types/task";
@@ -82,6 +81,7 @@ export default function DeepAnalysisPage() {
     const [staleTasks, setStaleTasks] = useState<TaskAudit[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState("");
@@ -98,6 +98,7 @@ export default function DeepAnalysisPage() {
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<Task | null>(null);
 
     useEffect(() => {
+        setIsMounted(true);
         const fetchAudit = async () => {
             try {
                 const res = await fetch("/api/tasks/audit");
@@ -112,12 +113,10 @@ export default function DeepAnalysisPage() {
                     }
                 } else {
                     setError(data.error || "Failed to fetch audit data");
-                    toast.error(data.error || "Access Denied");
                 }
             } catch (err) {
                 console.error("Fetch audit error:", err);
                 setError("Network error: Could not reach the audit server.");
-                toast.error("Network error");
             } finally {
                 setLoading(false);
             }
@@ -125,18 +124,23 @@ export default function DeepAnalysisPage() {
         fetchAudit();
     }, []);
 
-    const assignees = useMemo(() => Array.from(new Set(auditData.map(t => t.assigneeName))).sort(), [auditData]);
-    const assigners = useMemo(() => Array.from(new Set(auditData.map(t => t.assignerName))).sort(), [auditData]);
+    const assignees = useMemo(() => Array.from(new Set(auditData.map(t => t.assigneeName || "Unassigned"))).sort(), [auditData]);
+    const assigners = useMemo(() => Array.from(new Set(auditData.map(t => t.assignerName || "Unknown"))).sort(), [auditData]);
 
     const filteredData = useMemo(() => {
         return auditData.filter(task => {
-            const matchesSearch =
-                task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.shopName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.createdByName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                task.id.slice(-6).toLowerCase().includes(searchTerm.toLowerCase());
+            const title = task.title || "";
+            const shop = task.shopName || "";
+            const creator = task.createdByName || "";
+            const id = task.id || "";
 
-            const matchesStatus = selectedStatus === "all" || task.currentStatus.toLowerCase() === selectedStatus.toLowerCase();
+            const matchesSearch =
+                title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                shop.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                creator.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                id.slice(-6).toLowerCase().includes(searchTerm.toLowerCase());
+
+            const matchesStatus = selectedStatus === "all" || (task.currentStatus || "").toLowerCase() === selectedStatus.toLowerCase();
             const matchesPriority = selectedPriority === "all" || (task.priority || "normal").toLowerCase() === selectedPriority.toLowerCase();
             const matchesStale = selectedStale === "all" || (selectedStale === "stale" && task.isStale) || (selectedStale === "active" && !task.isStale);
             const matchesAssignee = selectedAssignee === "all" || task.assigneeName === selectedAssignee;
@@ -157,11 +161,23 @@ export default function DeepAnalysisPage() {
     }, [searchTerm, selectedStatus, selectedPriority, selectedStale, selectedAssignee, selectedAssigner]);
 
     const getStatusColor = (status: string) => {
-        const s = status.toLowerCase();
+        const s = (status || "").toLowerCase();
         if (s.includes("todo")) return "bg-blue-50 text-blue-700 border-blue-100";
         if (s.includes("progress")) return "bg-amber-50 text-amber-700 border-amber-100";
         if (s.includes("done")) return "bg-emerald-50 text-emerald-700 border-emerald-100";
         return "bg-slate-50 text-slate-700 border-slate-100";
+    };
+
+    const safeFormat = (dateStr: any, fmt: string) => {
+        if (!dateStr) return "N/A";
+        const d = new Date(dateStr);
+        return isValid(d) ? format(d, fmt) : "N/A";
+    };
+
+    const safeDistance = (dateStr: any) => {
+        if (!isMounted || !dateStr) return "N/A";
+        const d = new Date(dateStr);
+        return isValid(d) ? formatDistanceToNow(d) : "N/A";
     };
 
     const handleSaveTask = async (updated: Task) => {
@@ -182,10 +198,11 @@ export default function DeepAnalysisPage() {
         }
     };
 
+    if (!isMounted) return null;
+
     return (
         <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8">
             <div className="max-w-[1600px] mx-auto">
-                {/* Master Header */}
                 <header className="mb-10">
                     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-8">
                         <div className="flex items-center gap-5">
@@ -201,7 +218,6 @@ export default function DeepAnalysisPage() {
                             </div>
                         </div>
 
-                        {/* Search Bar */}
                         <div className="relative group flex-1 max-w-xl">
                             <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
                             <input
@@ -214,40 +230,33 @@ export default function DeepAnalysisPage() {
                         </div>
                     </div>
 
-                    {/* Filter Ecosystem */}
                     <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-wrap items-center gap-4">
                         <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                             <Filter size={14} /> Intelligence Filters
                         </div>
 
-                        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="filter-select">
+                        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none cursor-pointer hover:bg-white transition-all">
                             <option value="all">All Phases</option>
                             <option value="todo">To Do</option>
                             <option value="inprogress">In Progress</option>
                             <option value="done">Done</option>
                         </select>
 
-                        <select value={selectedPriority} onChange={(e) => setSelectedPriority(e.target.value)} className="filter-select">
+                        <select value={selectedPriority} onChange={(e) => setSelectedPriority(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none cursor-pointer hover:bg-white transition-all">
                             <option value="all">Priority: All</option>
                             <option value="high">High Velocity</option>
                             <option value="normal">Standard</option>
                             <option value="low">Low Priority</option>
                         </select>
 
-                        <select value={selectedAssignee} onChange={(e) => setSelectedAssignee(e.target.value)} className="filter-select">
+                        <select value={selectedAssignee} onChange={(e) => setSelectedAssignee(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none cursor-pointer hover:bg-white transition-all">
                             <option value="all">Assignee: All</option>
                             {assignees.map(a => <option key={a} value={a}>{a}</option>)}
                         </select>
 
-                        <select value={selectedAssigner} onChange={(e) => setSelectedAssigner(e.target.value)} className="filter-select">
+                        <select value={selectedAssigner} onChange={(e) => setSelectedAssigner(e.target.value)} className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none cursor-pointer hover:bg-white transition-all">
                             <option value="all">Assigner: All</option>
                             {assigners.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
-
-                        <select value={selectedStale} onChange={(e) => setSelectedStale(e.target.value)} className="filter-select">
-                            <option value="all">Flow Status: All</option>
-                            <option value="stale">Stalled (Red Zone)</option>
-                            <option value="active">Active Flow</option>
                         </select>
 
                         <button
@@ -263,7 +272,6 @@ export default function DeepAnalysisPage() {
                 </header>
 
                 <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                    {/* Left Intelligence Metrics (Sidebar) */}
                     <div className="xl:col-span-3 space-y-6">
                         <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm overflow-hidden relative">
                             <TrendingUp className="absolute -top-4 -right-4 w-32 h-32 text-slate-50 opacity-50" />
@@ -286,7 +294,6 @@ export default function DeepAnalysisPage() {
                         </div>
 
                         <div className="bg-rose-600 p-8 rounded-[40px] text-white shadow-2xl relative overflow-hidden group">
-                            <Skull className="absolute -bottom-8 -right-8 w-40 h-40 opacity-10 group-hover:rotate-12 transition-transform duration-700" size={120} />
                             <h2 className="text-[10px] font-black uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
                                 <AlertCircle size={14} /> Red Zone Warnings
                             </h2>
@@ -307,10 +314,18 @@ export default function DeepAnalysisPage() {
                         </div>
                     </div>
 
-                    {/* Main Manifest Table */}
                     <div className="xl:col-span-9 space-y-6">
+                        {error && (
+                            <div className="p-6 bg-rose-50 border border-rose-200 rounded-[32px] flex items-center gap-4 text-rose-700 mb-6">
+                                <AlertCircle className="shrink-0" />
+                                <div>
+                                    <p className="font-bold uppercase text-xs tracking-widest">System Scan Result</p>
+                                    <p className="text-sm opacity-80 mt-1">{error}</p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-white rounded-[40px] border border-slate-100 shadow-sm overflow-hidden">
-                            {/* Table Header */}
                             <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
                                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-3">
                                     <Box size={18} className="text-indigo-600" /> Central Manifest Database
@@ -336,27 +351,26 @@ export default function DeepAnalysisPage() {
                                 </div>
                             </div>
 
-                            {/* The Table */}
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left border-collapse min-w-[1000px]">
                                     <thead>
                                         <tr className="bg-white">
-                                            <th className="th-cell">Tracking ID</th>
-                                            <th className="th-cell">Task Details</th>
-                                            <th className="th-cell">Financials</th>
-                                            <th className="th-cell">Phase</th>
-                                            <th className="th-cell">Assigned To</th>
-                                            <th className="th-cell">Timeline</th>
-                                            <th className="th-cell text-center">Action</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Tracking ID</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Task Details</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Financials</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Phase</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Assigned To</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50">Timeline</th>
+                                            <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50 text-center">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50">
                                         <AnimatePresence mode="popLayout">
                                             {loading ? (
                                                 <tr>
-                                                    <td colSpan={7} className="py-20 text-center">
-                                                        <div className="inline-block w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                                                        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Loading Master Manifest...</p>
+                                                    <td colSpan={7} className="py-20 text-center text-slate-400 font-black text-[10px] uppercase tracking-widest">
+                                                        <div className="inline-block w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+                                                        <p>Loading Master Manifest...</p>
                                                     </td>
                                                 </tr>
                                             ) : paginatedData.map((task) => (
@@ -368,78 +382,62 @@ export default function DeepAnalysisPage() {
                                                     key={task.id}
                                                     className="group hover:bg-slate-50/50 transition-colors"
                                                 >
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <div className="flex flex-col">
-                                                            <span className="text-[10px] font-black text-indigo-600">TRK-{task.id.slice(-6).toUpperCase()}</span>
-                                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Ref: #{task.id.slice(0, 4)}</span>
+                                                            <span className="text-[10px] font-black text-indigo-600">TRK-{task.id?.slice(-6).toUpperCase() || "N/A"}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <div className="flex flex-col max-w-[200px]">
-                                                            <span className="text-sm font-black text-slate-800 truncate mb-1" title={task.title}>{task.title}</span>
+                                                            <span className="text-sm font-black text-slate-800 truncate mb-1">{task.title || "Untitled"}</span>
                                                             <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
                                                                 <MapPin size={10} className="text-indigo-400" />
-                                                                <span className="truncate">{task.shopName}</span>
+                                                                <span className="truncate">{task.shopName || "No Shop"}</span>
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-1 text-[11px] font-black text-slate-900">
-                                                                <IndianRupee size={10} /> {task.amount}
+                                                                <IndianRupee size={10} /> {task.amount || 0}
                                                             </div>
                                                             <div className="w-full h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                                                                <div
-                                                                    className="h-full bg-emerald-500"
-                                                                    style={{ width: `${Math.min(100, (task.received / (task.amount || 1)) * 100)}%` }}
-                                                                />
+                                                                <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, ((task.received || 0) / (task.amount || 1)) * 100)}%` }} />
                                                             </div>
-                                                            <span className="text-[8px] font-black text-emerald-600 mt-1 uppercase">Received: {task.received}</span>
+                                                            <span className="text-[8px] font-black text-emerald-600 mt-1 uppercase">Received: {task.received || 0}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusColor(task.currentStatus)}`}>
-                                                            {task.currentStatus}
+                                                            {task.currentStatus || "N/A"}
                                                         </span>
                                                     </td>
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-2">
-                                                                <div className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black">
-                                                                    {task.assigneeName.charAt(0)}
+                                                                <div className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black uppercase">
+                                                                    {(task.assigneeName || "U")[0]}
                                                                 </div>
-                                                                <span className="text-xs font-black text-slate-700">{task.assigneeName}</span>
+                                                                <span className="text-xs font-black text-slate-700">{task.assigneeName || "Unassigned"}</span>
                                                             </div>
-                                                            <span className="text-[8px] font-bold text-slate-400 uppercase ml-8">By {task.assignerName}</span>
+                                                            <span className="text-[8px] font-bold text-slate-400 uppercase ml-8">By {task.assignerName || "Unknown"}</span>
                                                         </div>
                                                     </td>
-                                                    <td className="td-cell">
+                                                    <td className="px-8 py-6">
                                                         <div className="flex flex-col">
                                                             <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600">
                                                                 <CalendarDays size={10} className="text-slate-400" />
-                                                                {format(new Date(task.createdAt), "dd MMM")}
+                                                                {safeFormat(task.createdAt, "dd MMM")}
                                                             </div>
                                                             <span className="text-[9px] font-black text-slate-400 uppercase mt-1">
-                                                                Aktive {formatDistanceToNow(new Date(task.lastActivityAt))} ago
+                                                                Aktive {safeDistance(task.lastActivityAt)} ago
                                                             </span>
                                                         </div>
                                                     </td>
-                                                    <td className="td-cell text-center">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <button
-                                                                onClick={() => setSelectedTaskForModal(task.task)}
-                                                                className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-500/10 transition-all active:scale-95"
-                                                                title="View Full Profile"
-                                                            >
-                                                                <Eye size={16} />
-                                                            </button>
-                                                            <button
-                                                                className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 transition-all opacity-0 group-hover:opacity-100"
-                                                                title="Activity Logs"
-                                                            >
-                                                                <MoreHorizontal size={16} />
-                                                            </button>
-                                                        </div>
+                                                    <td className="px-8 py-6 text-center">
+                                                        <button onClick={() => setSelectedTaskForModal(task.task)} className="p-2.5 bg-white border border-slate-100 rounded-xl text-slate-400 hover:text-indigo-600 hover:border-indigo-100 hover:shadow-lg transition-all active:scale-95">
+                                                            <Eye size={16} />
+                                                        </button>
                                                     </td>
                                                 </motion.tr>
                                             ))}
@@ -447,28 +445,10 @@ export default function DeepAnalysisPage() {
                                     </tbody>
                                 </table>
                             </div>
-
-                            {filteredData.length === 0 && !loading && (
-                                <div className="text-center py-32 bg-white">
-                                    <div className="w-20 h-20 bg-slate-50 rounded-[30px] inline-flex items-center justify-center mb-6 text-slate-200">
-                                        <Search size={40} />
-                                    </div>
-                                    <h3 className="text-xl font-black text-slate-900">No Records Found</h3>
-                                    <p className="text-slate-400 font-medium text-sm mt-2 max-w-xs mx-auto">None of the entries in our master manifest match your current filter parameters.</p>
-                                </div>
-                            )}
                         </div>
 
-                        {/* Pagination Footer */}
                         {totalPages > 1 && (
                             <div className="flex items-center justify-center gap-3">
-                                <button
-                                    onClick={() => setCurrentPage(1)}
-                                    className="p-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-20"
-                                    disabled={currentPage === 1}
-                                >
-                                    First
-                                </button>
                                 <div className="flex gap-2">
                                     {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                                         let pageNum = i + 1;
@@ -477,54 +457,26 @@ export default function DeepAnalysisPage() {
                                             if (pageNum > totalPages) pageNum = totalPages - (4 - i);
                                         }
                                         return (
-                                            <button
-                                                key={pageNum}
-                                                onClick={() => setCurrentPage(pageNum)}
-                                                className={`w-12 h-12 rounded-2xl font-black text-xs border transition-all 
-                                                    ${currentPage === pageNum ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-100'}`}
-                                            >
+                                            <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-12 h-12 rounded-2xl font-black text-xs border transition-all ${currentPage === pageNum ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-100'}`}>
                                                 {pageNum}
                                             </button>
                                         );
                                     })}
                                 </div>
-                                <button
-                                    onClick={() => setCurrentPage(totalPages)}
-                                    className="p-3 bg-white border border-slate-100 rounded-2xl text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-20"
-                                    disabled={currentPage === totalPages}
-                                >
-                                    Last
-                                </button>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* Task Detail Modal Integration */}
             {selectedTaskForModal && (
                 <EditTaskModal
                     task={selectedTaskForModal}
                     onClose={() => setSelectedTaskForModal(null)}
                     onSave={handleSaveTask}
-                    onDelete={() => {
-                        toast.error("Deletion not permitted from report hub.");
-                        setSelectedTaskForModal(null);
-                    }}
+                    onDelete={() => { toast.error("Deletion disabled."); setSelectedTaskForModal(null); }}
                 />
             )}
-
-            <style jsx>{`
-                .filter-select {
-                    @apply px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black text-slate-700 focus:ring-4 focus:ring-indigo-100 outline-none cursor-pointer hover:bg-white transition-all;
-                }
-                .th-cell {
-                    @apply px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-50;
-                }
-                .td-cell {
-                    @apply px-8 py-6;
-                }
-            `}</style>
         </div>
     );
 }
