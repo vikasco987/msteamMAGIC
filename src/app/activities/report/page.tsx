@@ -62,21 +62,28 @@ export default function DeepAnalysisPage() {
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
 
+    const [error, setError] = useState<string | null>(null);
+
     useEffect(() => {
         const fetchAudit = async () => {
             try {
                 const res = await fetch("/api/tasks/audit");
+                const data = await res.json();
+
                 if (res.ok) {
-                    const data = await res.json();
                     setAuditData(data.auditData || []);
                     setBottleneckData(data.bottleneckData || []);
                     setStaleTasks(data.staleTasks || []);
+                    if (data.auditData?.length === 0) {
+                        setError("No task data found. Try creating or updating some tasks first.");
+                    }
                 } else {
-                    const err = await res.json();
-                    toast.error(err.error || "Failed to fetch audit data");
+                    setError(data.error || "Failed to fetch audit data");
+                    toast.error(data.error || "Access Denied");
                 }
             } catch (err) {
                 console.error("Fetch audit error:", err);
+                setError("Network error: Could not reach the audit server.");
                 toast.error("Network error");
             } finally {
                 setLoading(false);
@@ -134,6 +141,16 @@ export default function DeepAnalysisPage() {
                         />
                     </div>
                 </header>
+
+                {error && (
+                    <div className="mb-8 p-6 bg-rose-50 border border-rose-200 rounded-[32px] flex items-center gap-4 text-rose-700">
+                        <AlertCircle className="shrink-0" />
+                        <div>
+                            <p className="font-bold">System Insight</p>
+                            <p className="text-sm opacity-80">{error}</p>
+                        </div>
+                    </div>
+                )}
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-32 gap-6 text-center">

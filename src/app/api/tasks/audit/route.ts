@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 export async function GET(req: NextRequest) {
     const { userId, sessionClaims } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = (sessionClaims?.role as string) || "user";
-    const isAdmin = role === "admin" || role === "master";
+
+    // Fallback: Check publicMetadata directly if role isn't in session claims
+    let finalRole = role;
+    if (role === "user") {
+        const client = await clerkClient();
+        const user = await client.users.getUser(userId);
+        finalRole = (user.publicMetadata?.role as string) || "user";
+    }
+
+    const isAdmin = finalRole === "admin" || finalRole === "master" || finalRole === "ADMIN" || finalRole === "MASTER";
 
     if (!isAdmin) {
-        return NextResponse.json({ error: "Access denied. Admins only." }, { status: 403 });
+        return NextResponse.json({ error: `Access denied. Role: ${finalRole}` }, { status: 403 });
     }
 
     try {
@@ -38,8 +47,9 @@ export async function GET(req: NextRequest) {
 
             activities.forEach(act => {
                 if (act.type === "STATUS_CHANGE") {
-                    const match = act.content.match(/to (\w+)/i);
-                    const newStatus = match ? match[1].toLowerCase() : currentStatusBucket;
+                    // Match "to status" - handles "to In Progress", "to Done", etc.
+                    const match = act.content.match(/to\s+([\w\s]+?)(?:\s+\(Duration|$)/i);
+                    const newStatus = match ? match[1].trim().toLowerCase() : currentStatusBucket;
 
                     if (newStatus !== currentStatusBucket) {
                         const duration = act.createdAt.getTime() - lastStatusChangeTime.getTime();
@@ -106,6 +116,8 @@ export async function GET(req: NextRequest) {
         })).sort((a, b) => b.avgDays - a.avgDays);
 
         const staleTasks = auditData.filter(t => t.isStale).sort((a, b) => b.staleHours - a.staleHours);
+
+        console.log(`Audit report generated: ${tasks.length} tasks processed, ${staleTasks.length} stale, ${bottleneckData.length} bottleneck entries.`);
 
         return NextResponse.json({
             auditData,
