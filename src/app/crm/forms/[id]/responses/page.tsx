@@ -192,6 +192,20 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleFileChange = async (resId: string, colId: string, file: File) => {
+        const loadingToast = toast.loading(`Uploading ${file.name}...`);
+        try {
+            // Mocking upload for now to show UI capability, in real SaaS we use S3/Cloudinary
+            const mockUrl = `https://files.msteam.hub/${file.name.replace(/ /g, '_')}`;
+            setTimeout(async () => {
+                await handleUpdateValue(resId, colId, mockUrl, true);
+                toast.success("File Linked Successfully", { id: loadingToast });
+            }, 1000);
+        } catch (err) {
+            toast.error("Upload failed", { id: loadingToast });
+        }
+    };
+
     const triggerConvert = async (id: string, name: string, phone: string, email: string) => {
         const loadingToast = toast.loading("Converting to CRM Lead...");
         try {
@@ -453,18 +467,49 @@ export default function CRMSpreadsheetPage() {
                                                                     <option value="">Select...</option>
                                                                     {ic.options?.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                 </select>
+                                                            ) : ic.type === "date" ? (
+                                                                <input type="date" autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
+                                                            ) : ic.type === "number" || ic.type === "currency" ? (
+                                                                <input type="number" autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
                                                             ) : (
                                                                 <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
                                                             )
                                                         ) : (
-                                                            ic.type === "dropdown" && val ? (
-                                                                <span className="px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-200 bg-white shadow-sm">{val}</span>
-                                                            ) : (
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-[13px] font-bold text-indigo-900">{val || "—"}</span>
-                                                                    {ic.isLocked && <ShieldCheck size={14} className="text-slate-300" />}
-                                                                </div>
-                                                            )
+                                                            <div className="flex items-center justify-between w-full">
+                                                                {ic.type === "dropdown" && val ? (
+                                                                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${val.toLowerCase().includes('done') || val.toLowerCase().includes('won') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-white text-slate-600 border-slate-200'}`}>{val}</span>
+                                                                ) : ic.type === "file" ? (
+                                                                    <div className="flex items-center gap-3">
+                                                                        {val ? (
+                                                                            <a href={val} target="_blank" className="flex items-center gap-2 p-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase border border-indigo-100 hover:bg-indigo-100 transition-all">
+                                                                                <Paperclip size={14} /> View
+                                                                            </a>
+                                                                        ) : (
+                                                                            <label className="flex items-center gap-2 p-2 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase border border-slate-100 hover:bg-white hover:text-indigo-600 hover:border-indigo-200 transition-all cursor-pointer">
+                                                                                <Plus size={14} /> Upload
+                                                                                <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleFileChange(res.id, ic.id, e.target.files[0])} />
+                                                                            </label>
+                                                                        )}
+                                                                    </div>
+                                                                ) : ic.type === "checkbox" ? (
+                                                                    <button onClick={() => handleUpdateValue(res.id, ic.id, val === "true" ? "false" : "true", true)} className={`w-12 h-6 rounded-full transition-all relative ${val === "true" ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                                                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${val === "true" ? 'left-7' : 'left-1'}`} />
+                                                                    </button>
+                                                                ) : ic.type === "rating" ? (
+                                                                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                                                        {[1, 2, 3, 4, 5].map(star => (
+                                                                            <Star key={star} size={14} onClick={() => handleUpdateValue(res.id, ic.id, String(star), true)} className={star <= Number(val) ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
+                                                                        ))}
+                                                                    </div>
+                                                                ) : ic.type === "currency" ? (
+                                                                    <span className="text-[13px] font-black text-indigo-900 flex items-center gap-1">
+                                                                        <IndianRupee size={12} className="text-slate-400" /> {val || "0.00"}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[13px] font-bold text-indigo-900 truncate max-w-[180px]">{val || "—"}</span>
+                                                                )}
+                                                                {ic.isLocked && <ShieldCheck size={14} className="text-slate-300" />}
+                                                            </div>
                                                         )}
                                                     </td>
                                                 );
@@ -668,21 +713,51 @@ export default function CRMSpreadsheetPage() {
                                             <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Constraint Systems</h4>
                                             <div className="space-y-6">
                                                 <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
-                                                    <span className="text-[11px] font-black uppercase tracking-widest">Mandatory Input</span>
-                                                    <button onClick={() => setNewColSettings({ ...newColSettings, isRequired: !newColSettings.isRequired })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isRequired ? 'bg-indigo-600' : 'bg-slate-200'}`}><div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isRequired ? 'left-7' : 'left-1'}`} /></button>
+                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><ShieldCheck size={16} className="text-indigo-500" /> Mandatory Input</span>
+                                                    <button onClick={() => setNewColSettings({ ...newColSettings, isRequired: !newColSettings.isRequired })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isRequired ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isRequired ? 'left-7' : 'left-1'}`} />
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
+                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><Trash2 size={16} className="text-rose-500" /> Immutable Mode</span>
+                                                    <button onClick={() => setNewColSettings({ ...newColSettings, isLocked: !newColSettings.isLocked })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isLocked ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isLocked ? 'left-7' : 'left-1'}`} />
+                                                    </button>
+                                                </div>
+                                                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
+                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><ExternalLink size={16} className="text-blue-500" /> Public Access</span>
+                                                    <button onClick={() => setNewColSettings({ ...newColSettings, showInPublic: !newColSettings.showInPublic })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.showInPublic ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.showInPublic ? 'left-7' : 'left-1'}`} />
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
+
                                         <div className="space-y-8">
-                                            {newColType === 'dropdown' && (
+                                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Type Configuration</h4>
+                                            {newColType === 'dropdown' ? (
                                                 <div className="space-y-4">
                                                     {newColOptions.map((opt, i) => (
                                                         <div key={i} className="flex gap-3">
-                                                            <input value={opt.label} onChange={(e) => { const n = [...newColOptions]; n[i].label = e.target.value; setNewColOptions(n); }} placeholder="Label..." className="flex-1 p-4 bg-slate-50 border-none rounded-2xl font-black text-xs shadow-inner" />
-                                                            <button onClick={() => setNewColOptions(newColOptions.filter((_, idx) => idx !== i))} className="p-4 text-rose-500 bg-rose-50 rounded-2xl hover:bg-rose-100"><X size={16} /></button>
+                                                            <input value={opt.label} onChange={(e) => { const n = [...newColOptions]; n[i].label = e.target.value; setNewColOptions(n); }} placeholder="Status/Label..." className="flex-1 p-4 bg-slate-50 border-none rounded-2xl font-black text-xs shadow-inner" />
+                                                            <button onClick={() => setNewColOptions(newColOptions.filter((_, idx) => idx !== i))} className="p-4 text-rose-500 bg-rose-50 rounded-2xl hover:bg-rose-100 transition-colors"><X size={16} /></button>
                                                         </div>
                                                     ))}
-                                                    <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600">+ Add Option</button>
+                                                    <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add Lifecycle Node</button>
+                                                </div>
+                                            ) : newColType === 'formula' ? (
+                                                <div className="p-8 bg-slate-900 rounded-[40px] border border-slate-800">
+                                                    <div className="flex items-center gap-3 text-indigo-400 mb-4">
+                                                        <FunctionSquare size={20} />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest">Logic Engine</span>
+                                                    </div>
+                                                    <textarea placeholder="e.g. {Price} * {Quantity}" className="w-full bg-slate-800 border-none rounded-2xl p-4 text-white font-mono text-xs focus:ring-1 ring-indigo-500 min-h-[100px]" />
+                                                    <p className="text-[8px] text-slate-500 mt-3 font-bold uppercase tracking-tight">Use curly braces for column names</p>
+                                                </div>
+                                            ) : (
+                                                <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center text-center opacity-40">
+                                                    <Settings size={30} className="mb-4 text-slate-400 animate-spin-slow" />
+                                                    <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Dynamic Logic Enabled <br />For {newColType} Type</p>
                                                 </div>
                                             )}
                                         </div>
