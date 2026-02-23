@@ -42,32 +42,38 @@ export async function GET(
     try {
         const { id: formId } = await params;
         const { userId } = await auth();
+        console.log(`[API] Fetching responses for ${formId}, user: ${userId}`);
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // Fetch user from our DB to get their role
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
         });
+        console.log(`[API] DB User:`, dbUser);
         const userRole = dbUser?.role || "GUEST";
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
-
-        const responses = await prisma.formResponse.findMany({
-            where: {
-                formId,
-                OR: isMaster ? undefined : [
-                    { visibleToRoles: { has: userRole } },
-                    { visibleToUsers: { has: userId } },
-                    { visibleToRoles: { set: [] }, visibleToUsers: { set: [] } } // Public if no restrictions
-                ]
-            },
-            include: { values: true },
-            orderBy: { submittedAt: "desc" }
-        });
-
         const form = await prisma.dynamicForm.findUnique({
             where: { id: formId },
             include: { fields: { orderBy: { order: "asc" } } }
         });
+
+        const isFormOwner = form?.createdBy === userId;
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isFormOwner;
+
+        console.log(`[API] isMaster: ${isMaster}, isFormOwner: ${isFormOwner}`);
+
+        const allResponses = await prisma.formResponse.findMany({
+            where: { formId },
+            include: { values: true },
+            orderBy: { submittedAt: "desc" }
+        });
+
+        // Filter responses in JS for non-masters
+        const responses = isMaster ? allResponses : allResponses.filter(res => {
+            const roles = res.visibleToRoles || [];
+            const users = res.visibleToUsers || [];
+            if (roles.length === 0 && users.length === 0) return true; // Public
+            return roles.includes(userRole) || users.includes(userId);
+        });
+
 
         // We also need the internal columns for the form
         let internalColumns = await prisma.internalColumn.findMany({
