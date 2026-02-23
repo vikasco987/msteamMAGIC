@@ -34,6 +34,8 @@ export async function GET(req: NextRequest) {
 
     const filterOutcome = searchParams.get("filterOutcome") || "all";
     const filterDate = searchParams.get("filterDate") || "all";
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
     try {
         const role = await getUserRole(userId);
@@ -43,7 +45,19 @@ export async function GET(req: NextRequest) {
         let whereClause: any = { amount: { gt: 0 } };
 
         // Date Filter
-        if (filterDate !== "all") {
+        if (startDate || endDate) {
+            whereClause.createdAt = {};
+            if (startDate) {
+                const start = new Date(startDate);
+                start.setHours(0, 0, 0, 0);
+                whereClause.createdAt.gte = start;
+            }
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                whereClause.createdAt.lte = end;
+            }
+        } else if (filterDate !== "all") {
             const now = new Date();
             let start: Date | undefined;
             if (filterDate === "today") start = new Date(now.setHours(0, 0, 0, 0));

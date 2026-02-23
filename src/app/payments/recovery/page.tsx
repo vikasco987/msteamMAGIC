@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import {
     Activity, Wallet, AlertTriangle, MessageCircle, Phone, Calendar,
     Search, History, Edit3, X, User, CheckCircle2, Clock, Filter,
@@ -59,6 +59,12 @@ export default function PaymentRecoveryPage() {
     const [filterDate, setFilterDate] = useState("all");
     const [filterOutcome, setFilterOutcome] = useState("all");
     const [filterSource, setFilterSource] = useState("all");
+
+    // Custom Date Filters
+    const [startDate, setStartDate] = useState<string>("");
+    const [endDate, setEndDate] = useState<string>("");
+    const [selectedMonth, setSelectedMonth] = useState<string>("all");
+
     const [sortKey, setSortKey] = useState<SortKey>("createdAt");
     const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -69,6 +75,16 @@ export default function PaymentRecoveryPage() {
         setLoading(true);
         try {
             const page = pageOverride || pagination.page;
+
+            let finalStart = startDate;
+            let finalEnd = endDate;
+
+            if (selectedMonth !== "all") {
+                const monthDate = new Date(selectedMonth);
+                finalStart = format(startOfMonth(monthDate), "yyyy-MM-dd");
+                finalEnd = format(endOfMonth(monthDate), "yyyy-MM-dd");
+            }
+
             const params = new URLSearchParams({
                 page: page.toString(),
                 limit: "50",
@@ -78,7 +94,9 @@ export default function PaymentRecoveryPage() {
                 filterPriority,
                 filterSource,
                 filterOutcome,
-                filterDate
+                filterDate,
+                ...(finalStart && { startDate: finalStart }),
+                ...(finalEnd && { endDate: finalEnd })
             });
 
             const res = await fetch(`/api/payments/recovery?${params.toString()}`);
@@ -95,12 +113,12 @@ export default function PaymentRecoveryPage() {
         } finally {
             setLoading(false);
         }
-    }, [pagination.page, searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate]);
+    }, [pagination.page, searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth]);
 
     useEffect(() => {
         const timer = setTimeout(() => fetchRecoveryData(1), 500);
         return () => clearTimeout(timer);
-    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, fetchRecoveryData]);
+    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData]);
 
     const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= pagination.totalPages) {
@@ -109,9 +127,28 @@ export default function PaymentRecoveryPage() {
         }
     };
 
-    const assigners = useMemo(() => [...new Set(tasks.map(t => t.assignerName))].sort(), [tasks]);
+    const isAdminOrMaster = role === "admin" || role === "master";
+
+    const assigners = useMemo(() => {
+        const unique = [...new Set(tasks.map(t => t.assignerName))].filter(Boolean).sort();
+        return unique;
+    }, [tasks]);
+
     const outcomes = useMemo(() => ["Negotiated", "Promised", "Refused", "No Response", "Disconnected"].sort(), []);
     const sources = useMemo(() => [...new Set(tasks.map(t => t.customFields?.source).filter(Boolean))].sort(), [tasks]);
+
+    // Generate last 12 months for filter
+    const monthOptions = useMemo(() => {
+        const options = [];
+        for (let i = 0; i < 12; i++) {
+            const d = subMonths(new Date(), i);
+            options.push({
+                label: format(d, "MMMM yyyy"),
+                value: format(d, "yyyy-MM")
+            });
+        }
+        return options;
+    }, []);
 
     const getRecoveryStatus = (task: RecoveryTask) => {
         if (!task.latestRemark) return { id: "no_followup", label: "No Follow-up", color: "bg-red-50 text-red-600 border-red-100", icon: <AlertTriangle size={12} /> };
@@ -147,11 +184,11 @@ export default function PaymentRecoveryPage() {
         setSearchTerm(""); setFilterAssigner("all");
         setFilterStatus("all"); setFilterTaskStatus("all");
         setFilterPriority("all"); setFilterDate("all"); setFilterOutcome("all");
-        setFilterSource("all");
+        setFilterSource("all"); setStartDate(""); setEndDate(""); setSelectedMonth("all");
     };
     const hasFilters = searchTerm || filterAssigner !== "all" || filterStatus !== "all" ||
         filterTaskStatus !== "all" || filterPriority !== "all" || filterDate !== "all" ||
-        filterOutcome !== "all" || filterSource !== "all";
+        filterOutcome !== "all" || filterSource !== "all" || startDate || endDate || selectedMonth !== "all";
 
     const exportXLSX = () => {
         const rows = filteredTasks.map((t, i) => ({
@@ -162,9 +199,9 @@ export default function PaymentRecoveryPage() {
             "Assigner": t.assignerName,
             "Total": t.total,
             "Pending": t.pending,
-            "Last Update": t.latestRemark?.remark || "None",
+            "Last Remark": t.latestRemark?.remark || "None",
             "Outcome": t.latestRemark?.contactOutcome || "—",
-            "Next Followup": t.latestRemark?.nextFollowUpDate || "—",
+            "Follow-up Date": t.latestRemark?.nextFollowUpDate ? format(new Date(t.latestRemark.nextFollowUpDate), "dd MMM yyyy") : "None",
         }));
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
@@ -173,7 +210,7 @@ export default function PaymentRecoveryPage() {
         saveAs(new Blob([buf], { type: "application/octet-stream" }), `Recovery_Export.xlsx`);
     };
 
-    const todayFocusTasks = filteredTasks.filter(t =>
+    const todayFocusTasks = tasks.filter(t =>
         t.latestRemark?.nextFollowUpDate &&
         new Date(t.latestRemark.nextFollowUpDate).toDateString() === new Date().toDateString()
     ).slice(0, 4);
@@ -283,15 +320,54 @@ export default function PaymentRecoveryPage() {
             </AnimatePresence>
 
             {/* --- ADVANCED FILTER BAR --- */}
-            <div className="bg-white p-8 rounded-[40px] shadow-xl shadow-slate-200/30 border border-slate-50 flex items-center justify-between gap-10">
-                <div className="grid grid-cols-2 md:grid-cols-5 flex-1 gap-6">
+            <div className="bg-white p-8 rounded-[40px] shadow-xl shadow-slate-200/30 border border-slate-50 space-y-8">
+                <div className="grid grid-cols-2 md:grid-cols-6 items-end gap-6">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Created By</label>
-                        <select value={filterAssigner} onChange={e => setFilterAssigner(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all">
-                            <option value="all">All Assigners</option>
-                            {assigners.map(a => <option key={a} value={a}>{a}</option>)}
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Select Month</label>
+                        <select
+                            value={selectedMonth}
+                            onChange={e => { setSelectedMonth(e.target.value); setStartDate(""); setEndDate(""); }}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all"
+                        >
+                            <option value="all">All Time</option>
+                            {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </select>
                     </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={e => { setStartDate(e.target.value); setSelectedMonth("all"); }}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={e => { setEndDate(e.target.value); setSelectedMonth("all"); }}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400"
+                        />
+                    </div>
+
+                    {/* Role-based Visibility: Created By / Assignee Filter */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            {isAdminOrMaster ? "Created By" : "My Assignments"}
+                        </label>
+                        <select
+                            value={filterAssigner}
+                            disabled={!isAdminOrMaster}
+                            onChange={e => setFilterAssigner(e.target.value)}
+                            className={`w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all ${!isAdminOrMaster ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <option value="all">{isAdminOrMaster ? "All Assigners" : "Own Tasks Only"}</option>
+                            {isAdminOrMaster && assigners.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                    </div>
+
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Predictive Health</label>
                         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all">
@@ -301,30 +377,18 @@ export default function PaymentRecoveryPage() {
                             <option value="danger">Risk/Ignored</option>
                         </select>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Source Path</label>
-                        <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all">
-                            <option value="all">All Channels</option>
-                            {sources.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Latest Outcome</label>
-                        <select value={filterOutcome} onChange={e => setFilterOutcome(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all">
-                            <option value="all">Any Outcome</option>
-                            {outcomes.map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                    </div>
-                    <div className="space-y-2 text-right">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-4">MATCHING RECORDS</p>
-                        <p className="text-2xl font-black text-slate-900 leading-none">{pagination.totalItems}</p>
+                    <div className="flex items-center gap-4">
+                        {hasFilters && (
+                            <button onClick={clearFilters} className="flex-1 px-6 py-4 bg-rose-50 text-rose-600 font-black text-[10px] uppercase tracking-widest rounded-2xl border border-rose-100 hover:bg-rose-100 transition-all">
+                                Reset
+                            </button>
+                        )}
+                        <div className="text-right flex-1">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1">MATCHING</p>
+                            <p className="text-2xl font-black text-slate-900 leading-none">{pagination.totalItems}</p>
+                        </div>
                     </div>
                 </div>
-                {hasFilters && (
-                    <button onClick={clearFilters} className="px-6 py-4 bg-rose-50 text-rose-600 font-black text-[10px] uppercase tracking-widest rounded-2xl border border-rose-100 hover:bg-rose-100 transition-all">
-                        Reset Dashboard
-                    </button>
-                )}
             </div>
 
             {/* --- RECOVERY MATRIX TABLE --- */}
@@ -340,12 +404,13 @@ export default function PaymentRecoveryPage() {
                                 <th className="px-6 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer group" onClick={() => toggleSort("pending")}>
                                     Pending <SortIcon k="pending" />
                                 </th>
-                                <th className="px-6 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Status</th>
+                                <th className="px-6 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Latest Remark</th>
+                                <th className="px-6 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Next Followup</th>
                                 <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50/70">
-                            {filteredTasks.map((task, idx) => {
+                            {filteredTasks.map((task) => {
                                 const st = getRecoveryStatus(task);
                                 return (
                                     <motion.tr key={task.id} className="group hover:bg-slate-50/50 transition-all">
@@ -373,32 +438,56 @@ export default function PaymentRecoveryPage() {
                                         </td>
 
                                         <td className="px-6 py-8">
-                                            <p className="text-xl font-black text-slate-900 tracking-tight">₹{task.total.toLocaleString()}</p>
-                                            <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">{format(new Date(task.createdAt), "dd MMM yyyy")}</p>
+                                            <div className="flex flex-col gap-1">
+                                                <p className="text-xl font-black text-slate-900 tracking-tight">₹{task.total.toLocaleString()}</p>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{format(new Date(task.createdAt), "dd MMM yyyy")}</span>
+                                            </div>
                                         </td>
 
                                         <td className="px-6 py-8">
-                                            <p className="text-3xl font-black text-rose-600 tracking-tighter">₹{task.pending.toLocaleString()}</p>
-                                            <div className="mt-3 flex items-center gap-3">
-                                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden w-24">
-                                                    <div className="h-full bg-emerald-500 rounded-full shadow-lg shadow-emerald-200" style={{ width: `${Math.round((task.received / task.total) * 100)}%` }} />
+                                            <div className="flex flex-col gap-1">
+                                                <p className="text-3xl font-black text-rose-600 tracking-tighter">₹{task.pending.toLocaleString()}</p>
+                                                <div className={`mt-2 flex items-center gap-2.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest w-fit ${st.color}`}>
+                                                    {st.icon} {st.label}
                                                 </div>
-                                                <span className="text-[9px] font-black text-slate-400 uppercase">{Math.round((task.received / task.total) * 100)}% RECEIVED</span>
                                             </div>
                                         </td>
 
-                                        <td className="px-6 py-8">
-                                            <div className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl border text-[10px] font-black uppercase tracking-widest w-fit ${st.color}`}>
-                                                {st.icon} {st.label}
-                                            </div>
-                                            {task.latestRemark && (
-                                                <div onClick={() => setShowHistoryTask(task)} className="mt-4 p-4 bg-slate-50/50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-white hover:shadow-xl transition-all max-w-[280px]">
-                                                    <p className="text-[11px] font-bold text-slate-600 italic line-clamp-2">"{task.latestRemark.remark}"</p>
-                                                    <div className="flex items-center justify-between mt-3">
-                                                        <span className="text-[8px] font-black bg-indigo-50 text-indigo-500 px-2 py-1 rounded-md">{task.latestRemark.contactOutcome}</span>
-                                                        <span className="text-[8px] font-bold text-slate-400 uppercase">{format(new Date(task.latestRemark.createdAt), "dd MMM")}</span>
+                                        <td className="px-6 py-8 max-w-[280px]">
+                                            {task.latestRemark ? (
+                                                <div onClick={() => setShowHistoryTask(task)} className="space-y-2 cursor-pointer group/remark p-4 rounded-2xl border border-transparent hover:bg-white hover:border-slate-100 hover:shadow-xl transition-all">
+                                                    <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase inline-block">
+                                                        {task.latestRemark.contactOutcome}
+                                                    </div>
+                                                    <p className="text-sm font-bold text-slate-600 italic line-clamp-2 leading-relaxed">
+                                                        "{task.latestRemark.remark}"
+                                                    </p>
+                                                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
+                                                        <User size={10} /> {task.latestRemark.authorName} • {format(new Date(task.latestRemark.createdAt), "dd MMM")}
                                                     </div>
                                                 </div>
+                                            ) : (
+                                                <span className="text-xs font-black text-rose-400 uppercase italic tracking-widest">No Interactions Logged</span>
+                                            )}
+                                        </td>
+
+                                        <td className="px-6 py-8">
+                                            {task.latestRemark?.nextFollowUpDate ? (
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-3 rounded-2xl ${differenceInDays(new Date(task.latestRemark.nextFollowUpDate), new Date()) <= 0 ? 'bg-amber-100 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                                        <Calendar size={18} />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-black text-slate-900">
+                                                            {format(new Date(task.latestRemark.nextFollowUpDate), "dd MMM, yyyy")}
+                                                        </span>
+                                                        <span className="text-[10px] font-black text-slate-400 uppercase mt-1">
+                                                            {differenceInDays(new Date(), new Date(task.latestRemark.nextFollowUpDate)) > 0 ? 'Overdue' : 'Scheduled'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[10px] font-black text-slate-300 uppercase underline decoration-slate-100 underline-offset-4">Pending Commitment</span>
                                             )}
                                         </td>
 
@@ -476,6 +565,12 @@ export default function PaymentRecoveryPage() {
                                                     <span className="px-3 py-1 bg-white border border-slate-100 rounded-xl text-[9px] font-black uppercase text-indigo-500">{rm.contactOutcome}</span>
                                                 </div>
                                                 <p className="text-sm font-black text-slate-800 leading-relaxed italic">"{rm.remark}"</p>
+                                                {rm.nextFollowUpDate && (
+                                                    <div className="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
+                                                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Next Commitment:</span>
+                                                        <span className="text-[11px] font-black text-slate-900">{format(new Date(rm.nextFollowUpDate), "dd MMM yyyy")}</span>
+                                                    </div>
+                                                )}
                                                 <div className="mt-6 pt-6 border-t border-slate-100 flex items-center gap-3">
                                                     <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-bold">{rm.authorName?.charAt(0)}</div>
                                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Logged by {rm.authorName}</span>
@@ -483,25 +578,10 @@ export default function PaymentRecoveryPage() {
                                             </div>
                                         </div>
                                     ))}
-
-                                    {showHistoryTask.activities.map(act => (
-                                        <div key={act.id} className="relative pl-16">
-                                            <div className="absolute left-0 top-0 w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center border-4 border-white shadow-xl">
-                                                <Zap size={18} fill="white" />
-                                            </div>
-                                            <div className="p-6 rounded-[28px] bg-emerald-50/30 border border-emerald-100 border-dashed">
-                                                <div className="flex justify-between mb-2">
-                                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">System Event</span>
-                                                    <span className="text-[10px] font-bold text-slate-400">{format(new Date(act.createdAt), "dd MMM")}</span>
-                                                </div>
-                                                <p className="text-xs font-bold text-slate-700">{act.content}</p>
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
                             </div>
 
-                            <div className="p-12 border-t border-slate-100">
+                            <div className="p-12 border-t border-slate-100 bg-slate-50/50">
                                 <button
                                     onClick={() => { setShowEditModal(showHistoryTask.id); setShowHistoryTask(null); }}
                                     className="w-full py-5 bg-slate-900 text-white font-black text-sm rounded-[24px] shadow-2xl hover:bg-black transition-all flex items-center justify-center gap-3 uppercase tracking-widest"
@@ -514,7 +594,7 @@ export default function PaymentRecoveryPage() {
                 )}
             </AnimatePresence>
 
-            {/* UPDATE MODAL INTEGRATION */}
+            {/* MODAL */}
             {showEditModal && (
                 <PaymentRemarkModal
                     taskId={showEditModal}
