@@ -550,11 +550,11 @@
 //         include: {
 //           subtasks: true,
 //           notes: true,
-      
+
 //         },
 //       });
 
-   
+
 //       tasks = task ? [task] : [];
 //     } else {
 //       const fetchedTasks = await prisma.task.findMany({
@@ -570,11 +570,11 @@
 //         include: {
 //           subtasks: true,
 //           notes: true,
-        
+
 //         },
 //       });
 
-  
+
 //       tasks = fetchedTasks; // Use fetchedTasks directly if paymentHistory isn't being sorted here
 //     }
 
@@ -696,7 +696,7 @@
 
 
 
-          
+
 
 
 
@@ -708,6 +708,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
 import { prisma } from "@/lib/prisma";
+import { logActivity } from "@/lib/activity";
 
 // Define an interface for the metadata that contains the role
 interface UserPublicMetadata {
@@ -900,6 +901,17 @@ export async function POST(req: NextRequest) {
 
 
     console.log("✅ Task created:", task.id);
+
+    // Log creation activity
+    const creatorName = clerkUser.firstName ? `${clerkUser.firstName} ${clerkUser.lastName || ''}`.trim() : clerkUser.username || "Unknown";
+    await logActivity({
+      taskId: task.id,
+      type: "TASK_CREATED",
+      content: `Task created and assigned to ${body.assigneeId}`,
+      author: creatorName,
+      authorId: userId
+    });
+
     return NextResponse.json({ success: true, task }, { status: 201 });
 
   } catch (err: unknown) {
@@ -951,11 +963,11 @@ export async function GET(req: NextRequest) {
         include: {
           subtasks: true,
           notes: true,
-      
+
         },
       });
 
-   
+
       tasks = task ? [task] : [];
     } else {
       const fetchedTasks = await prisma.task.findMany({
@@ -971,11 +983,11 @@ export async function GET(req: NextRequest) {
         include: {
           subtasks: true,
           notes: true,
-        
+
         },
       });
 
-  
+
       tasks = fetchedTasks; // Use fetchedTasks directly if paymentHistory isn't being sorted here
     }
 

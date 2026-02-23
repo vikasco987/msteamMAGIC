@@ -54,6 +54,7 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
             case "MENTION": return <MessageSquare size={16} className="text-blue-400" />;
             case "TASK_COMPLETED": return <CheckSquare size={16} className="text-green-400" />;
             case "PAYMENT_ADDED": return <CreditCard size={16} className="text-yellow-400" />;
+            case "COLLECTION_FOLLOWUP": return <Bell size={16} className="text-red-400 animate-pulse" />;
             default: return <Bell size={16} />;
         }
     };

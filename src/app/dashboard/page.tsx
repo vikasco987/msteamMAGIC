@@ -1,589 +1,16 @@
-// 'use client';
-
-// import React, { useEffect, useState } from 'react';
-// import { useUser } from '@clerk/nextjs';
-// import {
-//   BarChart,
-//   Bar,
-//   XAxis,
-//   YAxis,
-//   Tooltip,
-//   ResponsiveContainer,
-//   Legend,
-// } from 'recharts';
-// import FloatingTaskCard from '../components/FloatingTaskCard'; // 🆕 Make sure this path is correct
-
-// type UserStat = {
-//   userName: string;
-//   email: string;
-//   taskCount: number;
-//   completedCount: number;
-// };
-
-// export default function DashboardPage() {
-//   const { user } = useUser();
-
-//   const [userStats, setUserStats] = useState<UserStat[]>([]);
-//   const [selectedMonth, setSelectedMonth] = useState<string>(
-//     new Date().toISOString().slice(0, 7)
-//   );
-//   const [showFloating, setShowFloating] = useState(false); // 🆕 Floating card visibility
-
-//   useEffect(() => {
-//     const fetchStats = async () => {
-//       try {
-//         const res = await fetch(`/api/stats/user-performance?month=${selectedMonth}`);
-//         const data = await res.json();
-//         setUserStats(data);
-//       } catch (err) {
-//         console.error('Failed to fetch stats:', err);
-//       }
-//     };
-
-//     fetchStats();
-//   }, [selectedMonth]);
-
-//   const totalTasks = userStats.reduce((sum, u) => sum + u.taskCount, 0);
-//   const completedTasks = userStats.reduce((sum, u) => sum + u.completedCount, 0);
-//   const completionRate =
-//     totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
-//   const mostActive =
-//     userStats.length > 0
-//       ? userStats.reduce((prev, curr) =>
-//           curr.taskCount > prev.taskCount ? curr : prev
-//         )
-//       : { userName: 'N/A', taskCount: 0 };
-
-//   const email =
-//     typeof user?.emailAddresses?.[0]?.emailAddress === 'string'
-//       ? user.emailAddresses[0].emailAddress
-//       : 'Unknown';
-
-//   const sampleTask = {
-//     id: 'task-789',
-//     title: '📦 Swiggy Onboarding',
-//     status: 'In Progress',
-//     description: 'Upload menu and verify documents',
-//   };
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-2xl font-semibold mb-4">Dashboard Overview</h1>
-
-//       <p className="text-sm text-gray-500 mb-4">
-//         Logged in as: {user?.username || email} (
-//         {String(user?.publicMetadata?.role || 'user')})
-//       </p>
-
-//       <div className="mb-4">
-//         <label className="text-sm text-gray-600">Select Month: </label>
-//         <input
-//           type="month"
-//           value={selectedMonth}
-//           onChange={(e) => setSelectedMonth(e.target.value)}
-//           className="ml-2 px-2 py-1 border rounded"
-//         />
-//       </div>
-
-//       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-//         <div className="bg-white rounded-xl shadow p-4">
-//           <h3 className="text-lg font-semibold">📌 Total Tasks</h3>
-//           <p className="text-2xl">{totalTasks}</p>
-//         </div>
-//         <div className="bg-white rounded-xl shadow p-4">
-//           <h3 className="text-lg font-semibold">✅ Completion Rate</h3>
-//           <p className="text-2xl">{completionRate}%</p>
-//         </div>
-//         <div className="bg-white rounded-xl shadow p-4">
-//           <h3 className="text-lg font-semibold">🏆 Most Active</h3>
-//           <p className="text-lg">
-//             {mostActive.userName} ({mostActive.taskCount} tasks)
-//           </p>
-//         </div>
-//       </div>
-
-//       <div className="mb-4">
-//         <button
-//           onClick={() => setShowFloating(true)}
-//           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-//         >
-//           Open Floating Task
-//         </button>
-//       </div>
-
-//       {showFloating && (
-//         <FloatingTaskCard
-//           task={sampleTask}
-//           onClose={() => setShowFloating(false)}
-//         />
-//       )}
-
-//       <div className="bg-white rounded-xl shadow p-4 h-96">
-//         <h2 className="text-xl font-semibold mb-4">📊 User Task Comparison</h2>
-//         <ResponsiveContainer width="100%" height="100%">
-//           <BarChart data={userStats}>
-//             <XAxis dataKey="userName" />
-//             <YAxis />
-//             <Tooltip />
-//             <Legend />
-//             <Bar dataKey="taskCount" fill="#8884d8" name="Total Tasks" />
-//             <Bar dataKey="completedCount" fill="#82ca9d" name="Completed Tasks" />
-//           </BarChart>
-//         </ResponsiveContainer>
-//       </div>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-// import { useEffect, useState } from "react";
-
-// interface AssigneeSummary {
-//   assigneeName: string;
-//   todo: number;
-//   inprogress: number;
-//   done: number;
-// }
-
-// export default function TaskDashboard() {
-//   const [stats, setStats] = useState<AssigneeSummary[]>([]);
-//   const [loading, setLoading] = useState(true);
-
-//   useEffect(() => {
-//     async function fetchStats() {
-//       try {
-//         const res = await fetch("/api/dashboard/assignee-summary");
-//         const data = await res.json();
-
-//         if (Array.isArray(data)) {
-//           setStats(data);
-//         } else {
-//           console.error("Unexpected API response:", data);
-//           setStats([]); // fallback so map() won't break
-//         }
-//       } catch (error) {
-//         console.error("Failed to fetch stats", error);
-//         setStats([]);
-//       } finally {
-//         setLoading(false);
-//       }
-//     }
-//     fetchStats();
-//   }, []);
-
-//   if (loading) return <p>Loading...</p>;
-
-//   return (
-//     <div className="p-4">
-//       <h2 className="text-xl font-bold mb-4">📊 Assignee Summary</h2>
-//       {stats.length === 0 ? (
-//         <p>No data available</p>
-//       ) : (
-//         <div className="grid gap-4 md:grid-cols-2">
-//           {stats.map((user, i) => (
-//             <div
-//               key={i}
-//               className="p-4 border rounded-lg shadow bg-white"
-//             >
-//               <h3 className="font-semibold text-lg">{user.assigneeName}</h3>
-//               <ul className="mt-2 space-y-1">
-//                 <li>📝 Todo: {user.todo}</li>
-//                 <li>🚧 In Progress: {user.inprogress}</li>
-//                 <li>✅ Done: {user.done}</li>
-//               </ul>
-//             </div>
-//           ))}
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-// "use client";
-
-// import { useEffect, useState } from "react";
-
-// interface AssigneeStats {
-//   assigneeName: string;
-//   todo: number;
-//   inProgress: number;
-//   done: number;
-// }
-
-// export default function TaskDashboard() {
-//   const [stats, setStats] = useState<AssigneeStats[]>([]);
-//   const [loading, setLoading] = useState(true);
-
-//   useEffect(() => {
-//     fetch("/api/dashboard/tasks")
-//       .then((res) => res.json())
-//       .then((data) => {
-//         if (Array.isArray(data)) {
-//           setStats(data);
-//         }
-//         setLoading(false);
-//       })
-//       .catch(() => setLoading(false));
-//   }, []);
-
-//   if (loading) return <p className="text-center">Loading...</p>;
-
-//   if (!stats.length) return <p className="text-center">No tasks found</p>;
-
-//   return (
-//     <div className="p-6">
-//       <h2 className="text-xl font-bold mb-4">📊 Assignee Task Summary</h2>
-
-//       <table className="w-full border border-gray-300 rounded-lg shadow-md">
-//         <thead className="bg-gray-100">
-//           <tr>
-//             <th className="p-3 border">Assignee</th>
-//             <th className="p-3 border">📝 Todo</th>
-//             <th className="p-3 border">🚧 In Progress</th>
-//             <th className="p-3 border">✅ Done</th>
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {stats.map((stat, idx) => (
-//             <tr key={idx} className="text-center border-t">
-//               <td className="p-3 border font-semibold">{stat.assigneeName}</td>
-//               <td className="p-3 border">{stat.todo}</td>
-//               <td className="p-3 border">{stat.inProgress}</td>
-//               <td className="p-3 border">{stat.done}</td>
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import { useEffect, useState } from "react";
-
-// interface Stats {
-//   assignee: string;
-//   todo: number;
-//   inprogress: number;
-//   done: number;
-// }
-
-// export default function TaskDashboard() {
-//   const [stats, setStats] = useState<Stats[]>([]);
-//   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState<string | null>(null);
-
-//   useEffect(() => {
-//     async function fetchStats() {
-//       try {
-//         setLoading(true);
-//         setError(null);
-
-//         const res = await fetch("/api/tasks/stats");
-
-//         if (!res.ok) {
-//           throw new Error(`Server error: ${res.status} ${res.statusText}`);
-//         }
-
-//         const data = await res.json();
-
-//         // Validate response structure
-//         if (!data || !Array.isArray(data.stats)) {
-//           throw new Error("Invalid API response format. Expected { stats: [] }");
-//         }
-
-//         setStats(data.stats);
-//       } catch (err: any) {
-//         console.error("Error fetching task stats:", err);
-//         setError(err.message || "Unknown error occurred while fetching stats.");
-//       } finally {
-//         setLoading(false);
-//       }
-//     }
-
-//     fetchStats();
-//   }, []);
-
-//   if (loading) return <p className="text-blue-500">⏳ Loading task stats...</p>;
-
-//   if (error) {
-//     return (
-//       <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-//         <h2 className="font-bold">❌ Error</h2>
-//         <p>{error}</p>
-//         <p className="mt-2 text-sm text-gray-600">
-//           Check API `/api/tasks/stats` response in browser dev tools → Network tab.
-//         </p>
-//       </div>
-//     );
-//   }
-
-//   if (stats.length === 0) {
-//     return (
-//       <p className="text-gray-500">
-//         ⚠️ No tasks found in the database. Try creating some tasks first.
-//       </p>
-//     );
-//   }
-
-//   return (
-//     <div className="p-6 bg-white shadow rounded-lg">
-//       <h2 className="text-xl font-bold mb-4">📊 Assignee Task Summary</h2>
-//       <table className="w-full border border-gray-300">
-//         <thead className="bg-gray-100">
-//           <tr>
-//             <th className="p-2 border">Assignee</th>
-//             <th className="p-2 border">📝 Todo</th>
-//             <th className="p-2 border">🚧 In Progress</th>
-//             <th className="p-2 border">✅ Done</th>
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {stats.map((row, idx) => (
-//             <tr key={idx} className="text-center">
-//               <td className="p-2 border font-medium">{row.assignee}</td>
-//               <td className="p-2 border">{row.todo}</td>
-//               <td className="p-2 border">{row.inprogress}</td>
-//               <td className="p-2 border">{row.done}</td>
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }
-
-
-
-
-
-// "use client";
-
-// import { useEffect, useState } from "react";
-
-// interface Stats {
-//   [assignee: string]: { todo: number; inProgress: number; done: number };
-// }
-
-// export default function TaskDashboard() {
-//   const [stats, setStats] = useState<Stats | null>(null);
-//   const [error, setError] = useState<string | null>(null);
-//   const [loading, setLoading] = useState(true);
-
-//   useEffect(() => {
-//     async function fetchStats() {
-//       try {
-//         const res = await fetch("/api/tasks/stats");
-
-//         if (!res.ok) {
-//           const errorData = await res.json().catch(() => ({}));
-//           throw new Error(
-//             `API Error ${res.status}: ${
-//               errorData.error || res.statusText || "Unknown"
-//             }`
-//           );
-//         }
-
-//         const data = await res.json();
-//         if (!data.stats) {
-//           throw new Error("Invalid API response: stats missing");
-//         }
-
-//         setStats(data.stats);
-//       } catch (err: any) {
-//         setError(err.message || "Failed to fetch stats");
-//       } finally {
-//         setLoading(false);
-//       }
-//     }
-
-//     fetchStats();
-//   }, []);
-
-//   if (loading) return <p>⏳ Loading stats...</p>;
-//   if (error) return <p className="text-red-600">❌ Error: {error}</p>;
-//   if (!stats || Object.keys(stats).length === 0)
-//     return <p>⚠️ No stats available</p>;
-
-//   return (
-//     <div className="p-6">
-//       <h2 className="text-xl font-bold mb-4">📊 Assignee Summary</h2>
-//       <table className="min-w-full border border-gray-300">
-//         <thead>
-//           <tr className="bg-gray-200">
-//             <th className="border px-4 py-2">Assignee</th>
-//             <th className="border px-4 py-2">📝 Todo</th>
-//             <th className="border px-4 py-2">🚧 In Progress</th>
-//             <th className="border px-4 py-2">✅ Done</th>
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {Object.entries(stats).map(([assignee, s]) => (
-//             <tr key={assignee}>
-//               <td className="border px-4 py-2">{assignee}</td>
-//               <td className="border px-4 py-2">{s.todo}</td>
-//               <td className="border px-4 py-2">{s.inProgress}</td>
-//               <td className="border px-4 py-2">{s.done}</td>
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import { useEffect, useState } from "react";
-
-// interface AssigneeStats {
-//   assignee: string;
-//   todo: number;
-//   inprogress: number;
-//   done: number;
-// }
-
-// export default function AssigneeSummary() {
-//   const [data, setData] = useState<AssigneeStats[]>([]);
-//   const [error, setError] = useState<string | null>(null);
-
-//   useEffect(() => {
-//     async function fetchStats() {
-//       try {
-//         const res = await fetch("/api/tasks/stats");
-//         if (!res.ok) {
-//           const err = await res.json();
-//           throw new Error(`API Error ${res.status}: ${err.error || "Unknown"}`);
-//         }
-//         const json = await res.json();
-//         if (json.success && Array.isArray(json.data)) {
-//           setData(json.data);
-//         } else {
-//           throw new Error("Invalid API response structure");
-//         }
-//       } catch (err: any) {
-//         console.error("Error fetching stats:", err);
-//         setError(err.message || "Something went wrong");
-//       }
-//     }
-//     fetchStats();
-//   }, []);
-
-//   if (error) {
-//     return (
-//       <div className="p-4 bg-red-100 text-red-800 rounded-lg">
-//         ❌ Error: {error}
-//       </div>
-//     );
-//   }
-
-//   if (data.length === 0) {
-//     return (
-//       <div className="p-4 bg-yellow-100 text-yellow-800 rounded-lg">
-//         ⚠️ No tasks found
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="p-6 bg-white shadow rounded-lg">
-//       <h2 className="text-xl font-bold mb-4">Assignee Summary</h2>
-//       <table className="w-full border border-gray-300">
-//         <thead>
-//           <tr className="bg-gray-100 text-left">
-//             <th className="border p-2">Assignee</th>
-//             <th className="border p-2">📝 Todo</th>
-//             <th className="border p-2">🚧 In Progress</th>
-//             <th className="border p-2">✅ Done</th>
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {data.map((row, i) => (
-//             <tr key={i} className="hover:bg-gray-50">
-//               <td className="border p-2">{row.assignee}</td>
-//               <td className="border p-2">{row.todo}</td>
-//               <td className="border p-2">{row.inprogress}</td>
-//               <td className="border p-2">{row.done}</td>
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie, Sector
+} from "recharts";
+import {
+  Activity, Users, ClipboardList, CheckCircle2, Timer, TrendingUp,
+  ArrowUpRight, ArrowDownRight, Zap, Target, Award
+} from "lucide-react";
+import { motion } from "framer-motion";
 
 type Row = {
   assignee: string;
@@ -602,6 +29,8 @@ type StatsResponse = {
   };
   data?: Row[];
 };
+
+const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
 
 export default function TaskStatsDashboard() {
   const [totals, setTotals] = useState({ todo: 0, inprogress: 0, done: 0 });
@@ -626,58 +55,287 @@ export default function TaskStatsDashboard() {
     fetchStats();
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  const totalTasks = totals.todo + totals.inprogress + totals.done;
+  const completionRate = totalTasks > 0 ? Math.round((totals.done / totalTasks) * 100) : 0;
+
+  const chartData = [
+    { name: "Todo", value: totals.todo, color: "#6366f1" },
+    { name: "In Progress", value: totals.inprogress, color: "#f59e0b" },
+    { name: "Completed", value: totals.done, color: "#10b981" },
+  ];
+
+  if (loading) return (
+    <div className="flex h-[80vh] w-full items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin" />
+        <p className="text-slate-500 font-bold animate-pulse uppercase tracking-widest text-xs">Syncing Engine...</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-4 space-y-4">
-      {/* Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-100 p-4 rounded shadow text-center">
-          <h2 className="text-lg font-semibold">📝 Todo</h2>
-          <p className="text-2xl font-bold">{totals?.todo ?? 0}</p>
+    <div className="max-w-[1600px] mx-auto p-4 md:p-10 space-y-10">
+
+      {/* --- HERO SECTION --- */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-1 w-8 bg-indigo-600 rounded-full" />
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">Enterprise Overview</span>
+          </div>
+          <h1 className="text-5xl font-black text-slate-900 tracking-tight">System <span className="text-indigo-600">Performance</span></h1>
+          <p className="text-slate-500 mt-2 font-semibold">Real-time task distribution and assignee performance matrix.</p>
         </div>
-        <div className="bg-yellow-100 p-4 rounded shadow text-center">
-          <h2 className="text-lg font-semibold">🚧 In Progress</h2>
-          <p className="text-2xl font-bold">{totals?.inprogress ?? 0}</p>
-        </div>
-        <div className="bg-green-100 p-4 rounded shadow text-center">
-          <h2 className="text-lg font-semibold">✅ Done</h2>
-          <p className="text-2xl font-bold">{totals?.done ?? 0}</p>
+        <div className="flex items-center gap-4 bg-white p-2 rounded-[22px] shadow-sm border border-slate-100">
+          <div className="flex -space-x-3">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="w-10 h-10 rounded-full border-4 border-white bg-slate-100 shadow-sm" />
+            ))}
+          </div>
+          <div className="pr-4">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Global Reach</p>
+            <p className="text-sm font-bold text-slate-900 mt-1">128+ Online</p>
+          </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full table-auto border border-gray-300 rounded">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="px-4 py-2 border">Assignee</th>
-              <th className="px-4 py-2 border">📝 Todo</th>
-              <th className="px-4 py-2 border">🚧 In Progress</th>
-              <th className="px-4 py-2 border">✅ Done</th>
-              <th className="px-4 py-2 border">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length > 0 ? (
-              rows.map((r) => (
-                <tr key={r.assignee} className="text-center">
-                  <td className="px-4 py-2 border">{r.assignee}</td>
-                  <td className="px-4 py-2 border">{r.todo ?? 0}</td>
-                  <td className="px-4 py-2 border">{r.inprogress ?? 0}</td>
-                  <td className="px-4 py-2 border">{r.done ?? 0}</td>
-                  <td className="px-4 py-2 border">{r.total ?? 0}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="px-4 py-2 border text-center" colSpan={5}>
-                  No tasks found
-                </td>
+      {/* --- QUICK STATS GRID --- */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+
+        {/* TOTAL TASKS */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-white p-8 rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 relative overflow-hidden group"
+        >
+          <div className="absolute top-0 right-0 p-6 opacity-10 transition-opacity group-hover:opacity-20">
+            <ClipboardList size={80} className="text-indigo-600" />
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+              <ClipboardList size={20} />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Total Pipeline</span>
+          </div>
+          <p className="text-5xl font-black text-slate-900 mb-2">{totalTasks}</p>
+          <div className="flex items-center gap-1.5 text-emerald-500">
+            <ArrowUpRight size={14} />
+            <span className="text-xs font-bold">+12% from last week</span>
+          </div>
+        </motion.div>
+
+        {/* COMPLETION RATE */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-white p-8 rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 relative overflow-hidden group"
+        >
+          <div className="absolute top-0 right-0 p-6 opacity-10 transition-opacity group-hover:opacity-20">
+            <Award size={80} className="text-emerald-600" />
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+              <CheckCircle2 size={20} />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Efficiency Index</span>
+          </div>
+          <p className="text-5xl font-black text-slate-900 mb-2">{completionRate}%</p>
+          <div className="flex items-center gap-1.5 text-emerald-500">
+            <TrendingUp size={14} />
+            <span className="text-xs font-bold">Peak performance reached</span>
+          </div>
+        </motion.div>
+
+        {/* IN PROGRESS */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-white p-8 rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 relative overflow-hidden group"
+        >
+          <div className="absolute top-0 right-0 p-6 opacity-10 transition-opacity group-hover:opacity-20">
+            <Timer size={80} className="text-amber-500" />
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+              <Timer size={20} />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Active Velocity</span>
+          </div>
+          <p className="text-5xl font-black text-slate-900 mb-2">{totals.inprogress}</p>
+          <div className="flex items-center gap-1.5 text-amber-500">
+            <Activity size={14} />
+            <span className="text-xs font-bold">Standard rotation</span>
+          </div>
+        </motion.div>
+
+        {/* TODO */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-white p-8 rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 relative overflow-hidden group"
+        >
+          <div className="absolute top-0 right-0 p-6 opacity-10 transition-opacity group-hover:opacity-20">
+            <Zap size={80} className="text-indigo-400" />
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-slate-50 text-slate-600 rounded-2xl">
+              <Target size={20} />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Backlog Load</span>
+          </div>
+          <p className="text-5xl font-black text-slate-900 mb-2">{totals.todo}</p>
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <ArrowDownRight size={14} />
+            <span className="text-xs font-bold">Requires attention</span>
+          </div>
+        </motion.div>
+
+      </div>
+
+      {/* --- VISUAL DATA SECTION --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+
+        {/* BAR CHART PERFORMANCE */}
+        <div className="lg:col-span-8 bg-white p-10 rounded-[40px] shadow-2xl shadow-slate-200/30 border border-slate-50">
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h3 className="text-2xl font-black text-slate-900 leading-none">Assignee Velocity</h3>
+              <p className="text-sm font-bold text-slate-400 mt-2">Workload distribution per staff member.</p>
+            </div>
+            <div className="flex bg-slate-50 p-1.5 rounded-2xl">
+              <button className="px-4 py-2 bg-white text-indigo-600 rounded-xl font-bold text-xs shadow-sm">Monthly</button>
+              <button className="px-4 py-2 text-slate-400 font-bold text-xs">Weekly</button>
+            </div>
+          </div>
+
+          <div className="h-[400px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={rows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis
+                  dataKey="assignee"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }}
+                  dy={10}
+                />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} />
+                <Tooltip
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.1)' }}
+                  itemStyle={{ fontWeight: 'black', fontSize: '13px' }}
+                />
+                <Bar dataKey="inprogress" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} barSize={24} />
+                <Bar dataKey="todo" stackId="a" fill="#cbd5e1" radius={[0, 0, 0, 0]} barSize={24} />
+                <Bar dataKey="done" stackId="a" fill="#10b981" radius={[12, 12, 0, 0]} barSize={24} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* PIE CHART DISTRIBUTION */}
+        <div className="lg:col-span-4 bg-[#0f172a] p-10 rounded-[40px] shadow-2xl relative overflow-hidden flex flex-col justify-center">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 blur-[120px] rounded-full" />
+          <div className="relative z-10">
+            <h3 className="text-2xl font-black text-white leading-none">Status Mix</h3>
+            <p className="text-sm font-bold text-indigo-300/60 mt-2">Global distribution spread.</p>
+
+            <div className="h-[300px] mt-6">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={80}
+                    outerRadius={100}
+                    paddingAngle={8}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              {chartData.map(item => (
+                <div key={item.name} className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase text-white/40">{item.name}</span>
+                    <span className="text-lg font-black text-white leading-none mt-1">{item.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* --- ELITE PERFORMANCE TABLE --- */}
+      <div className="bg-white p-10 rounded-[40px] shadow-2xl shadow-slate-200/20 border border-slate-50 overflow-hidden">
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <h3 className="text-2xl font-black text-slate-900 leading-none">Performance Matrix</h3>
+            <p className="text-sm font-bold text-slate-400 mt-2">Granular tracking of team output.</p>
+          </div>
+          <button className="px-6 py-3 bg-indigo-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-200">
+            Export Analysis
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-50">
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4">Assignee</th>
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4 text-center">Todo</th>
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4 text-center">In Progress</th>
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4 text-center">Completed</th>
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4 text-center">Efficiency</th>
+                <th className="py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 px-4 text-right">Volume</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {rows.map((r, idx) => {
+                const eff = r.total > 0 ? Math.round((r.done / r.total) * 100) : 0;
+                return (
+                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="py-6 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 font-black text-xs flex items-center justify-center rounded-xl uppercase">
+                          {r.assignee.substring(0, 2)}
+                        </div>
+                        <span className="font-bold text-slate-900">{r.assignee}</span>
+                      </div>
+                    </td>
+                    <td className="py-6 px-4 text-center">
+                      <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-black">{r.todo}</span>
+                    </td>
+                    <td className="py-6 px-4 text-center">
+                      <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-xs font-black">{r.inprogress}</span>
+                    </td>
+                    <td className="py-6 px-4 text-center">
+                      <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-black">{r.done}</span>
+                    </td>
+                    <td className="py-6 px-4">
+                      <div className="flex flex-col items-center gap-1.5 w-32 mx-auto">
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full">
+                          <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${eff}%` }} />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase">{eff}% SUCCESS</span>
+                      </div>
+                    </td>
+                    <td className="py-6 px-4 text-right">
+                      <span className="text-lg font-black text-slate-900 tracking-tight">{r.total}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

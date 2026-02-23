@@ -51,6 +51,7 @@ export default function TaskActivityFeed({ taskId }: { taskId: string }) {
             case "NOTE_ADDED": return <FaStickyNote className="text-yellow-500" />;
             case "SUBTASK_TOGGLED": return <FaCheckCircle className="text-green-500" />;
             case "PAYMENT_ADDED": return <FaCreditCard className="text-purple-500" />;
+            case "TASK_CREATED": return <FaEdit className="text-orange-500" />;
             default: return <FaEdit className="text-gray-500" />;
         }
     };

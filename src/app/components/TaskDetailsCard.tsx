@@ -478,6 +478,8 @@ import NotesModal from "./NotesModal";
 import { PiPushPinSimpleFill } from "react-icons/pi";
 import ReassignTaskModal from "./ReassignTaskModal";
 import CloneTaskButton from "./CloneTaskButton";
+import PaymentRemarkModal from "./PaymentRemarkModal";
+import { FaHandHoldingUsd, FaCommentsDollar } from "react-icons/fa";
 
 interface Props {
   task: Task;
@@ -593,6 +595,7 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   const cf = task.customFields || {};
   const showTitle = task.title !== cf.shopName && task.title !== cf.outletName;
@@ -677,6 +680,16 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
               <FaUserEdit />
             </AnimatedIconButton>
             <CloneTaskButton taskId={task.id} onCloned={() => onUpdateTask?.(task.id, {})} />
+
+            {/* Payment Recovery Chase Button */}
+            {(task.amount !== undefined && task.amount > 0) && (
+              <AnimatedIconButton
+                onClick={() => setShowRecoveryModal(true)}
+                title="Update Collection Status"
+              >
+                <FaHandHoldingUsd className="text-indigo-600" />
+              </AnimatedIconButton>
+            )}
           </div>
 
           {/* Right Group - Notes / Copy / Pin */}
@@ -887,6 +900,14 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
           currentAssigneeIds={task.assigneeIds || []}
           onClose={() => setShowReassignModal(false)}
           onReassign={handleReassignTask}
+        />
+      )}
+
+      {showRecoveryModal && (
+        <PaymentRemarkModal
+          taskId={task.id}
+          onClose={() => setShowRecoveryModal(false)}
+          onSave={() => onUpdateTask?.(task.id, {})}
         />
       )}
     </div>

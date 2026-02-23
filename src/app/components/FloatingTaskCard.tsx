@@ -4,6 +4,7 @@ import React from "react";
 import { Rnd } from "react-rnd";
 import { FaTimes } from "react-icons/fa";
 import TaskDetailsCard from "./TaskDetailsCard";
+import TaskActivityFeed from "./TaskActivityFeed";
 import { Task } from "../../types/task";
 
 interface Props {
@@ -51,6 +52,11 @@ export default function FloatingTaskCard({
           onDelete={onDelete}
           onUpdateTask={onUpdateTask}
         />
+
+        {/* Activity Feed Section */}
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <TaskActivityFeed taskId={task.id} />
+        </div>
       </div>
     </Rnd>
   );

@@ -95,11 +95,28 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         } else if (field === "assigneeIds") {
           const newIds = Array.isArray(value) ? value.map(String) : typeof value === "string" ? [value] : [];
           updateData.assigneeIds = newIds;
-          logs.push(`Assignees updated`);
+          logs.push(`reassigned the task to ${newIds.length > 0 ? newIds.join(", ") : "nobody"}`);
         } else if (value !== oldValue) {
           updateData[field as any] = value;
           if (field === "status") {
-            logs.push(`Status changed from ${oldValue || 'None'} to ${value}`);
+            // Find when it entered current status
+            const lastChange = await prisma.activity.findFirst({
+              where: {
+                taskId,
+                type: { in: ["STATUS_CHANGE", "TASK_CREATED"] }
+              },
+              orderBy: { createdAt: "desc" }
+            });
+
+            let timeInfo = "";
+            if (lastChange) {
+              const diffMs = Date.now() - new Date(lastChange.createdAt).getTime();
+              const hours = Math.floor(diffMs / (1000 * 60 * 60));
+              const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
+              timeInfo = ` (Duration: ${hours}h ${minutes}m)`;
+            }
+
+            logs.push(`Status changed from ${oldValue || 'None'} to ${value}${timeInfo}`);
           } else if (field === "title") {
             logs.push(`Title changed to "${value}"`);
           }
