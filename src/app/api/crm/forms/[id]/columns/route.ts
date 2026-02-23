@@ -12,7 +12,7 @@ export async function POST(
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const body = await req.json();
-        const { label, type, options } = body;
+        const { label, type, options, isRequired, isLocked, showInPublic } = body;
 
         const lastCol = await prisma.internalColumn.findFirst({
             where: { formId },
@@ -25,7 +25,10 @@ export async function POST(
                 label,
                 type,
                 options: options || [],
-                order: (lastCol?.order || 0) + 1
+                order: (lastCol?.order || 0) + 1,
+                isRequired: isRequired || false,
+                isLocked: isLocked || false,
+                showInPublic: showInPublic || false
             }
         });
 

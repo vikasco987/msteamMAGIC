@@ -294,26 +294,49 @@ model ResponseValue {
 }
 
 model InternalColumn {
-  id          String      @id @default(auto()) @map("_id") @db.ObjectId
-  label       String
-  type        String      // "text", "status", "user"
-  options     String[]    @default([]) // For "status" type
-  order       Int         @default(0)
-
-  formId      String      @db.ObjectId
-  form        DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  label           String
+  type            String      // text, number, currency, date, dropdown, user, formula, checkbox, etc.
+  options         Json?       // For dropdown colors and options [{label: "New", color: "#eee"}]
+  order           Int         @default(0)
   
-  values      InternalValue[]
+  // Advanced Settings
+  isRequired      Boolean     @default(false)
+  isUnique        Boolean     @default(false)
+  isLocked        Boolean     @default(false)
+  showInPublic    Boolean     @default(false)
+  formula         String?     // For dynamic calculations
+  defaultValue    String?
+  settings        Json?       // Any other type-specific settings
+  
+  formId          String      @db.ObjectId
+  form            DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  
+  values          InternalValue[]
 }
 
 model InternalValue {
-  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  responseId      String      @db.ObjectId
+  response        FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  columnId        String      @db.ObjectId
+  column          InternalColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  value           String      @default("")
   
-  responseId  String      @db.ObjectId
-  response    FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  // Metadata
+  updatedBy       String?     // UserID
+  updatedByName   String?
+  updatedAt       DateTime    @updatedAt
+}
 
-  columnId    String      @db.ObjectId
-  column      InternalColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  
-  value       String      @default("")
+model FormActivity {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  responseId      String      @db.ObjectId
+  userId          String
+  userName        String
+  type            String      // "CELL_UPDATE", "STATUS_CHANGE", "NOTE_ADDED", "CONVERTED"
+  columnName      String?
+  oldValue        String?
+  newValue        String?
+  createdAt       DateTime    @default(now())
 }
