@@ -102,6 +102,7 @@ export async function GET(req: NextRequest) {
                 createdByName: task.createdByName || task.createdByEmail || "Unknown",
                 currentStatus: task.status,
                 assigneeName: task.assigneeName || "Unassigned",
+                assignerName: task.assignerName || "Unknown",
                 priority: task.priority || "Normal",
                 tags: task.tags || [],
                 amount: task.amount || 0,

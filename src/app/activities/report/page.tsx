@@ -25,7 +25,10 @@ import {
     Truck,
     MapPin,
     Smartphone,
-    CreditCard
+    CreditCard,
+    ChevronLeft,
+    ChevronRight,
+    Users
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, formatDistanceToNow } from "date-fns";
@@ -57,6 +60,7 @@ interface TaskAudit {
     createdByName: string;
     currentStatus: string;
     assigneeName: string;
+    assignerName: string;
     priority: string;
     tags: string[];
     amount: number;
@@ -73,6 +77,8 @@ interface Bottleneck {
     avgDays: number;
 }
 
+const ITEMS_PER_PAGE = 10;
+
 export default function DeepAnalysisPage() {
     const [auditData, setAuditData] = useState<TaskAudit[]>([]);
     const [bottleneckData, setBottleneckData] = useState<Bottleneck[]>([]);
@@ -86,6 +92,11 @@ export default function DeepAnalysisPage() {
     const [selectedStatus, setSelectedStatus] = useState("all");
     const [selectedPriority, setSelectedPriority] = useState("all");
     const [selectedStale, setSelectedStale] = useState("all");
+    const [selectedAssignee, setSelectedAssignee] = useState("all");
+    const [selectedAssigner, setSelectedAssigner] = useState("all");
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
 
     // Modal
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<Task | null>(null);
@@ -118,6 +129,10 @@ export default function DeepAnalysisPage() {
         fetchAudit();
     }, []);
 
+    // Extract unique lists for filters
+    const assignees = useMemo(() => Array.from(new Set(auditData.map(t => t.assigneeName))).sort(), [auditData]);
+    const assigners = useMemo(() => Array.from(new Set(auditData.map(t => t.assignerName))).sort(), [auditData]);
+
     const filteredData = useMemo(() => {
         return auditData.filter(task => {
             const matchesSearch =
@@ -129,10 +144,23 @@ export default function DeepAnalysisPage() {
             const matchesStatus = selectedStatus === "all" || task.currentStatus.toLowerCase() === selectedStatus.toLowerCase();
             const matchesPriority = selectedPriority === "all" || (task.priority || "normal").toLowerCase() === selectedPriority.toLowerCase();
             const matchesStale = selectedStale === "all" || (selectedStale === "stale" && task.isStale) || (selectedStale === "active" && !task.isStale);
+            const matchesAssignee = selectedAssignee === "all" || task.assigneeName === selectedAssignee;
+            const matchesAssigner = selectedAssigner === "all" || task.assignerName === selectedAssigner;
 
-            return matchesSearch && matchesStatus && matchesPriority && matchesStale;
+            return matchesSearch && matchesStatus && matchesPriority && matchesStale && matchesAssignee && matchesAssigner;
         });
-    }, [auditData, searchTerm, selectedStatus, selectedPriority, selectedStale]);
+    }, [auditData, searchTerm, selectedStatus, selectedPriority, selectedStale, selectedAssignee, selectedAssigner]);
+
+    // Handle pagination
+    const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+    const paginatedData = useMemo(() => {
+        const start = (currentPage - 1) * ITEMS_PER_PAGE;
+        return filteredData.slice(start, start + ITEMS_PER_PAGE);
+    }, [filteredData, currentPage]);
+
+    useEffect(() => {
+        setCurrentPage(1); // Reset to page 1 when filters change
+    }, [searchTerm, selectedStatus, selectedPriority, selectedStale, selectedAssignee, selectedAssigner]);
 
     const formatDuration = (ms: number) => {
         const hours = Math.floor(ms / (1000 * 60 * 60));
@@ -148,8 +176,6 @@ export default function DeepAnalysisPage() {
         if (s.includes("done")) return "bg-emerald-100 text-emerald-700 border-emerald-200";
         return "bg-slate-100 text-slate-700 border-slate-200";
     };
-
-    const CHART_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
 
     const handleSaveTask = async (updated: Task) => {
         try {
@@ -200,56 +226,84 @@ export default function DeepAnalysisPage() {
                     </div>
 
                     {/* Quick Filters Bank */}
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm text-xs font-black text-slate-500 uppercase tracking-wider">
-                            <Filter size={14} /> Filters:
+                    <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm text-xs font-black text-slate-500 uppercase tracking-wider">
+                                <Filter size={14} /> Core Filters:
+                            </div>
+
+                            <select
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                            >
+                                <option value="all">All Statuses</option>
+                                <option value="todo">To Do</option>
+                                <option value="inprogress">In Progress</option>
+                                <option value="done">Done</option>
+                            </select>
+
+                            <select
+                                value={selectedPriority}
+                                onChange={(e) => setSelectedPriority(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                            >
+                                <option value="all">All Priorities</option>
+                                <option value="high">High Priority</option>
+                                <option value="normal">Normal</option>
+                                <option value="low">Low Priority</option>
+                            </select>
+
+                            <select
+                                value={selectedStale}
+                                onChange={(e) => setSelectedStale(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                            >
+                                <option value="all">All Activity</option>
+                                <option value="stale">Stale Only (Red Zone)</option>
+                                <option value="active">Active Recently</option>
+                            </select>
                         </div>
 
-                        <select
-                            value={selectedStatus}
-                            onChange={(e) => setSelectedStatus(e.target.value)}
-                            className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                        >
-                            <option value="all">All Statuses</option>
-                            <option value="todo">To Do</option>
-                            <option value="inprogress">In Progress</option>
-                            <option value="done">Done</option>
-                        </select>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm text-xs font-black text-slate-500 uppercase tracking-wider">
+                                <Users size={14} /> Identity Filters:
+                            </div>
 
-                        <select
-                            value={selectedPriority}
-                            onChange={(e) => setSelectedPriority(e.target.value)}
-                            className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                        >
-                            <option value="all">All Priorities</option>
-                            <option value="high">High Priority</option>
-                            <option value="normal">Normal</option>
-                            <option value="low">Low Priority</option>
-                        </select>
-
-                        <select
-                            value={selectedStale}
-                            onChange={(e) => setSelectedStale(e.target.value)}
-                            className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
-                        >
-                            <option value="all">All Activity</option>
-                            <option value="stale">Stale Only (Red Zone)</option>
-                            <option value="active">Active Recently</option>
-                        </select>
-
-                        {(searchTerm || selectedStatus !== "all" || selectedPriority !== "all" || selectedStale !== "all") && (
-                            <button
-                                onClick={() => {
-                                    setSearchTerm("");
-                                    setSelectedStatus("all");
-                                    setSelectedPriority("all");
-                                    setSelectedStale("all");
-                                }}
-                                className="px-4 py-2 bg-slate-100 text-slate-500 rounded-2xl text-xs font-black uppercase hover:bg-slate-200 transition-colors"
+                            <select
+                                value={selectedAssignee}
+                                onChange={(e) => setSelectedAssignee(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
                             >
-                                Reset
-                            </button>
-                        )}
+                                <option value="all">All Assignees</option>
+                                {assignees.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+
+                            <select
+                                value={selectedAssigner}
+                                onChange={(e) => setSelectedAssigner(e.target.value)}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                            >
+                                <option value="all">All Asssigners</option>
+                                {assigners.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+
+                            {(searchTerm || selectedStatus !== "all" || selectedPriority !== "all" || selectedStale !== "all" || selectedAssignee !== "all" || selectedAssigner !== "all") && (
+                                <button
+                                    onClick={() => {
+                                        setSearchTerm("");
+                                        setSelectedStatus("all");
+                                        setSelectedPriority("all");
+                                        setSelectedStale("all");
+                                        setSelectedAssignee("all");
+                                        setSelectedAssigner("all");
+                                    }}
+                                    className="px-4 py-2 bg-slate-100 text-slate-500 rounded-2xl text-xs font-black uppercase hover:bg-slate-200 transition-colors"
+                                >
+                                    Reset Filters
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </header>
 
@@ -334,10 +388,33 @@ export default function DeepAnalysisPage() {
                         <div className="lg:col-span-8 space-y-6">
                             <div className="flex items-center justify-between mb-2 px-2">
                                 <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.25em]">Manifest: {filteredData.length} Tracking Entries</h2>
+
+                                {/* Pagination Controls */}
+                                {totalPages > 1 && (
+                                    <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm">
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="p-1 hover:bg-slate-50 rounded-lg disabled:opacity-20 text-slate-600 transition-colors"
+                                        >
+                                            <ChevronLeft size={18} />
+                                        </button>
+                                        <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
+                                            Page {currentPage} / {totalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="p-1 hover:bg-slate-50 rounded-lg disabled:opacity-20 text-slate-600 transition-colors"
+                                        >
+                                            <ChevronRight size={18} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <AnimatePresence mode="popLayout">
-                                {filteredData.map((task) => (
+                                {paginatedData.map((task) => (
                                     <motion.div
                                         layout
                                         initial={{ opacity: 0, scale: 0.98 }}
@@ -463,6 +540,17 @@ export default function DeepAnalysisPage() {
                                                         <div className="space-y-8">
                                                             <div>
                                                                 <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mb-6">Custody Handover Log</h4>
+                                                                <div className="mb-4 flex items-center gap-3 px-1">
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Created By</span>
+                                                                        <span className="text-[10px] font-black text-slate-700">{task.createdByName}</span>
+                                                                    </div>
+                                                                    <div className="w-1 h-4 bg-slate-200 rounded-full" />
+                                                                    <div className="flex flex-col">
+                                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Direct Assigner</span>
+                                                                        <span className="text-[10px] font-black text-slate-700">{task.assignerName}</span>
+                                                                    </div>
+                                                                </div>
                                                                 {task.reassignments.length > 0 ? (
                                                                     <div className="space-y-4">
                                                                         {task.reassignments.map((re, i) => (
@@ -532,6 +620,48 @@ export default function DeepAnalysisPage() {
                                 ))}
                             </AnimatePresence>
 
+                            {/* Bottom Pagination */}
+                            {totalPages > 1 && (
+                                <div className="flex justify-center mt-8">
+                                    <div className="flex items-center gap-2 bg-white px-6 py-3 rounded-[24px] border border-slate-200 shadow-lg">
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="px-4 py-2 hover:bg-slate-50 rounded-xl disabled:opacity-20 text-slate-600 font-black text-xs uppercase transition-all"
+                                        >
+                                            Prev
+                                        </button>
+                                        <div className="flex gap-2">
+                                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                                let pageNum = i + 1;
+                                                // Center page numbers if totalPages > 5
+                                                if (totalPages > 5 && currentPage > 3) {
+                                                    pageNum = currentPage - 3 + i + 1;
+                                                    if (pageNum > totalPages) pageNum = totalPages - (4 - i);
+                                                }
+                                                return (
+                                                    <button
+                                                        key={pageNum}
+                                                        onClick={() => setCurrentPage(pageNum)}
+                                                        className={`w-10 h-10 rounded-xl font-black text-xs transition-all 
+                                                            ${currentPage === pageNum ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'}`}
+                                                    >
+                                                        {pageNum}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <button
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="px-4 py-2 hover:bg-slate-50 rounded-xl disabled:opacity-20 text-slate-600 font-black text-xs uppercase transition-all"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {filteredData.length === 0 && !loading && (
                                 <div className="text-center py-20 bg-white rounded-[40px] border-4 border-dashed border-slate-100">
                                     <div className="p-6 bg-slate-50 rounded-full inline-flex mb-4 text-slate-200">
@@ -543,6 +673,8 @@ export default function DeepAnalysisPage() {
                                         setSelectedStatus("all");
                                         setSelectedPriority("all");
                                         setSelectedStale("all");
+                                        setSelectedAssignee("all");
+                                        setSelectedAssigner("all");
                                     }}>Try clearing filters to see all tracking data.</p>
                                 </div>
                             )}
