@@ -46,16 +46,13 @@ export async function GET(
 
         const responses = await prisma.formResponse.findMany({
             where: { formId },
-            include: {
-                values: true,
-                form: {
-                    include: {
-                        fields: { orderBy: { order: "asc" } },
-                        // Now we can't directly include from form results because internal values are linked to Response
-                    }
-                }
-            },
+            include: { values: true },
             orderBy: { submittedAt: "desc" }
+        });
+
+        const form = await prisma.dynamicForm.findUnique({
+            where: { id: formId },
+            include: { fields: { orderBy: { order: "asc" } } }
         });
 
         // We also need the internal columns for the form
@@ -69,8 +66,9 @@ export async function GET(
             where: { responseId: { in: responses.map(r => r.id) } }
         });
 
-        return NextResponse.json({ responses, internalColumns, internalValues });
+        return NextResponse.json({ responses, form, internalColumns, internalValues });
     } catch (error) {
+        console.error("GET Responses Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

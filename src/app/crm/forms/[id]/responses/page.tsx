@@ -192,20 +192,34 @@ export default function CRMSpreadsheetPage() {
     };
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
+        if (!data) return "";
         if (isInternal) {
-            return data?.internalValues.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
+            return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
         }
-        const resp = data?.responses.find(r => r.id === responseId);
-        return resp?.values.find(v => v.fieldId === colId)?.value || "";
+        const resp = data.responses?.find(r => r.id === responseId);
+        return resp?.values?.find(v => v.fieldId === colId)?.value || "";
     };
 
     const filteredResponses = useMemo(() => {
-        if (!data || !searchTerm) return data?.responses || [];
+        if (!data) return [];
+        if (!searchTerm) return data.responses || [];
+
+        const term = searchTerm.toLowerCase();
         return data.responses.filter(r =>
-            r.submittedByName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.values.some(v => v.value.toLowerCase().includes(searchTerm.toLowerCase()))
+            (r.submittedByName || "").toLowerCase().includes(term) ||
+            r.values.some(v => (v.value || "").toLowerCase().includes(term))
         );
     }, [data, searchTerm]);
+
+    const safeFormat = (dateStr: string, pattern: string) => {
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return "Invalid Date";
+            return format(d, pattern);
+        } catch (e) {
+            return "—";
+        }
+    };
 
     const getStatusColor = (val: string) => {
         const v = val.toLowerCase();
@@ -233,7 +247,7 @@ export default function CRMSpreadsheetPage() {
                             <ArrowLeft size={20} className="text-slate-500" />
                         </button>
                         <div>
-                            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{data?.form.title}</h1>
+                            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none">{data?.form?.title || "Project Data"}</h1>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2 flex items-center gap-2">
                                 <LayoutGrid size={12} className="text-indigo-500" /> Professional Matrix Hub
                             </p>
@@ -283,7 +297,7 @@ export default function CRMSpreadsheetPage() {
                             <th className="px-10 py-6 border-b border-r border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest sticky left-[120px] bg-white z-30 min-w-[240px]">Submitted By</th>
 
                             {/* Live Fields Columns */}
-                            {data?.form.fields.map(f => (
+                            {data?.form?.fields?.map(f => (
                                 <th key={f.id} className="px-10 py-6 border-b border-r border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[220px] bg-white">
                                     <div className="flex items-center gap-3">
                                         <Type size={16} className="text-slate-300" /> {f.label}
@@ -320,14 +334,14 @@ export default function CRMSpreadsheetPage() {
                                         <div>
                                             <p className="text-sm font-black text-slate-800 leading-none">{res.submittedByName || "Public User"}</p>
                                             <p className="text-[10px] font-bold text-slate-400 uppercase mt-1.5 flex items-center gap-1.5">
-                                                <Clock size={12} className="text-indigo-400" /> {format(new Date(res.submittedAt), "MMM dd, HH:mm")}
+                                                <Clock size={12} className="text-indigo-400" /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
                                             </p>
                                         </div>
                                     </div>
                                 </td>
 
                                 {/* Response Field Cells */}
-                                {data?.form.fields.map(field => {
+                                {data?.form?.fields?.map(field => {
                                     const val = getCellValue(res.id, field.id, false);
                                     const isEditing = editingCell?.rowId === res.id && editingCell?.colId === field.id;
 
@@ -482,7 +496,7 @@ export default function CRMSpreadsheetPage() {
                                             <Type size={18} className="text-indigo-500" /> Submitted Fields
                                         </h3>
                                         <div className="grid grid-cols-1 gap-6">
-                                            {data?.form.fields.map(field => (
+                                            {data?.form?.fields?.map(field => (
                                                 <div key={field.id} className="p-8 bg-slate-50 rounded-[40px] border border-slate-100 hover:border-indigo-100 transition-all">
                                                     <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3">{field.label}</p>
                                                     <p className="text-slate-800 font-bold leading-relaxed text-lg">{getCellValue(selectedResponse.id, field.id, false) || <span className="text-slate-300 italic">No response</span>}</p>
