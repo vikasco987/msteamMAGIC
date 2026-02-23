@@ -95,11 +95,17 @@ export async function GET(req: NextRequest) {
 
             return {
                 id: task.id,
+                task, // Full task object for the modal
                 title: task.title,
                 createdAt: task.createdAt,
                 lastActivityAt: lastActivity,
                 createdByName: task.createdByName || task.createdByEmail || "Unknown",
                 currentStatus: task.status,
+                assigneeName: task.assigneeName || "Unassigned",
+                priority: task.priority || "Normal",
+                tags: task.tags || [],
+                amount: task.amount || 0,
+                received: task.received || 0,
                 statusHistory,
                 reassignments,
                 totalActivities: activities.length,
