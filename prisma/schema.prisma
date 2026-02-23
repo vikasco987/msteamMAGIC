@@ -234,3 +234,59 @@ model Notification {
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+model DynamicForm {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  description     String?
+  isPublished     Boolean  @default(false)
+  
+  createdBy       String   // Clerk userId
+  createdByName   String?
+  
+  fields          FormField[]
+  responses       FormResponse[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FormField {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  label       String
+  type        String      // "text", "number", "date", "dropdown", etc.
+  placeholder String?
+  required    Boolean     @default(false)
+  options     String[]    @default([]) // For dropdowns/radios
+  order       Int         @default(0)
+
+  formId      String      @db.ObjectId
+  form        DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  
+  responseValues ResponseValue[]
+}
+
+model FormResponse {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  formId      String      @db.ObjectId
+  form        DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  submittedBy String?     // Clerk userId (if logged in)
+  submittedByName String?
+  
+  values      ResponseValue[]
+
+  submittedAt DateTime    @default(now())
+}
+
+model ResponseValue {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  
+  responseId  String      @db.ObjectId
+  response    FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  fieldId     String      @db.ObjectId
+  field       FormField   @relation(fields: [fieldId], references: [id])
+  
+  value       String      // Store as string
+}
