@@ -120,7 +120,7 @@ export default function Board() {
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
-      const relevantTasks = (showAllTasksMode || role === "master" || role === "admin")
+      const relevantTasks = showAllTasksMode
         ? taskArray
         : taskArray.filter(task =>
           (task.assigneeIds && task.assigneeIds.includes(userId)) ||

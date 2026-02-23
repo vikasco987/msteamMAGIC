@@ -12,8 +12,10 @@ import {
     FaRegClock,
     FaFilter,
     FaChevronLeft,
-    FaChevronRight
+    FaChevronRight,
+    FaChartLine
 } from "react-icons/fa";
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 interface Activity {
@@ -102,6 +104,16 @@ export default function ActivityLogPage() {
                             Deep Activity Analysis
                         </h1>
                         <p className="text-slate-500 mt-2">Comprehensive breakdown of team interactions and task progression.</p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <Link
+                            href="/activities/report"
+                            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
+                        >
+                            <FaChartLine />
+                            View Lifecycle Report
+                        </Link>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -278,7 +290,7 @@ export default function ActivityLogPage() {
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
