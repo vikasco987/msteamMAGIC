@@ -246,6 +246,7 @@ model DynamicForm {
   
   fields          FormField[]
   responses       FormResponse[]
+  internalColumns InternalColumn[]
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -275,6 +276,7 @@ model FormResponse {
   submittedByName String?
   
   values      ResponseValue[]
+  internalValues InternalValue[]
 
   submittedAt DateTime    @default(now())
 }
@@ -289,4 +291,29 @@ model ResponseValue {
   field       FormField   @relation(fields: [fieldId], references: [id])
   
   value       String      // Store as string
+}
+
+model InternalColumn {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  label       String
+  type        String      // "text", "status", "user"
+  options     String[]    @default([]) // For "status" type
+  order       Int         @default(0)
+
+  formId      String      @db.ObjectId
+  form        DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  
+  values      InternalValue[]
+}
+
+model InternalValue {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  
+  responseId  String      @db.ObjectId
+  response    FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  columnId    String      @db.ObjectId
+  column      InternalColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  
+  value       String      @default("")
 }
