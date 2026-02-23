@@ -1,834 +1,3 @@
-
-
-
-
-// "use client";
-
-// import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-// import { useUser, useAuth } from "@clerk/nextjs";
-// import {
-//   DragDropContext,
-//   Droppable,
-//   Draggable,
-//   DropResult,
-// } from "@hello-pangea/dnd";
-// import { Task as TaskType } from "../../types/task"; // Ensure this path is correct
-
-// import EditTaskModal from "../components/EditTaskModal";
-// import TaskDetailsCard from "../components/TaskDetailsCard";
-// // import TaskEditableCard from "./TaskEditableCard"; // ✅ Deleted: Line 8398 - Unused import
-// import FloatingTaskCard from "../components/FloatingTaskCard"; // Import the FloatingTaskCard
-// import toast from "react-hot-toast";
-
-// import { FaFileExcel } from "react-icons/fa";
-// import { format, isToday, subDays, startOfMonth, startOfYear } from 'date-fns';
-
-// import { BoardFilters } from "../components/BoardFilters"; // Your BoardFilters component
-
-// // --- Helper function to strip emojis ---
-// const stripEmojis = (str: string | null | undefined): string => {
-//   if (!str) return "";
-//   // This regex matches various emoji ranges and variation selectors
-//   return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2B50}\u{2B55}\u{2934}\u{2935}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').trim();
-// };
-// // --- End Helper function ---
-
-// // Define TASK_CATEGORIES here as well, so Board.tsx can use it for mapping/filtering
-// // The `value` here should be the "clean" text we compare against.
-// const TASK_CATEGORIES = [
-//   { label: "🍽️ Zomato Onboarding", value: "zomato onboarding" },
-//   { label: "🍔 Swiggy Onboarding", value: "swiggy onboarding" },
-//   { label: "🍽️🍔 Zomato + Swiggy Combo", value: "zomato + swiggy combo" },
-//   { label: "🧾 Food License", value: "food license" },
-//   { label: "📸 Photo Upload", value: "photo upload" },
-//   { label: "📂 Account Handling", value: "account handling" },
-//   { label: "🛠️ Other", value: "other" },
-// ];
-
-// const columns = [
-//   {
-//     id: "todo",
-//     title: "📝 To Do",
-//     color: "border-blue-500",
-//     bgColor: "bg-gradient-to-br from-blue-100 to-blue-50",
-//   },
-//   {
-//     id: "inprogress",
-//     title: "⏳ In Progress",
-//     color: "border-yellow-600",
-//     bgColor: "bg-gradient-to-br from-yellow-100 to-yellow-50",
-//   },
-//   {
-//     id: "done", // Keeping 'done' as the ID
-//     title: "✅ Done",
-//     color: "border-green-500",
-//     bgColor: "bg-gradient-to-br from-green-100 to-green-50",
-//   },
-// ];
-
-// export default function Board() {
-//   const { user } = useUser();
-//   const { getToken } = useAuth();
-//   const [tasks, setTasks] = useState<TaskType[]>([]); // All fetched tasks
-//   const [editingTask, setEditingTask] = useState<TaskType | null>(null);
-//   // NEW: State to manage the floating task card
-//   const [floatingTask, setFloatingTask] = useState<TaskType | null>(null);
-
-//   // --- Filter States (now managed within Board and passed to BoardFilters) ---
-//   const [filterText, setFilterText] = useState("");
-//   const [sortBy, setSortBy] = useState<keyof TaskType | "shopName">("createdAt"); // More specific type for sortBy
-//   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"); // Default sort descending
-//   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-//   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-//   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-//   const [selectedDates, setSelectedDates] = useState<string[]>([]); // This is now an array
-
-//   const audioRef = useRef<HTMLAudioElement>(null);
-//   const [userRole, setUserRole] = useState<string>("");
-//   const previousTaskCountRef = useRef<number>(0);
-//   const [loading, setLoading] = useState(true);
-//   const [autoRefresh, setAutoRefresh] = useState(true);
-
-//   const hasFetchedInitially = useRef(false);
-
-//   const [hiddenCardIds, setHiddenCardIds] = useState<Set<string>>(() => {
-//     if (typeof window !== "undefined") {
-//       const saved = localStorage.getItem("hiddenCardIds");
-//       return saved ? new Set(JSON.parse(saved)) : new Set();
-//     }
-//     return new Set();
-//   });
-
-//   const [showAllTasksMode, setShowAllTasksMode] = useState(false); // Controls user-specific vs. all tasks
-
-//   const handleToggleHideUnhide = (taskId: string) => {
-//     setHiddenCardIds((prev) => {
-//       const updated = new Set(prev);
-//       if (updated.has(taskId)) {
-//         updated.delete(taskId);
-//       } else {
-//         updated.add(taskId);
-//       }
-//       localStorage.setItem("hiddenCardIds", JSON.stringify([...updated]));
-//       return updated;
-//     });
-//   };
-
-//   const handleShowAllTasks = () => {
-//     setShowAllTasksMode(true);
-//   };
-
-//   const handleShowOnlyVisible = () => {
-//     setShowAllTasksMode(false);
-//   };
-
-//   const seenTaskIdsRef = useRef<Set<string>>(
-//     typeof window !== "undefined" && localStorage.getItem("seenTaskIds")
-//       ? new Set(JSON.parse(localStorage.getItem("seenTaskIds")!))
-//       : new Set()
-//   );
-
-//   const fetchTasks = useCallback(async () => {
-//     if (!user) {
-//       setLoading(false);
-//       return;
-//     }
-
-//     setLoading(true);
-
-//     const role = (user.publicMetadata?.role as string) || "";
-//     const userId = user.id;
-//     setUserRole(role);
-
-//     try {
-//       const res = await fetch("/api/tasks");
-//       // FIX (Line 8723 equivalent): Type json response
-//       const json: { tasks: TaskType[] } = await res.json();
-//       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
-
-//       // Filter tasks based on user role and showAllTasksMode
-//       const relevantTasks =
-//         (showAllTasksMode || role === "master") // Master can see all, or if showAllTasksMode is active
-//           ? taskArray
-//           : taskArray.filter(
-//               (task: TaskType) =>
-//                 (task.assigneeIds && task.assigneeIds.includes(userId)) ||
-//                 task.assigneeId === userId ||
-//                 task.createdByClerkId === userId
-//             );
-
-//       const seenTaskIds = seenTaskIdsRef.current;
-//       const newTasks = relevantTasks.filter((task) => !seenTaskIds.has(task.id));
-
-//       if (newTasks.length > 0) {
-//         try {
-//           if (audioRef.current) {
-//             audioRef.current.volume = 1;
-//             await audioRef.current.play();
-//           }
-//           toast.success(`🎉 ${newTasks.length} new task(s) assigned!`);
-//         } catch (err) {
-//           console.warn("🔇 Audio autoplay blocked", err);
-//         }
-//       }
-
-//       previousTaskCountRef.current = relevantTasks.length;
-//       relevantTasks.forEach((task) => seenTaskIds.add(task.id));
-//       localStorage.setItem("seenTaskIds", JSON.stringify(Array.from(seenTaskIds)));
-
-//       setTasks(relevantTasks); // Update the main tasks state
-//     } catch (err: unknown) { // FIX: Type caught error as unknown
-//       console.error("❌ Error fetching tasks:", err);
-//       toast.error("Failed to fetch tasks.");
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [user, showAllTasksMode]); // showAllTasksMode is now a dependency
-
-//   // useEffect(() => {
-//   //   if (!user?.id) {
-//   //     setTasks([]);
-//   //     setLoading(false);
-//   //     return;
-//   //   }
-
-//   //   if (user?.id && !hasFetchedInitially.current) {
-//   //     fetchTasks();
-//   //     hasFetchedInitially.current = true;
-//   //   }
-
-//   //   let intervalId: NodeJS.Timeout;
-
-//   //   if (autoRefresh) {
-//   //     intervalId = setInterval(() => {
-//   //       fetchTasks();
-//   //     }, 10000); // Fetch every 10 seconds
-//   //   }
-
-//   //   return () => {
-//   //     if (intervalId) {
-//   //       clearInterval(intervalId);
-//   //     }
-//   //   };
-//   // }, [user?.id, fetchTasks, autoRefresh]);
-
-
-
-
-//   useEffect(() => {
-//   if (!user?.id) {
-//     setTasks([]);
-//     setLoading(false);
-//     return;
-//   }
-
-//   if (user?.id && !hasFetchedInitially.current) {
-//     fetchTasks();
-//     hasFetchedInitially.current = true;
-//   }
-// }, [user?.id, fetchTasks]);
-
-
-//   const onDragEnd = async (result: DropResult) => {
-//     const { destination, source, draggableId } = result;
-//     if (!destination || destination.droppableId === source.droppableId) return;
-
-//     const task = tasks.find((t: TaskType) => t.id === draggableId);
-//     if (!task) return;
-
-//     const currentUserId = user?.id;
-//     const isAssignedToCurrentUser =
-//       (task.assigneeIds && task.assigneeIds.includes(currentUserId || "")) ||
-//       task.assigneeId === currentUserId;
-
-//     if (!isAssignedToCurrentUser && userRole !== "master") { // Master role can move any task
-//       toast.error("You can only move tasks assigned to you.");
-//       return;
-//     }
-
-//     const updated = tasks.map((t) =>
-//       t.id === draggableId ? { ...t, status: destination.droppableId } : t
-//     );
-//     setTasks(updated); // Optimistic update
-
-//     try {
-//       const token = await getToken();
-//       if (!token) {
-//         console.error("Clerk authentication token not available.");
-//         toast.error("Authentication error. Please log in again.");
-//         setTasks(tasks); // Revert optimistic update
-//         return;
-//       }
-
-//       await fetch(`/api/tasks/${draggableId}`, {
-//         method: "PATCH",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${token}`,
-//         },
-//         body: JSON.stringify({ status: destination.droppableId }),
-//       });
-//       toast.success("Task status updated!");
-//        // Re-fetch to ensure data consistency
-//     } catch (error: unknown) { // FIX: Type caught error as unknown
-//       console.error("Failed to update task status:", error);
-//       toast.error("Failed to update task status.");
-//       setTasks(tasks); // Revert optimistic update
-//     }
-//   };
-
-//   const handleDeleteTask = async (taskId: string) => {
-//     // Replaced window.confirm with a toast for confirmation
-//     toast((t) => (
-//       <div className="flex flex-col">
-//         <span>Are you sure you want to delete this task?</span>
-//         <div className="flex justify-end gap-2 mt-2">
-//           <button
-//             onClick={async () => {
-//               try {
-//                 const token = await getToken();
-//                 if (!token) {
-//                   console.error("Clerk authentication token not available.");
-//                   toast.error("Authentication error. Please log in again.");
-//                   toast.dismiss(t.id);
-//                   return;
-//                 }
-
-//                 await fetch(`/api/tasks/${taskId}`, {
-//                   method: "DELETE",
-//                   headers: {
-//                     Authorization: `Bearer ${token}`,
-//                   },
-//                 });
-//                 toast.success("Task deleted successfully!");
-//                 fetchTasks();
-//                 setEditingTask(null);
-//                 // If the deleted task was floating, close the floating card
-//                 if (floatingTask && floatingTask.id === taskId) {
-//                   setFloatingTask(null);
-//                 }
-//               } catch (err: unknown) { // FIX: Type caught error as unknown
-//                 console.error("Failed to delete task", err);
-//                 toast.error("Failed to delete task.");
-//               } finally {
-//                 toast.dismiss(t.id);
-//               }
-//             }}
-//             className="bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600"
-//           >
-//             Delete
-//           </button>
-//           <button
-//             onClick={() => toast.dismiss(t.id)}
-//             className="bg-gray-300 text-gray-800 px-3 py-1 rounded-md text-sm hover:bg-gray-400"
-//           >
-//             Cancel
-//           </button>
-//         </div>
-//       </div>
-//     ), { duration: Infinity, style: { background: '#fff', color: '#333' } });
-//   };
-
-
-//   const handleFieldUpdate = async (taskId: string, updatedFields: Partial<TaskType>) => {
-//     try {
-//       const token = await getToken();
-//       if (!token) {
-//         console.error("Clerk authentication token not available.");
-//         toast.error("Authentication error. Please log in again.");
-//         return;
-//       }
-
-//       const res = await fetch(`/api/tasks/${taskId}`, {
-//         method: "PATCH",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization: `Bearer ${token}`,
-//         },
-//         body: JSON.stringify(updatedFields), // Send only the updated fields
-//       });
-
-//       if (!res.ok) {
-//         // FIX (Line 8913 equivalent): Type errorData
-//         const errorData: { details?: string; error?: string } = await res.json();
-//         throw new Error(errorData.details || errorData.error || "Failed to update task.");
-//       }
-
-//       toast.success("Task updated successfully!");
-//       fetchTasks(); // Re-fetch all tasks to update UI
-//       // If the currently floating task was updated, update its state as well
-//       if (floatingTask && floatingTask.id === taskId) {
-//         setFloatingTask(prev => prev ? { ...prev, ...updatedFields } : null);
-//       }
-//     } catch (err: unknown) { // FIX (Line 8944 equivalent): Type caught error as unknown
-//       console.error("Failed to update task", err);
-//       toast.error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
-//     }
-//   };
-
-
-//   const exportTasksToCsv = () => {
-//     if (tasks.length === 0) {
-//       toast.error("No tasks to export.");
-//       return;
-//     }
-
-//     const headers = [
-//       "ID",
-//       "Title",
-//       "Description",
-//       "Status",
-//       "Due Date",
-//       "Priority",
-//       "Assigner Name",
-//       "Assigner Email",
-//       "Assignee Names",
-//       "Assignee Emails",
-//       "Created At",
-//       "Updated At",
-//       "Tags",
-//       "Subtasks",
-//       "Custom Fields",
-//       "Attachments",
-//       "Highlight Color",
-//     ];
-
-//     const csvRows = tasks.map((task) =>
-//       [
-//         task.id,
-//         // --- CSV Export: Strip emojis from title for clean export ---
-//         stripEmojis(task.title), // Apply stripEmojis here
-//         // --- End CSV Export ---
-//         task.description,
-//         task.status,
-//         task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd HH:mm:ss') : "",
-//         task.priority,
-//         task.assignerName,
-//         task.assignerEmail,
-//         task.assignees?.map(a => a.name).filter(Boolean).join(" | "),
-//         task.assignees?.map(a => a.email).filter(Boolean).join(" | "),
-//         task.createdAt ? format(new Date(task.createdAt), 'yyyy-MM-dd HH:mm:ss') : "",
-//         task.updatedAt ? format(new Date(task.updatedAt), 'yyyy-MM-dd HH:mm:ss') : "",
-//         task.tags?.join(", "),
-//         task.subtasks?.map((sub) => sub.title).join("; "),
-//         task.customFields && typeof task.customFields === "object"
-//           ? Object.entries(task.customFields)
-//               .map(([k, v]) => `${k}: ${v}`)
-//               .join(" | ")
-//           : "",
-//         task.attachments?.join("; "),
-//         task.highlightColor || "",
-//       ].map((cell) => `"${String(cell || '').replace(/"/g, '""')}"`)
-//     );
-
-//     const csvContent = [headers.join(","), ...csvRows.map((row) => row.join(","))].join("\n");
-//     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-//     const link = document.createElement("a");
-//     link.href = URL.createObjectURL(blob);
-//     link.download = `tasks_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv`;
-//     document.body.appendChild(link);
-//     link.click();
-//     document.body.removeChild(link);
-//     URL.revokeObjectURL(link.href);
-//     toast.success("Tasks exported to CSV!");
-//   };
-
-//   // ✅ Deleted: Line 8797 equivalent - uniqueCategoriesForDisplay is unused as TASK_CATEGORIES is passed directly
-//   // const uniqueCategoriesForDisplay = useMemo(() => {
-//   //   return TASK_CATEGORIES;
-//   // }, []);
-
-
-//   const uniqueStatuses = useMemo(() => {
-//     const statuses = new Set<string>();
-//     tasks.forEach(task => {
-//       if (task.status) statuses.add(task.status);
-//     });
-//     return Array.from(statuses).sort();
-//   }, [tasks]);
-
-//   const uniqueAssignees = useMemo(() => {
-//     const assignees = new Set<string>();
-//     tasks.forEach(task => {
-//       if (task.assignees && Array.isArray(task.assignees)) {
-//         task.assignees.forEach(assignee => {
-//           if (assignee && (assignee.name || assignee.email)) {
-//             assignees.add(assignee.name || assignee.email || '');
-//           }
-//         });
-//       }
-//     });
-//     return Array.from(assignees).sort();
-//   }, [tasks]);
-
-//   // --- Filtering and Sorting Logic (Memoized) ---
-//   const visibleTasks = useMemo(() => {
-//     let filtered = [...tasks]; // Start with a copy of all tasks
-
-//     // 1. Text Filtering
-//     if (filterText) {
-//       const lowerFilterText = filterText.toLowerCase();
-//       filtered = filtered.filter(task =>
-//         task.title?.toLowerCase().includes(lowerFilterText) ||
-//         task.description?.toLowerCase().includes(lowerFilterText) ||
-//         // Check for existence before calling .toLowerCase() on customFields properties
-//         (task.customFields?.shopName && (task.customFields.shopName as string).toLowerCase().includes(lowerFilterText)) ||
-//         (task.customFields?.email && (task.customFields.email as string).toLowerCase().includes(lowerFilterText)) ||
-//         (task.customFields?.phone && (task.customFields.phone as string).toLowerCase().includes(lowerFilterText)) ||
-//         task.assignees?.some(a => (a.name || a.email)?.toLowerCase().includes(lowerFilterText)) ||
-//         task.status?.toLowerCase().includes(lowerFilterText) ||
-//         task.assignerName?.toLowerCase().includes(lowerFilterText) ||
-//         (task.customFields?.location && (task.customFields.location as string).toLowerCase().includes(lowerFilterText)) ||
-//         task.tags?.some(tag => tag.toLowerCase().includes(lowerFilterText)) ||
-//         task.notes?.some(note => note.content?.toLowerCase().includes(lowerFilterText))
-//       );
-//     }
-
-//     // 2. Category Filtering (THE CRUCIAL FIX HERE)
-//     if (selectedCategories.length > 0) {
-//       filtered = filtered.filter((t) => {
-//         const strippedTaskTitle = stripEmojis(t.title || "").toLowerCase();
-//         return selectedCategories.some(
-//           (catValue) => stripEmojis(catValue).toLowerCase() === strippedTaskTitle
-//         );
-//       });
-//     }
-
-
-//     // 3. Status Filtering
-//     if (selectedStatuses.length > 0) {
-//       filtered = filtered.filter(task =>
-//         task.status && selectedStatuses.includes(task.status)
-//       );
-//     }
-
-//     // 4. Assignee Filtering
-//     if (selectedAssignees.length > 0) {
-//       filtered = filtered.filter(task =>
-//         task.assignees?.some(assignee =>
-//           assignee && (assignee.name || assignee.email) && selectedAssignees.includes(assignee.name || assignee.email || '')
-//         )
-//       );
-//     }
-
-//     // 5. Date Filtering
-//     if (selectedDates.length > 0) {
-//       const now = new Date();
-//       filtered = filtered.filter(task => {
-//         const taskDate = task.createdAt ? new Date(task.createdAt) : null;
-//         if (!taskDate) return false;
-
-//         return selectedDates.some(dateFilter => {
-//           switch (dateFilter) {
-//             case "today":
-//               return isToday(taskDate);
-//             case "yesterday":
-//               const yesterday = subDays(now, 1);
-//               return format(taskDate, "yyyy-MM-dd") === format(yesterday, "yyyy-MM-dd");
-//             case "last_7_days":
-//               const sevenDaysAgo = subDays(now, 7);
-//               // Ensure taskDate is within the last 7 days including today
-//               return taskDate >= sevenDaysAgo && taskDate <= now;
-//             case "this_month":
-//               const startOfCurrentMonth = startOfMonth(now);
-//               return taskDate >= startOfCurrentMonth && taskDate <= now;
-//             case "last_month":
-//               const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-//               const startOfLastMonth = startOfMonth(prevMonth);
-//               const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-//               return taskDate >= startOfLastMonth && taskDate <= endOfLastMonth;
-//             case "this_year":
-//               const startOfCurrentYear = startOfYear(now);
-//               return taskDate >= startOfCurrentYear && taskDate <= now;
-//             default:
-//               return true;
-//           }
-//         });
-//       });
-//     }
-
-//     // 6. Sorting
-//     filtered.sort((a, b) => {
-//       // FIX (Lines 8913-8944 equivalent): Replace any with proper types
-//       let aValue: string | number | Date | undefined | null;
-//       let bValue: string | number | Date | undefined | null;
-
-//       switch (sortBy) {
-//         case "createdAt":
-//           aValue = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-//           bValue = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-//           break;
-//         case "dueDate":
-//           aValue = a.dueDate ? new Date(a.dueDate).getTime() : Infinity; // Tasks with no due date come last
-//           bValue = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-//           break;
-//         case "title":
-//           aValue = a.title || "";
-//           bValue = b.title || "";
-//           break;
-//         case "status":
-//           aValue = a.status || "";
-//           bValue = b.status || "";
-//           break;
-//         case "shopName":
-//             // Access customFields safely and ensure it's a string
-//             aValue = (a.customFields && typeof a.customFields === 'object' && a.customFields.shopName)
-//                        ? String(a.customFields.shopName) : "";
-//             bValue = (b.customFields && typeof b.customFields === 'object' && b.customFields.shopName)
-//                        ? String(b.customFields.shopName) : "";
-//             break;
-//         case "priority":
-//           const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2, "": 3, undefined: 3, null: 3 };
-//           aValue = priorityOrder[String(a.priority).toLowerCase()] ?? 3;
-//           bValue = priorityOrder[String(b.priority).toLowerCase()] ?? 3;
-//           break;
-//         // Handle other fields dynamically if sortBy can be a direct key of TaskType
-//         default:
-//           // Ensure that sortBy is a key of TaskType or a custom field key that can be directly accessed
-//           const safeSortBy = sortBy as keyof TaskType; // Cast to known key
-//           aValue = a[safeSortBy] as typeof aValue; // Access property using the key
-//           bValue = b[safeSortBy] as typeof bValue;
-//       }
-
-//       // Handle number comparison
-//       if (typeof aValue === 'number' && typeof bValue === 'number') {
-//         return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-//       }
-//       // Handle string comparison (case-insensitive)
-//       return sortDirection === "asc"
-//         ? String(aValue || '').toLowerCase().localeCompare(String(bValue || '').toLowerCase())
-//         : String(bValue || '').toLowerCase().localeCompare(String(aValue || '').toLowerCase());
-//     });
-
-//     return filtered;
-//   }, [
-//     tasks,
-//     filterText,
-//     selectedCategories, // This is now an array of "values" like "zomato onboarding"
-//     selectedStatuses,
-//     selectedAssignees,
-//     selectedDates,
-//     sortBy,
-//     sortDirection,
-//   ]);
-
-
-//   return (
-//     <div className="p-4">
-//       <audio ref={audioRef} src="/alert.mp3" preload="auto" loop />
-
-//       <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
-//         {/* --- BoardFilters Component --- */}
-//         <BoardFilters
-//           filterText={filterText}
-//           setFilterText={setFilterText}
-//           sortBy={sortBy}
-//           setSortBy={setSortBy}
-//           sortDirection={sortDirection}
-//           setSortDirection={setSortDirection}
-//           selectedCategories={selectedCategories}
-//           setSelectedCategories={setSelectedCategories}
-//           // Pass TASK_CATEGORIES directly as a prop to BoardFilters for rendering
-//           // It now expects an array of { label, value } objects for categories
-//           allCategories={TASK_CATEGORIES}
-//           selectedStatuses={selectedStatuses}
-//           setSelectedStatuses={setSelectedStatuses}
-//           allStatuses={uniqueStatuses}
-//           selectedAssignees={selectedAssignees}
-//           setSelectedAssignees={setSelectedAssignees}
-//           allAssignees={uniqueAssignees}
-//           selectedDates={selectedDates}
-//           setSelectedDates={setSelectedDates}
-//         />
-//         {/* --- End BoardFilters Component --- */}
-
-//         <div className="flex items-center gap-2 flex-wrap">
-//           {/* "Show My Tasks" button */}
-//           <button
-//             onClick={handleShowOnlyVisible}
-//             className={`px-3 py-2 text-sm rounded-lg border ${
-//               !showAllTasksMode
-//                 ? "bg-blue-600 text-white hover:bg-blue-700"
-//                 : "text-blue-600 border-blue-600 hover:bg-blue-100"
-//             } flex items-center gap-1`}
-//           >
-//             👁️ Show My Tasks
-//           </button>
-//           {/* "Show All Tasks" button (available to all users) */}
-//           {/* <button
-//             onClick={handleShowAllTasks}
-//             className={`px-3 py-2 text-sm rounded-lg border ${
-//               showAllTasksMode
-//                 ? "bg-blue-600 text-white hover:bg-blue-700"
-//                 : "text-blue-600 border-blue-600 hover:bg-blue-100"
-//             } flex items-center gap-1`}
-//           >
-//             🌐 Show All Tasks
-//           </button> */}
-
-// {/* 
-//           <button
-//             onClick={() => setAutoRefresh(!autoRefresh)}
-//             className={`px-3 py-2 text-sm rounded-lg border ${
-//               autoRefresh
-//                 ? "bg-red-600 text-white hover:bg-red-700"
-//                 : "bg-green-600 text-white hover:bg-green-700"
-//             } flex items-center gap-1`}
-//           >
-//             {autoRefresh ? "⏸️ Pause Auto Refresh" : "▶️ Resume Auto Refresh"}
-//           </button> */}
-//           <button
-//   onClick={fetchTasks}
-//   className="px-3 py-2 text-sm rounded-lg border bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
-// >
-//   🔄 Refresh
-// </button>
-
-
-//           <button
-//             onClick={exportTasksToCsv}
-//             disabled={tasks.length === 0}
-//             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white ${
-//               tasks.length === 0
-//                 ? "bg-gray-400 cursor-not-allowed"
-//                 : "bg-green-600 hover:bg-green-700"
-//             }`}
-//             aria-label="Export tasks to CSV"
-//           >
-//             <FaFileExcel /> Export to Excel
-//           </button>
-//         </div>
-//       </div>
-
-//       {loading && (
-//         <div className="text-center text-lg text-gray-500 my-8">
-//           Loading tasks...
-//         </div>
-//       )}
-
-//       {!loading && tasks.length === 0 && (
-//         <div className="text-center text-lg text-gray-500 my-8">
-//           No tasks to display.
-//         </div>
-//       )}
-
-//       {!loading && tasks.length > 0 && (
-//         <DragDropContext onDragEnd={onDragEnd}>
-//           <div className="flex flex-col md:flex-row gap-4">
-//             {columns.map((col) => (
-//               <Droppable droppableId={col.id} key={col.id}>
-//                 {(provided) => (
-//                   <div
-//                     ref={provided.innerRef}
-//                     {...provided.droppableProps}
-//                     className={`rounded-lg p-4 flex-1 min-h-[400px] ${col.bgColor}`}
-//                   >
-//                     <h2
-//                       className={`text-lg font-bold mb-3 text-purple-900 border-b pb-2 ${col.color}`}
-//                     >
-//                       {col.title} ({visibleTasks.filter(t => t.status === col.id && (showAllTasksMode || !hiddenCardIds.has(t.id))).length})
-//                     </h2>
-
-//                     {visibleTasks
-//                       .filter((task) => task.status === col.id)
-//                       .filter((task) => showAllTasksMode || !hiddenCardIds.has(task.id))
-//                       .map((task, index) => (
-//                         <Draggable draggableId={task.id} index={index} key={task.id}>
-//                           {(provided) => (
-//                             <div
-//                               ref={provided.innerRef}
-//                               {...provided.draggableProps}
-//                               {...provided.dragHandleProps}
-//                               className={`bg-white p-4 mb-3 rounded-xl shadow-md border-l-4 ${task.highlightColor ? `border-[${task.highlightColor}]` : 'border-purple-500'}`}
-//                               style={{
-//                                 ...provided.draggableProps.style,
-//                                 borderLeftColor: task.highlightColor || undefined,
-//                               }}
-//                             >
-//                               {/* Pass onFloatRequest to TaskDetailsCard */}
-//                               <TaskDetailsCard
-//                                 task={task}
-//                                 isAdmin={userRole === "master"} // Pass isAdmin based on user role
-//                                 onDelete={handleDeleteTask}
-//                                 onUpdateTask={handleFieldUpdate}
-//                                 onFloatRequest={setFloatingTask} // This sets the task to be floated
-//                               />
-
-//                               <div className="flex gap-2 mt-2">
-//                                 {showAllTasksMode && hiddenCardIds.has(task.id) ? (
-//                                   <button
-//                                     onClick={() => handleToggleHideUnhide(task.id)}
-//                                     className="text-sm text-blue-600 hover:text-blue-700"
-//                                   >
-//                                     👁️ Unhide This Task
-//                                   </button>
-//                                 ) : (
-//                                   <button
-//                                     onClick={() => handleToggleHideUnhide(task.id)}
-//                                     className="text-sm text-gray-500 hover:text-gray-700"
-//                                   >
-//                                     🙈 Hide This Task
-//                                   </button>
-//                                 )}
-//                                 <button
-//                                   onClick={() => setEditingTask(task)}
-//                                   className="text-sm text-blue-600"
-//                                 >
-//                                   ✏️ Edit
-//                                 </button>
-//                                 {userRole === "master" && (
-//                                   <button
-//                                     onClick={() => handleDeleteTask(task.id)}
-//                                     className="text-sm text-red-600"
-//                                   >
-//                                     🗑️ Delete
-//                                   </button>
-//                                 )}
-//                               </div>
-//                             </div>
-//                           )}
-//                         </Draggable>
-//                       ))}
-
-//                     {provided.placeholder}
-//                   </div>
-//                 )}
-//               </Droppable>
-//             ))}
-//           </div>
-//         </DragDropContext>
-//       )}
-
-//       {editingTask && (
-//         <EditTaskModal
-//           task={editingTask}
-//           onClose={() => setEditingTask(null)}
-//           onSave={fetchTasks} // onSave should trigger a re-fetch of tasks
-//           onDelete={handleDeleteTask}
-//         />
-//       )}
-
-//       {/* NEW: Render FloatingTaskCard conditionally at the Board level */}
-//       {floatingTask && (
-//         <FloatingTaskCard
-//           task={floatingTask}
-//           isAdmin={userRole === "master"} // Pass isAdmin prop
-//           onDelete={handleDeleteTask} // Pass delete handler
-//           onUpdateTask={handleFieldUpdate} // Pass update handler
-//           onClose={() => setFloatingTask(null)} // Function to close the floating card
-//         />
-//       )}
-//     </div>
-//   );
-// }
-
-
-
-
-
-
-
-
 "use client";
 
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
@@ -841,16 +10,15 @@ import {
 } from "@hello-pangea/dnd";
 import { Task as TaskType } from "../../types/task"; // Ensure this path is correct
 
-import EditTaskModal from "../components/EditTaskModal";
-import TaskDetailsCard from "../components/TaskDetailsCard";
-// import TaskEditableCard from "./TaskEditableCard"; // ✅ Deleted: Line 8398 - Unused import
-import FloatingTaskCard from "../components/FloatingTaskCard"; // Import the FloatingTaskCard
+import EditTaskModal from "./EditTaskModal";
+import TaskDetailsCard from "./TaskDetailsCard";
+import FloatingTaskCard from "./FloatingTaskCard";
 import toast from "react-hot-toast";
 
 import { FaFileExcel } from "react-icons/fa";
 import { format, isToday, subDays, startOfMonth, startOfYear } from 'date-fns';
 
-import { BoardFilters } from "../components/BoardFilters"; // Your BoardFilters component
+import { BoardFilters } from "./BoardFilters";
 
 // --- Helper function to strip emojis ---
 const stripEmojis = (str: string | null | undefined): string => {
@@ -858,10 +26,7 @@ const stripEmojis = (str: string | null | undefined): string => {
   // This regex matches various emoji ranges and variation selectors
   return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2B50}\u{2B55}\u{2934}\u{2935}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').trim();
 };
-// --- End Helper function ---
 
-// Define TASK_CATEGORIES here as well, so Board.tsx can use it for mapping/filtering
-// The `value` here should be the "clean" text we compare against.
 const TASK_CATEGORIES = [
   { label: "🍽️ Zomato Onboarding", value: "zomato onboarding" },
   { label: "🍔 Swiggy Onboarding", value: "swiggy onboarding" },
@@ -886,7 +51,7 @@ const columns = [
     bgColor: "bg-gradient-to-br from-yellow-100 to-yellow-50",
   },
   {
-    id: "done", // Keeping 'done' as the ID
+    id: "done",
     title: "✅ Done",
     color: "border-green-500",
     bgColor: "bg-gradient-to-br from-green-100 to-green-50",
@@ -896,27 +61,27 @@ const columns = [
 export default function Board() {
   const { user } = useUser();
   const { getToken } = useAuth();
-  const [tasks, setTasks] = useState<TaskType[]>([]); // All fetched tasks
+  const [tasks, setTasks] = useState<TaskType[]>([]);
   const [editingTask, setEditingTask] = useState<TaskType | null>(null);
-  // NEW: State to manage the floating task card
   const [floatingTask, setFloatingTask] = useState<TaskType | null>(null);
 
-  // --- Filter States (now managed within Board and passed to BoardFilters) ---
   const [filterText, setFilterText] = useState("");
-  const [sortBy, setSortBy] = useState<keyof TaskType | "shopName">("createdAt"); // More specific type for sortBy
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc"); // Default sort descending
+  const [sortBy, setSortBy] = useState<keyof TaskType>("createdAt");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [selectedDates, setSelectedDates] = useState<string[]>([]); // This is now an array
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const [userRole, setUserRole] = useState<string>("");
   const previousTaskCountRef = useRef<number>(0);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showAllTasksMode, setShowAllTasksMode] = useState(false);
 
   const hasFetchedInitially = useRef(false);
+  const seenTaskIdsRef = useRef<Set<string>>(new Set());
 
   const [hiddenCardIds, setHiddenCardIds] = useState<Set<string>>(() => {
     if (typeof window !== "undefined") {
@@ -926,42 +91,25 @@ export default function Board() {
     return new Set();
   });
 
-  const [showAllTasksMode, setShowAllTasksMode] = useState(false); // Controls user-specific vs. all tasks
+  const saveHiddenCardIds = (newSet: Set<string>) => {
+    localStorage.setItem("hiddenCardIds", JSON.stringify(Array.from(newSet)));
+    setHiddenCardIds(newSet);
+  };
 
   const handleToggleHideUnhide = (taskId: string) => {
-    setHiddenCardIds((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(taskId)) {
-        updated.delete(taskId);
-      } else {
-        updated.add(taskId);
-      }
-      localStorage.setItem("hiddenCardIds", JSON.stringify([...updated]));
-      return updated;
-    });
+    const newSet = new Set(hiddenCardIds);
+    if (newSet.has(taskId)) newSet.delete(taskId);
+    else newSet.add(taskId);
+    saveHiddenCardIds(newSet);
   };
 
-  const handleShowAllTasks = () => {
-    setShowAllTasksMode(true);
-  };
-
-  const handleShowOnlyVisible = () => {
-    setShowAllTasksMode(false);
-  };
-
-  const seenTaskIdsRef = useRef<Set<string>>(
-    typeof window !== "undefined" && localStorage.getItem("seenTaskIds")
-      ? new Set(JSON.parse(localStorage.getItem("seenTaskIds")!))
-      : new Set()
-  );
-
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (isInitial = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (isInitial) setLoading(true);
 
     const role = (user.publicMetadata?.role as string) || "";
     const userId = user.id;
@@ -969,686 +117,292 @@ export default function Board() {
 
     try {
       const res = await fetch("/api/tasks");
-      // FIX (Line 8723 equivalent): Type json response
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
-      // Filter tasks based on user role and showAllTasksMode
-      const relevantTasks =
-        (showAllTasksMode || role === "master") // Master can see all, or if showAllTasksMode is active
-          ? taskArray
-          : taskArray.filter(
-              (task: TaskType) =>
-                (task.assigneeIds && task.assigneeIds.includes(userId)) ||
-                task.assigneeId === userId ||
-                task.createdByClerkId === userId
-            );
+      const relevantTasks = (showAllTasksMode || role === "master" || role === "admin")
+        ? taskArray
+        : taskArray.filter(task =>
+          (task.assigneeIds && task.assigneeIds.includes(userId)) ||
+          task.assigneeId === userId ||
+          task.createdByClerkId === userId
+        );
 
       const seenTaskIds = seenTaskIdsRef.current;
-      const newTasks = relevantTasks.filter((task) => !seenTaskIds.has(task.id));
+      const newTasks = relevantTasks.filter(task => !seenTaskIds.has(task.id));
 
-      if (newTasks.length > 0) {
+      if (newTasks.length > 0 && !isInitial) {
         try {
           if (audioRef.current) {
             audioRef.current.volume = 1;
             await audioRef.current.play();
           }
-          toast.success(`🎉 ${newTasks.length} new task(s) assigned!`);
+          toast.success(`🎉 ${newTasks.length} new task(s)!`);
         } catch (err) {
-          console.warn("🔇 Audio autoplay blocked", err);
+          console.warn("Audio blocked", err);
         }
       }
 
-      previousTaskCountRef.current = relevantTasks.length;
-      relevantTasks.forEach((task) => seenTaskIds.add(task.id));
-      localStorage.setItem("seenTaskIds", JSON.stringify(Array.from(seenTaskIds)));
-
-      setTasks(relevantTasks); // Update the main tasks state
-    } catch (err: unknown) { // FIX: Type caught error as unknown
-      console.error("❌ Error fetching tasks:", err);
-      toast.error("Failed to fetch tasks.");
+      relevantTasks.forEach(task => seenTaskIds.add(task.id));
+      setTasks(relevantTasks);
+    } catch (err) {
+      console.error("Fetch tasks error:", err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
-  }, [user, showAllTasksMode]); // showAllTasksMode is now a dependency
-
-  // useEffect(() => {
-  //   if (!user?.id) {
-  //     setTasks([]);
-  //     setLoading(false);
-  //     return;
-  //   }
-
-  //   if (user?.id && !hasFetchedInitially.current) {
-  //     fetchTasks();
-  //     hasFetchedInitially.current = true;
-  //   }
-
-  //   let intervalId: NodeJS.Timeout;
-
-  //   if (autoRefresh) {
-  //     intervalId = setInterval(() => {
-  //       fetchTasks();
-  //     }, 10000); // Fetch every 10 seconds
-  //   }
-
-  //   return () => {
-  //     if (intervalId) {
-  //       clearInterval(intervalId);
-  //     }
-  //   };
-  // }, [user?.id, fetchTasks, autoRefresh]);
-
-
-
+  }, [user, showAllTasksMode]);
 
   useEffect(() => {
-  if (!user?.id) {
-    setTasks([]);
-    setLoading(false);
-    return;
-  }
+    if (!user?.id) return;
+    if (!hasFetchedInitially.current) {
+      fetchTasks(true);
+      hasFetchedInitially.current = true;
+    }
 
-  if (user?.id && !hasFetchedInitially.current) {
-    fetchTasks();
-    hasFetchedInitially.current = true;
-  }
-}, [user?.id, fetchTasks]);
-
+    let intervalId: NodeJS.Timeout;
+    if (autoRefresh) {
+      intervalId = setInterval(() => fetchTasks(false), 10000);
+    }
+    return () => clearInterval(intervalId);
+  }, [user?.id, fetchTasks, autoRefresh]);
 
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
-    if (!destination || destination.droppableId === source.droppableId) return;
+    if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) return;
 
-    const task = tasks.find((t: TaskType) => t.id === draggableId);
-    if (!task) return;
-
-    const currentUserId = user?.id;
-    const isAssignedToCurrentUser =
-      (task.assigneeIds && task.assigneeIds.includes(currentUserId || "")) ||
-      task.assigneeId === currentUserId;
-
-    if (!isAssignedToCurrentUser && userRole !== "master") { // Master role can move any task
-      toast.error("You can only move tasks assigned to you.");
-      return;
-    }
-
-    const updated = tasks.map((t) =>
-      t.id === draggableId ? { ...t, status: destination.droppableId } : t
-    );
-    setTasks(updated); // Optimistic update
+    const updatedTasks = tasks.map(t => t.id === draggableId ? { ...t, status: destination.droppableId } : t);
+    setTasks(updatedTasks);
 
     try {
-      const token = await getToken();
-      if (!token) {
-        console.error("Clerk authentication token not available.");
-        toast.error("Authentication error. Please log in again.");
-        setTasks(tasks); // Revert optimistic update
-        return;
-      }
-
-      await fetch(`/api/tasks/${draggableId}`, {
+      const res = await fetch(`/api/tasks/${draggableId}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: destination.droppableId }),
       });
-      toast.success("Task status updated!");
-       // Re-fetch to ensure data consistency
-    } catch (error: unknown) { // FIX: Type caught error as unknown
-      console.error("Failed to update task status:", error);
-      toast.error("Failed to update task status.");
-      setTasks(tasks); // Revert optimistic update
+      if (!res.ok) throw new Error("Update failed");
+      toast.success("Task updated!");
+    } catch (err) {
+      toast.error("Failed to update task");
+      fetchTasks(false);
+    }
+  };
+
+  const handleFieldUpdate = async (taskId: string, updatedFields: Partial<TaskType>) => {
+    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updatedFields } : t);
+    setTasks(updatedTasks);
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedFields),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success("Task synchronized");
+    } catch (err) {
+      console.error("Field update error:", err);
+      toast.error("Cloud sync failed");
+      fetchTasks(false);
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    // Replaced window.confirm with a toast for confirmation
-    toast((t) => (
-      <div className="flex flex-col">
-        <span>Are you sure you want to delete this task?</span>
-        <div className="flex justify-end gap-2 mt-2">
-          <button
-            onClick={async () => {
-              try {
-                const token = await getToken();
-                if (!token) {
-                  console.error("Clerk authentication token not available.");
-                  toast.error("Authentication error. Please log in again.");
-                  toast.dismiss(t.id);
-                  return;
-                }
-
-                await fetch(`/api/tasks/${taskId}`, {
-                  method: "DELETE",
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                  },
-                });
-                toast.success("Task deleted successfully!");
-                fetchTasks();
-                setEditingTask(null);
-                // If the deleted task was floating, close the floating card
-                if (floatingTask && floatingTask.id === taskId) {
-                  setFloatingTask(null);
-                }
-              } catch (err: unknown) { // FIX: Type caught error as unknown
-                console.error("Failed to delete task", err);
-                toast.error("Failed to delete task.");
-              } finally {
-                toast.dismiss(t.id);
-              }
-            }}
-            className="bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600"
-          >
-            Delete
-          </button>
-          <button
-            onClick={() => toast.dismiss(t.id)}
-            className="bg-gray-300 text-gray-800 px-3 py-1 rounded-md text-sm hover:bg-gray-400"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    ), { duration: Infinity, style: { background: '#fff', color: '#333' } });
-  };
-
-
-  const handleFieldUpdate = async (taskId: string, updatedFields: Partial<TaskType>) => {
     try {
-      const token = await getToken();
-      if (!token) {
-        console.error("Clerk authentication token not available.");
-        toast.error("Authentication error. Please log in again.");
-        return;
-      }
-
       const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(updatedFields), // Send only the updated fields
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
       });
-
-      if (!res.ok) {
-        // FIX (Line 8913 equivalent): Type errorData
-        const errorData: { details?: string; error?: string } = await res.json();
-        throw new Error(errorData.details || errorData.error || "Failed to update task.");
-      }
-
-      toast.success("Task updated successfully!");
-      fetchTasks(); // Re-fetch all tasks to update UI
-      // If the currently floating task was updated, update its state as well
-      if (floatingTask && floatingTask.id === taskId) {
-        setFloatingTask(prev => prev ? { ...prev, ...updatedFields } : null);
-      }
-    } catch (err: unknown) { // FIX (Line 8944 equivalent): Type caught error as unknown
-      console.error("Failed to update task", err);
-      toast.error(`Failed to update task: ${err instanceof Error ? err.message : String(err)}`);
+      if (!res.ok) throw new Error("Delete failed");
+      setTasks(tasks.filter(t => t.id !== taskId));
+      toast.success("Task deleted");
+    } catch (err) {
+      toast.error("Delete failed");
     }
   };
 
-
-  const exportTasksToCsv = () => {
-    if (tasks.length === 0) {
-      toast.error("No tasks to export.");
-      return;
-    }
-
-    const headers = [
-      "ID",
-      "Title",
-      "Description",
-      "Status",
-      "Due Date",
-      "Priority",
-      "Assigner Name",
-      "Assigner Email",
-      "Assignee Names",
-      "Assignee Emails",
-      "Created At",
-      "Updated At",
-      "Tags",
-      "Subtasks",
-      "Custom Fields",
-      "Attachments",
-      "Highlight Color",
-    ];
-
-    const csvRows = tasks.map((task) =>
-      [
-        task.id,
-        // --- CSV Export: Strip emojis from title for clean export ---
-        stripEmojis(task.title), // Apply stripEmojis here
-        // --- End CSV Export ---
-        task.description,
-        task.status,
-        task.dueDate ? format(new Date(task.dueDate), 'yyyy-MM-dd HH:mm:ss') : "",
-        task.priority,
-        task.assignerName,
-        task.assignerEmail,
-        task.assignees?.map(a => a.name).filter(Boolean).join(" | "),
-        task.assignees?.map(a => a.email).filter(Boolean).join(" | "),
-        task.createdAt ? format(new Date(task.createdAt), 'yyyy-MM-dd HH:mm:ss') : "",
-        task.updatedAt ? format(new Date(task.updatedAt), 'yyyy-MM-dd HH:mm:ss') : "",
-        task.tags?.join(", "),
-        task.subtasks?.map((sub) => sub.title).join("; "),
-        task.customFields && typeof task.customFields === "object"
-          ? Object.entries(task.customFields)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join(" | ")
-          : "",
-        task.attachments?.join("; "),
-        task.highlightColor || "",
-      ].map((cell) => `"${String(cell || '').replace(/"/g, '""')}"`)
-    );
-
-    const csvContent = [headers.join(","), ...csvRows.map((row) => row.join(","))].join("\n");
+  const exportToExcel = () => {
+    const headers = ["Title", "Status", "Shop Name", "Outlet Name", "Phone", "Customer Name", "Package", "Created At"];
+    const rows = tasks.map(t => [
+      stripEmojis(t.title),
+      t.status,
+      stripEmojis(t.customFields?.shopName as string),
+      stripEmojis(t.customFields?.outletName as string),
+      t.customFields?.phone,
+      stripEmojis(t.customFields?.customerName as string),
+      t.customFields?.packageAmount,
+      t.createdAt ? new Date(t.createdAt).toLocaleString() : ""
+    ]);
+    const csvContent = [headers, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `tasks_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv`;
-    document.body.appendChild(link);
+    link.download = `tasks_${format(new Date(), "yyyy-MM-dd")}.csv`;
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    toast.success("Tasks exported to CSV!");
   };
 
-  // ✅ Deleted: Line 8797 equivalent - uniqueCategoriesForDisplay is unused as TASK_CATEGORIES is passed directly
-  // const uniqueCategoriesForDisplay = useMemo(() => {
-  //   return TASK_CATEGORIES;
-  // }, []);
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      const matchesSearch = task.title.toLowerCase().includes(filterText.toLowerCase()) ||
+        task.customFields?.shopName?.toString().toLowerCase().includes(filterText.toLowerCase());
 
+      const matchesCategory = selectedCategories.length === 0 ||
+        selectedCategories.includes(task.tags?.[0]?.toLowerCase() || "other");
 
-  const uniqueStatuses = useMemo(() => {
-    const statuses = new Set<string>();
-    tasks.forEach(task => {
-      if (task.status) statuses.add(task.status);
+      const matchesDate = selectedDates.length === 0 || (() => {
+        const d = new Date(task.createdAt);
+        if (selectedDates.includes("Today") && isToday(d)) return true;
+        if (selectedDates.includes("Last 7 Days") && d >= subDays(new Date(), 7)) return true;
+        if (selectedDates.includes("This Month") && d >= startOfMonth(new Date())) return true;
+        return false;
+      })();
+
+      const isHidden = !showAllTasksMode && hiddenCardIds.has(task.id);
+
+      return matchesSearch && matchesCategory && matchesDate && !isHidden;
+    }).sort((a, b) => {
+      const valA = a[sortBy] || "";
+      const valB = b[sortBy] || "";
+      const dir = sortDirection === "asc" ? 1 : -1;
+      return valA < valB ? -1 * dir : valA > valB ? 1 * dir : 0;
     });
-    return Array.from(statuses).sort();
-  }, [tasks]);
+  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds]);
 
-  const uniqueAssignees = useMemo(() => {
+  const allStatuses = useMemo(() => Array.from(new Set(tasks.map(t => t.status))), [tasks]);
+  const allAssignees = useMemo(() => {
     const assignees = new Set<string>();
-    tasks.forEach(task => {
-      if (task.assignees && Array.isArray(task.assignees)) {
-        task.assignees.forEach(assignee => {
-          if (assignee && (assignee.name || assignee.email)) {
-            assignees.add(assignee.name || assignee.email || '');
-          }
-        });
-      }
+    tasks.forEach(t => {
+      if (t.assigneeName) assignees.add(t.assigneeName);
+      t.assignees?.forEach(a => { if (a.name) assignees.add(a.name); });
     });
-    return Array.from(assignees).sort();
+    return Array.from(assignees);
   }, [tasks]);
 
-  // --- Filtering and Sorting Logic (Memoized) ---
-  const visibleTasks = useMemo(() => {
-    let filtered = [...tasks]; // Start with a copy of all tasks
-
-    // 1. Text Filtering
-    if (filterText) {
-      const lowerFilterText = filterText.toLowerCase();
-      filtered = filtered.filter(task =>
-        task.title?.toLowerCase().includes(lowerFilterText) ||
-        task.description?.toLowerCase().includes(lowerFilterText) ||
-        // Check for existence before calling .toLowerCase() on customFields properties
-        (task.customFields?.shopName && (task.customFields.shopName as string).toLowerCase().includes(lowerFilterText)) ||
-        (task.customFields?.email && (task.customFields.email as string).toLowerCase().includes(lowerFilterText)) ||
-        (task.customFields?.phone && (task.customFields.phone as string).toLowerCase().includes(lowerFilterText)) ||
-        task.assignees?.some(a => (a.name || a.email)?.toLowerCase().includes(lowerFilterText)) ||
-        task.status?.toLowerCase().includes(lowerFilterText) ||
-        task.assignerName?.toLowerCase().includes(lowerFilterText) ||
-        (task.customFields?.location && (task.customFields.location as string).toLowerCase().includes(lowerFilterText)) ||
-        task.tags?.some(tag => tag.toLowerCase().includes(lowerFilterText)) ||
-        task.notes?.some(note => note.content?.toLowerCase().includes(lowerFilterText))
-      );
-    }
-
-    // 2. Category Filtering (THE CRUCIAL FIX HERE)
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((t) => {
-        const strippedTaskTitle = stripEmojis(t.title || "").toLowerCase();
-        return selectedCategories.some(
-          (catValue) => stripEmojis(catValue).toLowerCase() === strippedTaskTitle
-        );
-      });
-    }
-
-
-    // 3. Status Filtering
-    if (selectedStatuses.length > 0) {
-      filtered = filtered.filter(task =>
-        task.status && selectedStatuses.includes(task.status)
-      );
-    }
-
-    // 4. Assignee Filtering
-    if (selectedAssignees.length > 0) {
-      filtered = filtered.filter(task =>
-        task.assignees?.some(assignee =>
-          assignee && (assignee.name || assignee.email) && selectedAssignees.includes(assignee.name || assignee.email || '')
-        )
-      );
-    }
-
-    // 5. Date Filtering
-    if (selectedDates.length > 0) {
-      const now = new Date();
-      filtered = filtered.filter(task => {
-        const taskDate = task.createdAt ? new Date(task.createdAt) : null;
-        if (!taskDate) return false;
-
-        return selectedDates.some(dateFilter => {
-          switch (dateFilter) {
-            case "today":
-              return isToday(taskDate);
-            case "yesterday":
-              const yesterday = subDays(now, 1);
-              return format(taskDate, "yyyy-MM-dd") === format(yesterday, "yyyy-MM-dd");
-            case "last_7_days":
-              const sevenDaysAgo = subDays(now, 7);
-              // Ensure taskDate is within the last 7 days including today
-              return taskDate >= sevenDaysAgo && taskDate <= now;
-            case "this_month":
-              const startOfCurrentMonth = startOfMonth(now);
-              return taskDate >= startOfCurrentMonth && taskDate <= now;
-            case "last_month":
-              const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-              const startOfLastMonth = startOfMonth(prevMonth);
-              const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-              return taskDate >= startOfLastMonth && taskDate <= endOfLastMonth;
-            case "this_year":
-              const startOfCurrentYear = startOfYear(now);
-              return taskDate >= startOfCurrentYear && taskDate <= now;
-            default:
-              return true;
-          }
-        });
-      });
-    }
-
-    // 6. Sorting
-    filtered.sort((a, b) => {
-      // FIX (Lines 8913-8944 equivalent): Replace any with proper types
-      let aValue: string | number | Date | undefined | null;
-      let bValue: string | number | Date | undefined | null;
-
-      switch (sortBy) {
-        case "createdAt":
-          aValue = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          bValue = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          break;
-        case "dueDate":
-          aValue = a.dueDate ? new Date(a.dueDate).getTime() : Infinity; // Tasks with no due date come last
-          bValue = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-          break;
-        case "title":
-          aValue = a.title || "";
-          bValue = b.title || "";
-          break;
-        case "status":
-          aValue = a.status || "";
-          bValue = b.status || "";
-          break;
-        case "shopName":
-            // Access customFields safely and ensure it's a string
-            aValue = (a.customFields && typeof a.customFields === 'object' && a.customFields.shopName)
-                       ? String(a.customFields.shopName) : "";
-            bValue = (b.customFields && typeof b.customFields === 'object' && b.customFields.shopName)
-                       ? String(b.customFields.shopName) : "";
-            break;
-        case "priority":
-          const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2, "": 3, undefined: 3, null: 3 };
-          aValue = priorityOrder[String(a.priority).toLowerCase()] ?? 3;
-          bValue = priorityOrder[String(b.priority).toLowerCase()] ?? 3;
-          break;
-        // Handle other fields dynamically if sortBy can be a direct key of TaskType
-        default:
-          // Ensure that sortBy is a key of TaskType or a custom field key that can be directly accessed
-          const safeSortBy = sortBy as keyof TaskType; // Cast to known key
-          aValue = a[safeSortBy] as typeof aValue; // Access property using the key
-          bValue = b[safeSortBy] as typeof bValue;
-      }
-
-      // Handle number comparison
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      }
-      // Handle string comparison (case-insensitive)
-      return sortDirection === "asc"
-        ? String(aValue || '').toLowerCase().localeCompare(String(bValue || '').toLowerCase())
-        : String(bValue || '').toLowerCase().localeCompare(String(aValue || '').toLowerCase());
-    });
-
-    return filtered;
-  }, [
-    tasks,
-    filterText,
-    selectedCategories, // This is now an array of "values" like "zomato onboarding"
-    selectedStatuses,
-    selectedAssignees,
-    selectedDates,
-    sortBy,
-    sortDirection,
-  ]);
-
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
   return (
-    <div className="p-4">
-      <audio ref={audioRef} src="/alert.mp3" preload="auto" loop />
+    <div className="p-4 bg-slate-50 min-h-screen">
+      <audio ref={audioRef} src="/notification.wav" preload="auto" />
 
-      <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
-        {/* --- BoardFilters Component --- */}
-        <BoardFilters
-          filterText={filterText}
-          setFilterText={setFilterText}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          sortDirection={sortDirection}
-          setSortDirection={setSortDirection}
-          selectedCategories={selectedCategories}
-          setSelectedCategories={setSelectedCategories}
-          // Pass TASK_CATEGORIES directly as a prop to BoardFilters for rendering
-          // It now expects an array of { label, value } objects for categories
-          allCategories={TASK_CATEGORIES}
-          selectedStatuses={selectedStatuses}
-          setSelectedStatuses={setSelectedStatuses}
-          allStatuses={uniqueStatuses}
-          selectedAssignees={selectedAssignees}
-          setSelectedAssignees={setSelectedAssignees}
-          allAssignees={uniqueAssignees}
-          selectedDates={selectedDates}
-          setSelectedDates={setSelectedDates}
-        />
-        {/* --- End BoardFilters Component --- */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Team Board</h1>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+            {filteredTasks.length} Active Tasks
+          </p>
+        </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* "Show My Tasks" button */}
+        <div className="flex items-center gap-3">
           <button
-            onClick={handleShowOnlyVisible}
-            className={`px-3 py-2 text-sm rounded-lg border ${
-              !showAllTasksMode
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "text-blue-600 border-blue-600 hover:bg-blue-100"
-            } flex items-center gap-1`}
+            onClick={() => setShowAllTasksMode(!showAllTasksMode)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${showAllTasksMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-100 text-slate-600'
+              }`}
           >
-            👁️ Show My Tasks
+            {showAllTasksMode ? "Hide Archived" : "Show All"}
           </button>
-          {/* "Show All Tasks" button (available to all users) */}
-          {/* <button
-            onClick={handleShowAllTasks}
-            className={`px-3 py-2 text-sm rounded-lg border ${
-              showAllTasksMode
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "text-blue-600 border-blue-600 hover:bg-blue-100"
-            } flex items-center gap-1`}
-          >
-            🌐 Show All Tasks
-          </button> */}
-
-{/* 
-          <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-2 text-sm rounded-lg border ${
-              autoRefresh
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : "bg-green-600 text-white hover:bg-green-700"
-            } flex items-center gap-1`}
-          >
-            {autoRefresh ? "⏸️ Pause Auto Refresh" : "▶️ Resume Auto Refresh"}
-          </button> */}
-          <button
-  onClick={fetchTasks}
-  className="px-3 py-2 text-sm rounded-lg border bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1"
->
-  🔄 Refresh
-</button>
-
 
           <button
-            onClick={exportTasksToCsv}
-            disabled={tasks.length === 0}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white ${
-              tasks.length === 0
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-green-600 hover:bg-green-700"
-            }`}
-            aria-label="Export tasks to CSV"
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold uppercase tracking-wider border border-emerald-100 hover:bg-emerald-100 transition-colors"
           >
-            <FaFileExcel /> Export to Excel
+            <FaFileExcel /> Export
           </button>
         </div>
       </div>
 
-      {loading && (
-        <div className="text-center text-lg text-gray-500 my-8">
-          Loading tasks...
-        </div>
-      )}
+      <BoardFilters
+        filterText={filterText}
+        setFilterText={setFilterText}
+        sortBy={sortBy}
+        setSortBy={(val) => setSortBy(val as keyof TaskType)}
+        sortDirection={sortDirection}
+        setSortDirection={setSortDirection}
+        selectedCategories={selectedCategories}
+        setSelectedCategories={setSelectedCategories}
+        selectedStatuses={selectedStatuses}
+        setSelectedStatuses={setSelectedStatuses}
+        selectedAssignees={selectedAssignees}
+        setSelectedAssignees={setSelectedAssignees}
+        selectedDates={selectedDates}
+        setSelectedDates={setSelectedDates}
+        allCategories={TASK_CATEGORIES}
+        allStatuses={allStatuses}
+        allAssignees={allAssignees}
+      />
 
-      {!loading && tasks.length === 0 && (
-        <div className="text-center text-lg text-gray-500 my-8">
-          No tasks to display.
-        </div>
-      )}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          {columns.map(col => (
+            <div key={col.id} className="flex flex-col gap-4">
+              <div className={`flex items-center justify-between p-4 rounded-2xl border-l-4 ${col.color} bg-white shadow-sm font-black text-slate-700 uppercase tracking-widest text-xs`}>
+                <span>{col.title}</span>
+                <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-[10px]">{filteredTasks.filter(t => t.status === col.id).length}</span>
+              </div>
 
-      {!loading && tasks.length > 0 && (
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex flex-col md:flex-row gap-4">
-            {columns.map((col) => (
-              <Droppable droppableId={col.id} key={col.id}>
+              <Droppable droppableId={col.id}>
                 {(provided) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={`rounded-lg p-4 flex-1 min-h-[400px] ${col.bgColor}`}
-                  >
-                    <h2
-                      className={`text-lg font-bold mb-3 text-purple-900 border-b pb-2 ${col.color}`}
-                    >
-                      {col.title} ({visibleTasks.filter(t => t.status === col.id && (showAllTasksMode || !hiddenCardIds.has(t.id))).length})
-                    </h2>
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="min-h-[500px] flex flex-col gap-4">
+                    {filteredTasks.filter(t => t.status === col.id).map((task, index) => (
+                      <Draggable key={task.id} draggableId={task.id} index={index}>
+                        {(provided) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative"
+                            style={{
+                              ...provided.draggableProps.style,
+                              borderLeft: task.highlightColor ? `4px solid ${task.highlightColor}` : undefined
+                            }}
+                          >
+                            <TaskDetailsCard
+                              task={task}
+                              isAdmin={userRole === "master" || userRole === "admin"}
+                              onDelete={handleDeleteTask}
+                              onUpdateTask={handleFieldUpdate}
+                              onFloatRequest={setFloatingTask}
+                            />
 
-                    {visibleTasks
-                      .filter((task) => task.status === col.id)
-                      .filter((task) => showAllTasksMode || !hiddenCardIds.has(task.id))
-                      .map((task, index) => (
-                        <Draggable draggableId={task.id} index={index} key={task.id}>
-                          {(provided) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              className={`bg-white p-4 mb-3 rounded-xl shadow-md border-l-4 ${task.highlightColor ? `border-[${task.highlightColor}]` : 'border-purple-500'}`}
-                              style={{
-                                ...provided.draggableProps.style,
-                                borderLeftColor: task.highlightColor || undefined,
-                              }}
-                            >
-                              {/* Pass onFloatRequest to TaskDetailsCard */}
-                              <TaskDetailsCard
-                                task={task}
-                                isAdmin={userRole === "master"} // Pass isAdmin based on user role
-                                onDelete={handleDeleteTask}
-                                onUpdateTask={handleFieldUpdate}
-                                onFloatRequest={setFloatingTask} // This sets the task to be floated
-                              />
-
-                              <div className="flex gap-2 mt-2">
-                                {showAllTasksMode && hiddenCardIds.has(task.id) ? (
-                                  <button
-                                    onClick={() => handleToggleHideUnhide(task.id)}
-                                    className="text-sm text-blue-600 hover:text-blue-700"
-                                  >
-                                    👁️ Unhide This Task
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleToggleHideUnhide(task.id)}
-                                    className="text-sm text-gray-500 hover:text-gray-700"
-                                  >
-                                    🙈 Hide This Task
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => setEditingTask(task)}
-                                  className="text-sm text-blue-600"
-                                >
-                                  ✏️ Edit
-                                </button>
-                                {userRole === "master" && (
-                                  <button
-                                    onClick={() => handleDeleteTask(task.id)}
-                                    className="text-sm text-red-600"
-                                  >
-                                    🗑️ Delete
-                                  </button>
-                                )}
-                              </div>
+                            <div className="flex gap-2 mt-4 pt-3 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleToggleHideUnhide(task.id)} className="text-[9px] font-black uppercase text-slate-400 hover:text-indigo-600">
+                                {hiddenCardIds.has(task.id) ? "Show" : "Hide"}
+                              </button>
+                              <button onClick={() => setEditingTask(task)} className="text-[9px] font-black uppercase text-slate-400 hover:text-indigo-600">Edit</button>
                             </div>
-                          )}
-                        </Draggable>
-                      ))}
-
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
                     {provided.placeholder}
                   </div>
                 )}
               </Droppable>
-            ))}
-          </div>
-        </DragDropContext>
-      )}
+            </div>
+          ))}
+        </div>
+      </DragDropContext>
 
       {editingTask && (
         <EditTaskModal
           task={editingTask}
           onClose={() => setEditingTask(null)}
-          onSave={fetchTasks} // onSave should trigger a re-fetch of tasks
+          onSave={() => fetchTasks(false)}
           onDelete={handleDeleteTask}
         />
       )}
 
-      {/* NEW: Render FloatingTaskCard conditionally at the Board level */}
       {floatingTask && (
         <FloatingTaskCard
           task={floatingTask}
-          isAdmin={userRole === "master"} // Pass isAdmin prop
-          onDelete={handleDeleteTask} // Pass delete handler
-          onUpdateTask={handleFieldUpdate} // Pass update handler
-          onClose={() => setFloatingTask(null)} // Function to close the floating card
+          isAdmin={userRole === "master" || userRole === "admin"}
+          onDelete={handleDeleteTask}
+          onUpdateTask={handleFieldUpdate}
+          onClose={() => setFloatingTask(null)}
         />
       )}
     </div>
   );
 }
-
-
-
-

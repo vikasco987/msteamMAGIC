@@ -291,6 +291,7 @@ export interface Task {
   title: string;
   description?: string;
   status: string;
+  highlightColor?: string;
   tags: string[];
   dueDate?: string | Date;
   priority?: string;
@@ -320,6 +321,8 @@ export interface Task {
   startDate?: string;
   endDate?: string;
   timeline?: string; // A general timeline description or date string
+  amount?: number;
+  amountReceived?: number;
 
   // URL fields for documents/images
   aadhaarUrl?: string;
