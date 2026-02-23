@@ -332,7 +332,7 @@ export default function CRMSpreadsheetPage() {
         if (conditions.length > 0) {
             results = results.filter(r => {
                 return conditions.every(cond => {
-                    const isInternal = !!data.internalColumns.find(ic => ic.id === cond.colId);
+                    const isInternal = !!(data.internalColumns || []).find(ic => ic.id === cond.colId);
                     const cellVal = getCellValue(r.id, cond.colId, isInternal);
                     const val = (cellVal || "").toLowerCase();
                     const targetVal = cond.val.toLowerCase();
@@ -346,14 +346,19 @@ export default function CRMSpreadsheetPage() {
             });
         }
         return results;
-    }, [data, searchTerm, conditions, data?.internalColumns]);
+    }, [data, searchTerm, conditions]);
 
     const groupedResponses = useMemo(() => {
-        if (!groupByColId) return {};
+        if (!groupByColId || !data) return {};
         const groups: Record<string, FormResponse[]> = {};
-        const groupCol = data?.internalColumns?.find(c => c.id === groupByColId);
-        const options = groupCol?.options || [];
-        options.forEach((opt: any) => groups[opt.label] = []);
+        const groupCol = data.internalColumns?.find(c => c.id === groupByColId);
+        const options = groupCol?.options;
+
+        if (Array.isArray(options)) {
+            options.forEach((opt: any) => {
+                if (opt && opt.label) groups[opt.label] = [];
+            });
+        }
         groups["Unassigned"] = [];
 
         filteredResponses.forEach(res => {
@@ -465,7 +470,7 @@ export default function CRMSpreadsheetPage() {
                                                 </div>
                                             </th>
                                         ))}
-                                        {data?.internalColumns.map(ic => {
+                                        {data?.internalColumns?.map(ic => {
                                             const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
                                             return (
                                                 <th key={ic.id} className="px-14 py-8 border-b border-r border-slate-200 text-[11px] font-black text-slate-900 uppercase tracking-[0.3em] bg-indigo-50/10 min-w-[280px]">
@@ -473,7 +478,7 @@ export default function CRMSpreadsheetPage() {
                                                         <div className="flex items-center gap-4">
                                                             <div className="p-2.5 bg-white rounded-xl text-indigo-600 shadow-sm border border-indigo-50"><TypeIcon size={18} /></div> {ic.label}
                                                         </div>
-                                                        {(ic.visibleToRoles?.length > 0 || ic.visibleToUsers?.length > 0) && (
+                                                        {((ic.visibleToRoles && ic.visibleToRoles.length > 0) || (ic.visibleToUsers && ic.visibleToUsers.length > 0)) && (
                                                             <ShieldCheck size={14} className="text-indigo-400" />
                                                         )}
                                                     </div>
@@ -523,7 +528,7 @@ export default function CRMSpreadsheetPage() {
                                                     </td>
                                                 );
                                             })}
-                                            {data?.internalColumns.map(ic => {
+                                            {data?.internalColumns?.map(ic => {
                                                 const val = getCellValue(res.id, ic.id, true);
                                                 const isEditing = editingCell?.rowId === res.id && editingCell?.colId === ic.id;
                                                 const metadata = data.internalValues?.find(v => v.responseId === res.id && v.columnId === ic.id);
@@ -540,7 +545,7 @@ export default function CRMSpreadsheetPage() {
                                                             ic.type === "dropdown" ? (
                                                                 <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-black uppercase text-indigo-700 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, ic.id, e.target.value, true); setEditingCell(null); }}>
                                                                     <option value="">Select...</option>
-                                                                    {ic.options?.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                    {Array.isArray(ic.options) && ic.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                 </select>
                                                             ) : ic.type === "date" ? (
                                                                 <input type="date" autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
@@ -622,13 +627,13 @@ export default function CRMSpreadsheetPage() {
                                             >
                                                 <div className="flex items-start justify-between mb-6">
                                                     <div className="w-10 h-10 rounded-[16px] bg-slate-900 text-white flex items-center justify-center text-[10px] font-black uppercase">
-                                                        {item.submittedByName[0]}
+                                                        {item.submittedByName ? item.submittedByName[0] : "?"}
                                                     </div>
                                                     <span className="text-[9px] font-black text-slate-300 uppercase">{safeFormat(item.submittedAt, "MMM dd")}</span>
                                                 </div>
                                                 <h4 className="text-sm font-black text-slate-800 mb-2 truncate">{item.submittedByName}</h4>
                                                 <div className="space-y-2 mt-4">
-                                                    {data.form.fields.slice(0, 2).map(f => (
+                                                    {data?.form?.fields?.slice(0, 2).map(f => (
                                                         <div key={f.id} className="flex items-center justify-between text-[10px] font-bold text-slate-400">
                                                             <span>{f.label}:</span>
                                                             <span className="text-slate-600">{getCellValue(item.id, f.id, false) || "—"}</span>
