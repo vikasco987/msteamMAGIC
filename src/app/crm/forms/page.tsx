@@ -22,6 +22,8 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import toast from "react-hot-toast";
 
+import { useUser } from "@clerk/nextjs";
+
 interface FormSummary {
     id: string;
     title: string;
@@ -33,20 +35,34 @@ interface FormSummary {
 }
 
 export default function CRMFormsList() {
+    const { user, isLoaded } = useUser();
     const [forms, setForms] = useState<FormSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
 
+    // Sync isMaster check with Metadata (TeamBoard Logic)
+    useEffect(() => {
+        if (isLoaded && user) {
+            const role = (user.publicMetadata?.role as string || "user").toUpperCase();
+            setUserRole(role);
+            if (role === "ADMIN" || role === "MASTER") {
+                setIsMaster(true);
+            }
+        }
+    }, [isLoaded, user]);
+
     const fetchForms = async () => {
         try {
             const res = await fetch("/api/crm/forms");
             const data = await res.json();
             setForms(data.forms || []);
-            const role = (data.userRole || "GUEST").toUpperCase();
-            setUserRole(role);
-            setIsMaster(data.isMaster || role === "ADMIN" || role === "MASTER");
+            // Also update based on API response if slightly different
+            const apiRole = (data.userRole || "GUEST").toUpperCase();
+            if (apiRole === "ADMIN" || apiRole === "MASTER") {
+                setIsMaster(true);
+            }
         } catch (err) {
             toast.error("Failed to fetch forms");
         } finally {
@@ -54,7 +70,9 @@ export default function CRMFormsList() {
         }
     };
 
-    useEffect(() => { fetchForms(); }, []);
+    useEffect(() => {
+        if (isLoaded) fetchForms();
+    }, [isLoaded]);
 
     const copyToClipboard = (id: string) => {
         const url = `${window.location.origin}/f/${id}`;

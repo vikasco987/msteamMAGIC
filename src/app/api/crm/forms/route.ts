@@ -4,21 +4,29 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 export async function GET() {
     try {
-        const { userId } = await auth();
+        const { userId, sessionClaims } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        // Get role from Clerk Metadata (Robustness like TeamBoard)
+        const metaRole = (sessionClaims?.metadata as any)?.role || "user";
 
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
         });
 
-        const userRole = (dbUser?.role || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        // Combine both sources, prioritize Admin/Master status
+        const dbRole = (dbUser?.role || "GUEST").toUpperCase();
+        const userRole = (metaRole || dbRole).toUpperCase();
+
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" ||
+            dbRole === "ADMIN" || dbRole === "MASTER";
 
         let whereClause = {};
         if (!isMaster) {
             whereClause = {
                 OR: [
                     { visibleToRoles: { has: userRole } },
+                    { visibleToRoles: { has: dbRole } },
                     { visibleToUsers: { has: userId } },
                     { createdBy: userId }
                 ]
@@ -44,15 +52,22 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
     try {
-        const { userId } = await auth();
+        const { userId, sessionClaims } = await auth();
         const user = await currentUser();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        // Get role and handle authorization (TeamBoard Consistency)
+        const metaRole = ((sessionClaims?.metadata as any)?.role || "user").toUpperCase();
+        
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
         });
+        const dbRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        if (dbUser?.role !== "ADMIN" && dbUser?.role !== "MASTER") {
+        const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" || 
+                           dbRole === "ADMIN" || dbRole === "MASTER";
+
+        if (!isAuthorized) {
             return NextResponse.json({ error: "Forbidden: Only Admin/Master can build forms" }, { status: 403 });
         }
 

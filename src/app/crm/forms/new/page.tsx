@@ -30,6 +30,8 @@ import { motion, Reorder } from "framer-motion";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
+import { useUser } from "@clerk/nextjs";
+
 type FieldType = "text" | "number" | "date" | "dropdown" | "checkbox" | "textarea" | "phone" | "email" | "file";
 
 interface FormField {
@@ -43,6 +45,7 @@ interface FormField {
 
 export default function FormBuilderPage() {
     const router = useRouter();
+    const { user, isLoaded } = useUser();
     const [title, setTitle] = useState("Untitled Form");
     const [description, setDescription] = useState("");
     const [fields, setFields] = useState<FormField[]>([]);
@@ -50,18 +53,29 @@ export default function FormBuilderPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [sidebarTab, setSidebarTab] = useState<"fields" | "permissions">("fields");
 
-    // Authorization Check
+    // Authorization Check (TeamBoard Consistency)
     React.useEffect(() => {
+        if (!isLoaded) return;
+
         const checkAuth = async () => {
+            // First check metadata (fastest)
+            const metaRole = (user?.publicMetadata?.role as string || "user").toUpperCase();
+
+            // Then fallback/verify with API
             const res = await fetch("/api/crm/forms");
             const data = await res.json();
-            if (data.userRole !== "ADMIN" && data.userRole !== "MASTER") {
+            const apiRole = (data.userRole || "GUEST").toUpperCase();
+
+            const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" ||
+                apiRole === "ADMIN" || apiRole === "MASTER";
+
+            if (!isAuthorized) {
                 toast.error("Unauthorized: Access Denied");
                 router.push("/crm/forms");
             }
         };
         checkAuth();
-    }, []);
+    }, [isLoaded, user, router]);
 
     // Visibility States
     const [visibleToRoles, setVisibleToRoles] = useState<string[]>([]);
