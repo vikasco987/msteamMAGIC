@@ -188,6 +188,7 @@ export default function CRMSpreadsheetPage() {
     const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("AND");
     const [savedViews, setSavedViews] = useState<SavedView[]>([]);
     const [autoApply, setAutoApply] = useState(true);
+    const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
@@ -607,6 +608,10 @@ export default function CRMSpreadsheetPage() {
             const res = await fetch(`/api/crm/forms/${params.id}/views?id=${id}`, { method: "DELETE" });
             if (res.ok) {
                 setSavedViews(savedViews.filter(v => v.id !== id));
+                if (activeViewId === id) {
+                    setActiveViewId(null);
+                    setConditions([]);
+                }
                 toast.success("View Purged");
             }
         } catch (err) { toast.error("Purge failed"); }
@@ -657,7 +662,14 @@ export default function CRMSpreadsheetPage() {
     const applySavedView = (view: any) => {
         setConditions(view.conditions);
         setFilterConjunction(view.conjunction as any);
+        setActiveViewId(view.id);
         toast.success(`Matrix calibrated: ${view.name}`);
+    };
+
+    const handleClearFilters = () => {
+        setConditions([]);
+        setActiveViewId(null);
+        toast.success("Filters Neutralized");
     };
 
     const toggleAllRows = () => {
@@ -686,53 +698,95 @@ export default function CRMSpreadsheetPage() {
             {/* SaaS Header */}
             <header className="h-[110px] bg-white border-b border-slate-200 px-12 flex items-center justify-between shrink-0 z-30 shadow-sm relative">
                 <div className="flex items-center gap-10">
-                    <button onClick={() => router.back()} className="p-4 bg-slate-50 border border-slate-100 rounded-[28px] hover:bg-white transition-all shadow-sm active:scale-90">
-                        <ArrowLeft size={22} className="text-slate-500" />
+                    <button onClick={() => router.back()} className="p-4 bg-slate-50 border border-slate-100 rounded-[28px] hover:bg-white transition-all shadow-sm active:scale-90 flex items-center gap-2 group">
+                        <ArrowLeft size={22} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
                     </button>
                     <div>
                         <div className="flex items-center gap-4 mb-3">
                             <h1 className="text-3xl font-black tracking-tighter leading-none">{data?.form?.title || "Project Ledger"}</h1>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
-                                <ShieldCheck size={14} className="text-indigo-500" /> Administrative Matrix
-                            </span>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 rounded-full border border-indigo-100">
+                                <Activity size={12} className="text-indigo-500" />
+                                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">v2.4 Active Matrix</span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-6">
-                            <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                                <button onClick={() => setCurrentView("table")} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all ${currentView === 'table' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
-                                    <Table size={16} />
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Grid View</span>
-                                </button>
-                                <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all ${currentView === 'kanban' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
-                                    <LayoutGrid size={16} />
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Kanban</span>
-                                </button>
-                            </div>
 
-                            <div className="h-10 w-px bg-slate-200" />
-
-                            <div className="flex items-center gap-3 overflow-x-auto max-w-[500px] no-scrollbar">
-                                <button onClick={() => setConditions([])} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border shrink-0 ${conditions.length === 0 ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>
-                                    Raw Data
-                                </button>
-                                {savedViews.map(view => {
-                                    const isActive = JSON.stringify(conditions) === JSON.stringify(view.conditions);
-                                    return (
-                                        <button
-                                            key={view.id}
-                                            onClick={() => applySavedView(view)}
-                                            className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border whitespace-nowrap shrink-0 ${isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200 hover:text-indigo-600'}`}
-                                        >
-                                            {view.name}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                        {/* Tab-style Saved Views */}
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={handleClearFilters}
+                                className={`px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap ${!activeViewId && conditions.length === 0 ? 'bg-white text-indigo-600 border-indigo-600 shadow-[0_-4px_10px_-4px_rgba(79,70,229,0.15)]' : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-50'}`}
+                            >
+                                Default Canvas
+                            </button>
+                            {savedViews.map(view => {
+                                const isActive = activeViewId === view.id;
+                                return (
+                                    <button
+                                        key={view.id}
+                                        onClick={() => applySavedView(view)}
+                                        className={`px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all border-b-2 group relative flex items-center gap-2 ${isActive ? 'bg-white text-indigo-600 border-indigo-600 shadow-[0_-4px_10px_-4px_rgba(79,70,229,0.15)]' : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-50'}`}
+                                    >
+                                        <Layers size={12} className={isActive ? 'text-indigo-600' : 'text-slate-300'} />
+                                        {view.name}
+                                    </button>
+                                );
+                            })}
+                            <button
+                                onClick={() => setIsFilterBuilderOpen(true)}
+                                className="px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-indigo-500 transition-all border-b-2 border-transparent hover:bg-indigo-50"
+                            >
+                                + New Segment
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-[40px] border border-slate-100 shadow-sm">
+                    {/* Quick Column Filters (Dropdown based) */}
+                    <div className="flex items-center gap-2 pr-6 border-r border-slate-100 mr-2">
+                        {getColumns.filter(c => c.type === "dropdown" || c.type === "date").slice(0, 2).map(col => (
+                            <div key={col.id} className="relative group/qf">
+                                <select
+                                    className="px-6 py-4 bg-slate-50 hover:bg-white border border-slate-100 rounded-[28px] text-[10px] font-black uppercase tracking-widest text-slate-500 focus:text-indigo-600 focus:ring-2 ring-indigo-100 outline-none appearance-none transition-all cursor-pointer min-w-[140px]"
+                                    onChange={(e) => {
+                                        if (e.target.value) {
+                                            setConditions([...conditions.filter(c => c.colId !== col.id), { colId: col.id, op: "equals", val: e.target.value }]);
+                                        } else {
+                                            setConditions(conditions.filter(c => c.colId !== col.id));
+                                        }
+                                    }}
+                                    value={conditions.find(c => c.colId === col.id)?.val || ""}
+                                >
+                                    <option value="">All {col.label}</option>
+                                    {col.type === "dropdown" && Array.isArray(col.options) && col.options.map((opt: any) => (
+                                        <option key={opt.label} value={opt.label}>{opt.label}</option>
+                                    ))}
+                                    {col.type === "date" && (
+                                        <>
+                                            <option value="today">Today</option>
+                                            <option value="this_week">This Week</option>
+                                        </>
+                                    )}
+                                </select>
+                                <ChevronDown size={10} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-hover/qf:text-indigo-400" />
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center border border-slate-200 p-1.5 rounded-[30px] shadow-sm bg-slate-50/50">
+                        <button onClick={() => setCurrentView("table")} className={`flex items-center gap-3 px-8 py-3.5 rounded-[22px] transition-all ${currentView === 'table' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                            <Table size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Grid View</span>
+                        </button>
+                        <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-3 px-8 py-3.5 rounded-[22px] transition-all ${currentView === 'kanban' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                            <LayoutGrid size={16} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Kanban</span>
+                        </button>
+                    </div>
+
+                    <div className="h-10 w-px bg-slate-200" />
+
+                    <div className="flex items-center gap-2 bg-white p-2 rounded-[40px] border border-slate-200 shadow-sm">
                         <div className="relative group">
                             <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors" size={18} />
                             <input
@@ -753,13 +807,9 @@ export default function CRMSpreadsheetPage() {
 
                     <button
                         onClick={() => setIsAddColumnOpen(true)}
-                        className="px-10 py-5.5 bg-white border-2 border-slate-100 text-slate-600 rounded-[40px] text-[10px] font-black uppercase tracking-widest hover:border-slate-900 hover:text-slate-900 transition-all flex items-center gap-3 active:scale-95"
+                        className="p-5.5 bg-white border border-slate-100 shadow-sm text-slate-400 rounded-full hover:border-indigo-500 hover:text-indigo-600 transition-all active:scale-90"
                     >
-                        <Plus size={22} className="text-indigo-600" /> Dimension
-                    </button>
-
-                    <button className="px-10 py-5.5 bg-slate-900 text-white rounded-[40px] text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-2xl transition-all shadow-slate-200 flex items-center gap-3 active:scale-95">
-                        <Download size={22} className="text-indigo-400" /> Export
+                        <Plus size={22} />
                     </button>
                 </div>
             </header>
@@ -1166,9 +1216,17 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="flex gap-4 pt-6">
-                                    <button onClick={() => { setConditions([]); setIsFilterBuilderOpen(false); }} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em]">Wipe Clears</button>
+                                    <button onClick={handleClearFilters} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-100 transition-all">Neutralize</button>
                                     <div className="flex-1 flex gap-2">
                                         <button onClick={() => setIsFilterBuilderOpen(false)} className="flex-1 py-6 bg-slate-900 text-white rounded-[35px] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl transition-all shadow-indigo-100 border-b-4 border-indigo-600">Deploy Segmentation ({filteredResponses.length} Matches)</button>
+
+                                        {!activeViewId && conditions.length > 0 && (
+                                            <button onClick={handleSaveView} className="px-8 py-6 bg-indigo-50 text-indigo-600 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em] border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center gap-2">
+                                                <Star size={14} className="fill-indigo-600" />
+                                                Archivize Workspace
+                                            </button>
+                                        )}
+
                                         <button onClick={() => setAutoApply(!autoApply)} className={`px-6 rounded-[35px] border-2 transition-all flex items-center gap-2 ${autoApply ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
                                             <Clock size={14} />
                                             <span className="text-[9px] font-black uppercase tracking-tighter">{autoApply ? "Live" : "Manual"}</span>
