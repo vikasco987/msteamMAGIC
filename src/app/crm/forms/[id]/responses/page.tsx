@@ -182,6 +182,7 @@ export default function CRMSpreadsheetPage() {
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
 
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
@@ -704,121 +705,82 @@ export default function CRMSpreadsheetPage() {
 
     return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900">
-            {/* SaaS Header */}
-            <header className="h-[110px] bg-white border-b border-slate-200 px-12 flex items-center justify-between shrink-0 z-30 shadow-sm relative">
-                <div className="flex items-center gap-10">
-                    <button onClick={() => router.back()} className="p-4 bg-slate-50 border border-slate-100 rounded-[28px] hover:bg-white transition-all shadow-sm active:scale-90 flex items-center gap-2 group">
-                        <ArrowLeft size={22} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
+            {/* Premium Enterprise Header */}
+            <header className="h-[90px] bg-white border-b border-slate-200 px-8 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
+                <div className="flex items-center gap-6">
+                    <button onClick={() => router.back()} className="p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
+                        <ArrowLeft size={18} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
                     </button>
                     <div>
-                        <div className="flex items-center gap-4 mb-3">
-                            <h1 className="text-3xl font-black tracking-tighter leading-none">{data?.form?.title || "Project Ledger"}</h1>
-                            <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 rounded-full border border-indigo-100">
-                                <Activity size={12} className="text-indigo-500" />
-                                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">v2.4 Active Matrix</span>
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                            <div className="flex items-center gap-2 px-2.5 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Matrix</span>
                             </div>
                         </div>
 
-                        {/* Tab-style Saved Views */}
-                        <div className="flex items-center gap-1">
+                        {/* Fast View Switchers */}
+                        <div className="flex items-center gap-4 mt-1.5">
                             <button
                                 onClick={handleClearFilters}
-                                className={`px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap ${!activeViewId && conditions.length === 0 ? 'bg-white text-indigo-600 border-indigo-600 shadow-[0_-4px_10px_-4px_rgba(79,70,229,0.15)]' : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-50'}`}
+                                className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
                             >
                                 Default Canvas
                             </button>
-                            {savedViews.map(view => {
-                                const isActive = activeViewId === view.id;
-                                return (
-                                    <button
-                                        key={view.id}
-                                        onClick={() => applySavedView(view)}
-                                        className={`px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all border-b-2 group relative flex items-center gap-2 ${isActive ? 'bg-white text-indigo-600 border-indigo-600 shadow-[0_-4px_10px_-4px_rgba(79,70,229,0.15)]' : 'text-slate-400 hover:text-slate-600 border-transparent hover:bg-slate-50'}`}
-                                    >
-                                        <Layers size={12} className={isActive ? 'text-indigo-600' : 'text-slate-300'} />
-                                        {view.name}
-                                    </button>
-                                );
-                            })}
-                            <button
-                                onClick={() => setIsFilterBuilderOpen(true)}
-                                className="px-5 py-2.5 rounded-t-xl text-[10px] font-black uppercase tracking-widest text-slate-300 hover:text-indigo-500 transition-all border-b-2 border-transparent hover:bg-indigo-50"
-                            >
-                                + New Segment
-                            </button>
+                            {savedViews.slice(0, 3).map(view => (
+                                <button
+                                    key={view.id}
+                                    onClick={() => applySavedView(view)}
+                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    {view.name}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-                    {/* Quick Column Filters */}
-                    <div className="flex items-center gap-2 pr-4 border-r border-[#EAECF0]">
-                        {getColumns.filter(c => c.type === "dropdown" || c.type === "date").slice(0, 2).map(col => (
-                            <div key={col.id} className="relative group/qf">
-                                <select
-                                    className="px-4 py-2 bg-white border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB] focus:ring-4 focus:ring-[#F4EBFF] focus:border-[#7F56D9] outline-none appearance-none transition-all cursor-pointer min-w-[140px] shadow-sm"
-                                    onChange={(e) => {
-                                        if (e.target.value) {
-                                            setConditions([...conditions.filter(c => c.colId !== col.id), { colId: col.id, op: "equals", val: e.target.value }]);
-                                        } else {
-                                            setConditions(conditions.filter(c => c.colId !== col.id));
-                                        }
-                                    }}
-                                    value={conditions.find(c => c.colId === col.id)?.val || ""}
-                                >
-                                    <option value="">All {col.label}</option>
-                                    {col.type === "dropdown" && Array.isArray(col.options) && col.options.map((opt: any) => (
-                                        <option key={opt.label} value={opt.label}>{opt.label}</option>
-                                    ))}
-                                    {col.type === "date" && (
-                                        <>
-                                            <option value="today">Today</option>
-                                            <option value="this_week">This Week</option>
-                                        </>
-                                    )}
-                                </select>
-                                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#667085] pointer-events-none group-hover/qf:text-[#7F56D9]" />
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="flex items-center border border-[#EAECF0] p-1 rounded-xl bg-[#F9FAFB] shadow-sm">
-                        <button onClick={() => setCurrentView("table")} className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${currentView === 'table' ? 'bg-white text-[#7F56D9] shadow-sm border border-[#EAECF0]' : 'text-[#667085] hover:text-[#344054]'}`}>
-                            <Table size={16} />
-                            <span className="text-sm font-semibold">Grid</span>
-                        </button>
-                        <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${currentView === 'kanban' ? 'bg-white text-[#7F56D9] shadow-sm border border-[#EAECF0]' : 'text-[#667085] hover:text-[#344054]'}`}>
-                            <LayoutGrid size={16} />
-                            <span className="text-sm font-semibold">Kanban</span>
-                        </button>
-                    </div>
-
+                    {/* Integrated Search & Actions */}
                     <div className="flex items-center gap-2">
                         <div className="relative group">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#667085]" size={18} />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
                             <input
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Search records..."
-                                className="pl-11 pr-4 py-2 bg-white border border-[#D0D5DD] rounded-lg shadow-sm outline-none text-sm text-[#101828] placeholder-[#667085] focus:ring-4 focus:ring-[#F4EBFF] focus:border-[#7F56D9] transition-all min-w-[280px]"
+                                placeholder="Search everything..."
+                                className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[320px]"
                             />
                         </div>
+                        
                         <button
                             onClick={() => setIsFilterBuilderOpen(true)}
-                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border shadow-sm font-semibold text-sm ${conditions.length > 0 ? 'bg-[#F9F5FF] text-[#7F56D9] border-[#D6BBFB]' : 'bg-white text-[#344054] border-[#D0D5DD] hover:bg-[#F9FAFB]'}`}
+                            className={`px-5 py-2.5 rounded-xl transition-all flex items-center gap-2 border font-black text-[11px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                         >
-                            <Filter size={18} />
+                            <Filter size={14} />
                             Filters
-                            {conditions.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-[#7F56D9] text-white text-[10px] rounded-full">{conditions.length}</span>}
+                            {conditions.length > 0 && <span className="ml-1 w-5 h-5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[9px]">{conditions.length}</span>}
+                        </button>
+
+                        <div className="w-[1px] h-8 bg-slate-200 mx-2" />
+
+                        <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
+                            <button onClick={() => setCurrentView("table")} className={`p-2 rounded-lg transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <Table size={18} />
+                            </button>
+                            <button onClick={() => setCurrentView("kanban")} className={`p-2 rounded-lg transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <LayoutGrid size={18} />
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={() => setIsAddColumnOpen(true)}
+                            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                        >
+                            <Plus size={16} /> Add Column
                         </button>
                     </div>
-
-                    <button
-                        onClick={() => setIsAddColumnOpen(true)}
-                        className="p-5.5 bg-white border border-slate-100 shadow-sm text-slate-400 rounded-full hover:border-indigo-500 hover:text-indigo-600 transition-all active:scale-90"
-                    >
-                        <Plus size={22} />
-                    </button>
                 </div>
             </header>
 
@@ -831,40 +793,40 @@ export default function CRMSpreadsheetPage() {
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
-                            className="h-full overflow-auto custom-scrollbar"
+                            className="h-full w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200"
                         >
-                            <table className="border-separate border-spacing-0 w-full min-w-[max-content]">
-                                <thead className="sticky top-0 z-20">
+                            <table className="table-fixed w-full min-w-[1600px] border-separate border-spacing-0">
+                                <thead className="sticky top-0 z-[40]">
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0]">
                                         {isMaster && (
-                                            <th className="px-6 py-4 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[35]">
+                                            <th className="w-[60px] px-4 py-4 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45]">
                                                 <div
                                                     onClick={toggleAllRows}
-                                                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-[#7F56D9] border-[#7F56D9]' : 'bg-white border-[#D0D5DD]'}`}
+                                                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
                                                 >
                                                     {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={12} className="text-white" />}
                                                 </div>
                                             </th>
                                         )}
-                                        <th className={`px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left sticky ${isMaster ? 'left-[45px]' : 'left-0'} bg-[#F9FAFB] z-30 min-w-[100px]`}>View</th>
-                                        <th className={`px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left sticky ${isMaster ? 'left-[145px]' : 'left-[100px]'} bg-[#F9FAFB] z-30 min-w-[280px]`}>Source Info</th>
+                                        <th className={`w-[80px] px-4 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-[#475467] text-center sticky ${isMaster ? 'left-[60px]' : 'left-0'} bg-[#F9FAFB] z-40`}>View</th>
+                                        <th className={`w-[300px] px-6 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-[#475467] text-left sticky ${isMaster ? 'left-[140px]' : 'left-[80px]'} bg-[#F9FAFB] z-40`}>Submitter info</th>
                                         {data?.form?.fields?.map(f => (
-                                            <th key={f.id} className="px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left min-w-[240px] bg-[#F9FAFB]">
-                                                <div className="flex items-center gap-2">
-                                                    <Type size={14} className="text-[#667085]" /> {f.label}
+                                            <th key={f.id} className="min-w-[220px] px-6 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-[#475467] text-left bg-[#F9FAFB]">
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <Type size={14} className="text-[#667085] shrink-0" /> {f.label}
                                                 </div>
                                             </th>
                                         ))}
                                         {data?.internalColumns?.map(ic => {
                                             const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
                                             return (
-                                                <th key={ic.id} className="px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left bg-indigo-50/20 min-w-[240px]">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            <TypeIcon size={14} className="text-indigo-600" /> {ic.label}
+                                                <th key={ic.id} className="min-w-[220px] px-6 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-indigo-600 text-left bg-indigo-50/30">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2 truncate">
+                                                            <TypeIcon size={14} className="text-indigo-600 shrink-0" /> {ic.label}
                                                         </div>
                                                         {((ic.visibleToRoles && ic.visibleToRoles.length > 0) || (ic.visibleToUsers && ic.visibleToUsers.length > 0)) && (
-                                                            <ShieldCheck size={14} className="text-indigo-400" />
+                                                            <ShieldCheck size={14} className="text-indigo-400 shrink-0" />
                                                         )}
                                                     </div>
                                                 </th>
@@ -874,12 +836,12 @@ export default function CRMSpreadsheetPage() {
                                 </thead>
                                 <tbody>
                                     {paginatedResponses.map((res, rIdx) => (
-                                        <tr key={res.id} className="group hover:bg-[#F9FAFB] transition-all relative h-[80px]">
+                                        <tr key={res.id} className="group hover:bg-indigo-50/30 transition-all relative h-[80px]">
                                             {isMaster && (
-                                                <td className="px-6 py-4 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-10">
+                                                <td className="w-[60px] px-4 py-4 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30">
                                                     <div
                                                         onClick={() => toggleRowSelection(res.id)}
-                                                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-[#7F56D9] border-[#7F56D9]' : 'bg-white border-[#D0D5DD]'}`}
+                                                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
                                                     >
                                                         {selectedRows.includes(res.id) && <Check size={12} className="text-white" />}
                                                     </div>
@@ -891,15 +853,15 @@ export default function CRMSpreadsheetPage() {
                                                     : getCellValue(res.id, col.id, col.isInternal);
 
                                                 const commonProps = {
-                                                    className: `px-6 py-4 border-b border-[#EAECF0] transition-colors relative select-none cursor-default`
+                                                    className: `px-6 py-4 border-b border-[#EAECF0] transition-colors relative select-none`
                                                 };
 
                                                 if (col.id === "__profile") {
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} text-center sticky ${isMaster ? 'left-[45px]' : 'left-0'} bg-white group-hover:bg-[#F9FAFB] z-10`}>
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} w-[80px] text-center sticky ${isMaster ? 'left-[60px]' : 'left-0'} bg-white group-hover:bg-[#F9FAFB] z-30`}>
                                                             <button
                                                                 onClick={() => setSelectedResponse(res)}
-                                                                className="p-2.5 text-[#475467] hover:text-[#7F56D9] hover:bg-white rounded-lg transition-all border border-transparent hover:border-[#EAECF0] hover:shadow-sm"
+                                                                className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-transparent hover:border-indigo-100 hover:shadow-sm"
                                                             >
                                                                 <Maximize2 size={18} />
                                                             </button>
@@ -909,15 +871,15 @@ export default function CRMSpreadsheetPage() {
 
                                                 if (col.id === "__contributor") {
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} sticky ${isMaster ? 'left-[145px]' : 'left-[100px]'} bg-white group-hover:bg-[#F9FAFB] z-10`}>
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-10 h-10 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold capitalize border border-[#EAECF0]">
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} w-[300px] sticky ${isMaster ? 'left-[140px]' : 'left-[80px]'} bg-white group-hover:bg-[#F9FAFB] z-30`}>
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-xs font-black capitalize border border-slate-200 shrink-0">
                                                                     {res.submittedByName ? res.submittedByName[0] : "?"}
                                                                 </div>
                                                                 <div className="flex flex-col min-w-0">
-                                                                    <p className="text-sm font-semibold text-[#101828] truncate">{res.submittedByName || "Public User"}</p>
-                                                                    <p className="text-xs text-[#667085] flex items-center gap-1.5 mt-0.5">
-                                                                        <Clock size={12} /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
+                                                                    <p className="text-sm font-black text-slate-900 truncate">{res.submittedByName || "Public User"}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
+                                                                        <Clock size={10} /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -934,37 +896,39 @@ export default function CRMSpreadsheetPage() {
                                                         key={col.id}
                                                         {...commonProps}
                                                         onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
-                                                        className={`${commonProps.className} ${isEditing ? 'bg-white ring-2 ring-inset ring-[#7F56D9] z-20 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
+                                                        className={`${commonProps.className} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
                                                     >
                                                         {isEditing ? (
-                                                            col.type === "dropdown" ? (
-                                                                <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#101828] outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                    <option value="">Select...</option>
-                                                                    {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
-                                                                </select>
-                                                            ) : (
-                                                                <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-[#101828] outline-none" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
-                                                            )
+                                                            <div className="w-full">
+                                                                {col.type === "dropdown" ? (
+                                                                    <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-black text-slate-900 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                        <option value="">Select...</option>
+                                                                        {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                    </select>
+                                                                ) : (
+                                                                    <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-black text-slate-900 outline-none" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                )}
+                                                            </div>
                                                         ) : (
-                                                            <div className="flex items-center min-h-[24px]">
+                                                            <div className="flex items-center min-h-[24px] min-w-0">
                                                                 {col.type === "dropdown" && val ? (
-                                                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-[#ECFDF3] text-[#027A48] border-[#ABEFC6]' :
-                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]' :
-                                                                            val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-[#F2F4F7] text-[#344054] border-[#EAECF0]' :
+                                                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1.5 shrink-0 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                            val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-slate-100 text-slate-700 border-slate-200' :
                                                                                 'bg-indigo-50 text-indigo-700 border-indigo-100'
                                                                         }`}>
-                                                                        <div className={`w-1.5 h-1.5 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-[#027A48]' :
-                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-[#B42318]' :
-                                                                                'bg-[#344054]'
+                                                                        <div className={`w-1.5 h-1.5 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
+                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-500' :
+                                                                                'bg-indigo-500'
                                                                             }`} />
                                                                         {val}
                                                                     </span>
                                                                 ) : col.type === "currency" ? (
-                                                                    <span className="text-sm font-semibold text-[#101828] flex items-center gap-1">
-                                                                        <span className="text-[#667085] font-medium">₹</span>{val || "0.00"}
+                                                                    <span className="text-sm font-black text-slate-900 flex items-center gap-1 truncate">
+                                                                        <span className="text-slate-400 font-bold">₹</span>{val || "0.00"}
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="text-sm font-medium text-[#101828] truncate max-w-[200px]">{val || "—"}</span>
+                                                                    <span className="text-sm font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis">{val || "—"}</span>
                                                                 )}
                                                             </div>
                                                         )}
