@@ -213,3 +213,89 @@ export async function PATCH(
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+// Bulk update values (For Excel-like paste)
+export async function PUT(
+    req: NextRequest,
+    { params }: { params: { id: string } }
+) {
+    try {
+        const user = await currentUser();
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { updates } = await req.json(); // Array of { responseId, columnId, value, isInternal }
+        if (!Array.isArray(updates)) return NextResponse.json({ error: "Invalid updates format" }, { status: 400 });
+
+        const userName = `${user.firstName} ${user.lastName}`;
+
+        // Process updates in a transaction or loop (Prisma transaction is safer)
+        await prisma.$transaction(async (tx) => {
+            for (const update of updates) {
+                const { responseId, columnId, value, isInternal } = update;
+                let oldValue = "";
+                let colName = "";
+
+                if (isInternal) {
+                    const col = await tx.internalColumn.findUnique({ where: { id: columnId } });
+                    colName = col?.label || "Unknown Column";
+
+                    const existing = await tx.internalValue.findFirst({
+                        where: { responseId, columnId }
+                    });
+
+                    oldValue = existing?.value || "";
+
+                    if (existing) {
+                        await tx.internalValue.update({
+                            where: { id: existing.id },
+                            data: { value, updatedBy: user.id, updatedByName: userName }
+                        });
+                    } else {
+                        await tx.internalValue.create({
+                            data: { responseId, columnId, value, updatedBy: user.id, updatedByName: userName }
+                        });
+                    }
+                } else {
+                    const field = await tx.formField.findUnique({ where: { id: columnId } });
+                    colName = field?.label || "Form Field";
+
+                    const existing = await tx.responseValue.findFirst({
+                        where: { responseId, fieldId: columnId }
+                    });
+
+                    oldValue = existing?.value || "";
+
+                    if (existing) {
+                        await tx.responseValue.update({
+                            where: { id: existing.id },
+                            data: { value }
+                        });
+                    } else {
+                        await tx.responseValue.create({
+                            data: { responseId, fieldId: columnId, value }
+                        });
+                    }
+                }
+
+                if (oldValue !== value) {
+                    await tx.formActivity.create({
+                        data: {
+                            responseId,
+                            userId: user.id,
+                            userName: userName,
+                            type: "BULK_UPDATE",
+                            columnName: colName,
+                            oldValue: oldValue,
+                            newValue: value
+                        }
+                    });
+                }
+            }
+        });
+
+        return NextResponse.json({ success: true, count: updates.length });
+    } catch (error) {
+        console.error("PUT Bulk Update Error:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}

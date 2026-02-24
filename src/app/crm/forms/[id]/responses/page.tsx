@@ -69,6 +69,8 @@ interface InternalColumn {
     isRequired?: boolean;
     isLocked?: boolean;
     formId?: string;
+    visibleToRoles?: string[];
+    visibleToUsers?: string[];
 }
 
 interface ResponseValue {
@@ -153,15 +155,12 @@ export default function CRMSpreadsheetPage() {
     const [userSearchQuery, setUserSearchQuery] = useState("");
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
-    const searchUsers = async (q: string) => {
-        setUserSearchQuery(q);
-        if (q.length < 2) { setUserResults([]); return; }
-        try {
-            const res = await fetch(`/api/crm/users?q=${q}`);
-            const json = await res.json();
-            setUserResults(json);
-        } catch (err) { console.error(err); }
-    };
+    // Phase 3 — Excel Level Features
+    const [selection, setSelection] = useState<{
+        start: { row: number, col: number } | null,
+        end: { row: number, col: number } | null
+    }>({ start: null, end: null });
+    const [isSelecting, setIsSelecting] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -183,7 +182,212 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const searchUsers = async (q: string) => {
+        setUserSearchQuery(q);
+        if (q.length < 2) { setUserResults([]); return; }
+        try {
+            const res = await fetch(`/api/crm/users?q=${q}`);
+            const json = await res.json();
+            setUserResults(json);
+        } catch (err) { console.error(err); }
+    };
+
     useEffect(() => { fetchData(); }, [params.id]);
+
+    const getColumns = useMemo(() => {
+        if (!data) return [];
+        const cols: any[] = [
+            { id: "__profile", label: "Profile", isPublic: false, type: "static" },
+            { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
+        ];
+        (data.form?.fields || []).forEach(f => cols.push({ ...f, isInternal: false }));
+        (data.internalColumns || []).forEach(ic => cols.push({ ...ic, isInternal: true }));
+        return cols;
+    }, [data]);
+
+    const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
+        if (!data) return "";
+        if (isInternal) {
+            return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
+        }
+        const resp = data.responses?.find(r => r.id === responseId);
+        return resp?.values?.find(v => v.fieldId === colId)?.value || "";
+    };
+
+    const filteredResponses = useMemo(() => {
+        if (!data) return [];
+        let results = data.responses || [];
+
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            results = results.filter(r =>
+                (r.submittedByName || "").toLowerCase().includes(term) ||
+                r.values.some(v => (v.value || "").toLowerCase().includes(term))
+            );
+        }
+
+        if (conditions.length > 0) {
+            results = results.filter(r => {
+                return conditions.every(cond => {
+                    const isInternal = !!(data.internalColumns || []).find(ic => ic.id === cond.colId);
+                    const cellVal = getCellValue(r.id, cond.colId, isInternal);
+                    const val = (cellVal || "").toLowerCase();
+                    const targetVal = cond.val.toLowerCase();
+                    if (cond.op === "equals") return val === targetVal;
+                    if (cond.op === "contains") return val.includes(targetVal);
+                    if (cond.op === "gt") return parseFloat(val) > parseFloat(targetVal);
+                    if (cond.op === "lt") return parseFloat(val) < parseFloat(targetVal);
+                    if (cond.op === "not_empty") return val.trim().length > 0;
+                    return true;
+                });
+            });
+        }
+        return results;
+    }, [data, searchTerm, conditions, getCellValue]);
+
+    const groupedResponses = useMemo(() => {
+        if (!groupByColId || !data) return {};
+        const groups: Record<string, FormResponse[]> = {};
+        const groupCol = data.internalColumns?.find(c => c.id === groupByColId);
+        const options = groupCol?.options;
+
+        if (Array.isArray(options)) {
+            options.forEach((opt: any) => {
+                if (opt && opt.label) groups[opt.label] = [];
+            });
+        }
+        groups["Unassigned"] = [];
+
+        filteredResponses.forEach(res => {
+            const val = getCellValue(res.id, groupByColId, true);
+            if (groups[val]) groups[val].push(res);
+            else groups["Unassigned"].push(res);
+        });
+        return groups;
+    }, [filteredResponses, groupByColId, data, getCellValue]);
+
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                handleCopy();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+                // Browser handles paste event, listener below will catch it
+            }
+        };
+
+        const handlePasteEvent = (e: ClipboardEvent) => {
+            const activeElement = document.activeElement;
+            if (activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA') return;
+
+            const text = e.clipboardData?.getData("text");
+            if (text) handlePaste(text);
+        };
+
+        window.addEventListener("keydown", handleKeyPress);
+        window.addEventListener("paste", handlePasteEvent);
+        return () => {
+            window.removeEventListener("keydown", handleKeyPress);
+            window.removeEventListener("paste", handlePasteEvent);
+        };
+    }, [selection, filteredResponses, getColumns]);
+
+    const handleCopy = () => {
+        if (!selection.start || !selection.end) return;
+
+        const startR = Math.min(selection.start.row, selection.end.row);
+        const endR = Math.max(selection.start.row, selection.end.row);
+        const startC = Math.min(selection.start.col, selection.end.col);
+        const endC = Math.max(selection.start.col, selection.end.col);
+
+        const rows: string[] = [];
+        for (let r = startR; r <= endR; r++) {
+            const rowValues: string[] = [];
+            for (let c = startC; c <= endC; c++) {
+                const col = getColumns[c];
+                const res = filteredResponses[r];
+                if (!col || !res) continue;
+
+                if (col.type === "static") {
+                    rowValues.push(col.id === "__profile" ? (res.submittedByName || "") : (res.submittedAt || ""));
+                } else {
+                    rowValues.push(getCellValue(res.id, col.id, col.isInternal));
+                }
+            }
+            rows.push(rowValues.join("\t"));
+        }
+
+        navigator.clipboard.writeText(rows.join("\n"));
+        toast.success("Copied to clipboard");
+    };
+
+    const handlePaste = async (text: string) => {
+        if (!selection.start) return;
+
+        const rows = text.split("\n").filter(r => r.trim()).map(r => r.split("\t"));
+        const updates: any[] = [];
+        const warnings: string[] = [];
+        const startR = selection.start.row;
+        const startC = selection.start.col;
+
+        rows.forEach((row, rIdx) => {
+            row.forEach((val, cIdx) => {
+                const targetR = startR + rIdx;
+                const targetC = startC + cIdx;
+
+                if (targetR < filteredResponses.length && targetC < getColumns.length) {
+                    const col = getColumns[targetC];
+                    const res = filteredResponses[targetR];
+                    if (col && res && col.type !== "static") {
+                        const trimmedVal = val.trim();
+
+                        // Basic Validation
+                        let isValid = true;
+                        if (col.type === "phone" && trimmedVal && !/^\d{10,12}$/.test(trimmedVal.replace(/\D/g, ''))) isValid = false;
+                        if (col.type === "email" && trimmedVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedVal)) isValid = false;
+                        if ((col.type === "number" || col.type === "currency") && trimmedVal && isNaN(Number(trimmedVal))) isValid = false;
+
+                        if (!isValid) {
+                            warnings.push(`Invalid ${col.type} at Row ${targetR + 1}, Col ${col.label}`);
+                        }
+
+                        updates.push({
+                            responseId: res.id,
+                            columnId: col.id,
+                            value: trimmedVal,
+                            isInternal: col.isInternal
+                        });
+                    }
+                }
+            });
+        });
+
+        if (updates.length === 0) return;
+
+        if (warnings.length > 0) {
+            if (!confirm(`${warnings.length} potential data issues found:\n${warnings.slice(0, 5).join('\n')}${warnings.length > 5 ? '\n...' : ''}\n\nProceed anyway?`)) {
+                return;
+            }
+        }
+
+        const loadingToast = toast.loading(`Pasting ${updates.length} values...`);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ updates })
+            });
+
+            if (res.ok) {
+                toast.success("Pasted successfully", { id: loadingToast });
+                fetchData();
+            } else {
+                toast.error("Paste failed", { id: loadingToast });
+            }
+        } catch (err) {
+            toast.error("Network error during paste", { id: loadingToast });
+        }
+    };
 
     const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
         try {
@@ -308,66 +512,6 @@ export default function CRMSpreadsheetPage() {
         else setSelectedRows(filteredResponses.map(r => r.id));
     };
 
-    const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
-        if (!data) return "";
-        if (isInternal) {
-            return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
-        }
-        const resp = data.responses?.find(r => r.id === responseId);
-        return resp?.values?.find(v => v.fieldId === colId)?.value || "";
-    };
-
-    const filteredResponses = useMemo(() => {
-        if (!data) return [];
-        let results = data.responses || [];
-
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            results = results.filter(r =>
-                (r.submittedByName || "").toLowerCase().includes(term) ||
-                r.values.some(v => (v.value || "").toLowerCase().includes(term))
-            );
-        }
-
-        if (conditions.length > 0) {
-            results = results.filter(r => {
-                return conditions.every(cond => {
-                    const isInternal = !!(data.internalColumns || []).find(ic => ic.id === cond.colId);
-                    const cellVal = getCellValue(r.id, cond.colId, isInternal);
-                    const val = (cellVal || "").toLowerCase();
-                    const targetVal = cond.val.toLowerCase();
-                    if (cond.op === "equals") return val === targetVal;
-                    if (cond.op === "contains") return val.includes(targetVal);
-                    if (cond.op === "gt") return parseFloat(val) > parseFloat(targetVal);
-                    if (cond.op === "lt") return parseFloat(val) < parseFloat(targetVal);
-                    if (cond.op === "not_empty") return val.trim().length > 0;
-                    return true;
-                });
-            });
-        }
-        return results;
-    }, [data, searchTerm, conditions]);
-
-    const groupedResponses = useMemo(() => {
-        if (!groupByColId || !data) return {};
-        const groups: Record<string, FormResponse[]> = {};
-        const groupCol = data.internalColumns?.find(c => c.id === groupByColId);
-        const options = groupCol?.options;
-
-        if (Array.isArray(options)) {
-            options.forEach((opt: any) => {
-                if (opt && opt.label) groups[opt.label] = [];
-            });
-        }
-        groups["Unassigned"] = [];
-
-        filteredResponses.forEach(res => {
-            const val = getCellValue(res.id, groupByColId, true);
-            if (groups[val]) groups[val].push(res);
-            else groups["Unassigned"].push(res);
-        });
-        return groups;
-    }, [filteredResponses, groupByColId, data]);
 
     const safeFormat = (dateStr: string, pattern: string) => {
         try {
@@ -488,8 +632,8 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredResponses.map((res) => (
-                                        <tr key={res.id} className="group hover:bg-indigo-50/5 transition-all">
+                                    {filteredResponses.map((res, rIdx) => (
+                                        <tr key={res.id} className="group hover:bg-indigo-50/5 transition-all relative">
                                             {isMaster && (
                                                 <td className="px-10 py-8 border-b border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
                                                     <div onClick={() => toggleRowSelection(res.id)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
@@ -497,98 +641,92 @@ export default function CRMSpreadsheetPage() {
                                                     </div>
                                                 </td>
                                             )}
-                                            <td className={`px-12 py-8 border-b border-r border-slate-100 text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
-                                                <button onClick={() => setSelectedResponse(res)} className="p-4 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-[22px] transition-all bg-white shadow-sm border border-slate-100 hover:border-indigo-100">
-                                                    <Maximize2 size={20} />
-                                                </button>
-                                            </td>
-                                            <td className={`px-14 py-8 border-b border-r border-slate-100 sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
-                                                <div className="flex items-center gap-5">
-                                                    <div className="w-12 h-12 rounded-[20px] bg-slate-900 text-white flex items-center justify-center text-xs font-black uppercase ring-4 ring-slate-50">
-                                                        {res.submittedByName ? res.submittedByName[0] : "?"}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-sm font-black text-slate-800 tracking-tight leading-none">{res.submittedByName || "Public User"}</p>
-                                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-2.5 flex items-center gap-2">
-                                                            <Calendar size={12} className="text-indigo-500" /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {data?.form?.fields?.map(field => {
-                                                const val = getCellValue(res.id, field.id, false);
-                                                const isEditing = editingCell?.rowId === res.id && editingCell?.colId === field.id;
-                                                return (
-                                                    <td key={field.id} onClick={() => { setEditingCell({ rowId: res.id, colId: field.id }); setEditValue(val); }} className={`px-14 py-8 border-b border-r border-slate-100 text-[13px] font-bold text-slate-600 transition-all ${isEditing ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500' : ''}`}>
-                                                        {isEditing ? (
-                                                            <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, field.id, editValue, false); setEditingCell(null); }} />
-                                                        ) : (
-                                                            <span className="truncate block max-w-[200px]">{val || "—"}</span>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })}
-                                            {data?.internalColumns?.map(ic => {
-                                                const val = getCellValue(res.id, ic.id, true);
-                                                const isEditing = editingCell?.rowId === res.id && editingCell?.colId === ic.id;
-                                                const metadata = data.internalValues?.find(v => v.responseId === res.id && v.columnId === ic.id);
-                                                return (
-                                                    <td key={ic.id} onClick={() => { if (!ic.isLocked) { setEditingCell({ rowId: res.id, colId: ic.id }); setEditValue(val); } }} className={`px-14 py-8 border-b border-r border-slate-100 transition-all relative group/cell ${isEditing ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500' : ''} ${ic.isLocked ? 'bg-slate-50/50 cursor-not-allowed' : 'cursor-text'}`}>
-                                                        {metadata?.updatedByName && !isEditing && (
-                                                            <div className="absolute top-1 right-1 opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                                                                <div className="px-2 py-0.5 bg-slate-800 text-white text-[7px] font-black uppercase rounded-md flex items-center gap-1">
-                                                                    <User size={8} /> {metadata.updatedByName.split(' ')[0]}
+                                            {getColumns.map((col, cIdx) => {
+                                                const val = col.type === "static"
+                                                    ? (col.id === "__profile" ? "" : "") // Handle profile/contributor specially below
+                                                    : getCellValue(res.id, col.id, col.isInternal);
+
+                                                const isInSelection = selection.start && selection.end &&
+                                                    rIdx >= Math.min(selection.start.row, selection.end.row) &&
+                                                    rIdx <= Math.max(selection.start.row, selection.end.row) &&
+                                                    cIdx >= Math.min(selection.start.col, selection.end.col) &&
+                                                    cIdx <= Math.max(selection.start.col, selection.end.col);
+
+                                                const isStart = selection.start?.row === rIdx && selection.start?.col === cIdx;
+
+                                                const commonProps = {
+                                                    onMouseDown: () => {
+                                                        setSelection({ start: { row: rIdx, col: cIdx }, end: { row: rIdx, col: cIdx } });
+                                                        setIsSelecting(true);
+                                                    },
+                                                    onMouseEnter: () => {
+                                                        if (isSelecting) {
+                                                            setSelection(prev => ({ ...prev, end: { row: rIdx, col: cIdx } }));
+                                                        }
+                                                    },
+                                                    onMouseUp: () => setIsSelecting(false),
+                                                    className: `border-b border-r border-slate-100 transition-all relative select-none ${isInSelection ? 'bg-indigo-50/40 ring-2 ring-inset ring-indigo-300' : ''} ${isStart ? 'ring-indigo-600' : ''}`
+                                                };
+
+                                                if (col.id === "__profile") {
+                                                    return (
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} px-12 py-8 text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white group-hover:bg-slate-50 z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
+                                                            <button onClick={() => setSelectedResponse(res)} className="p-4 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-[22px] transition-all bg-white shadow-sm border border-slate-100 hover:border-indigo-100">
+                                                                <Maximize2 size={20} />
+                                                            </button>
+                                                        </td>
+                                                    );
+                                                }
+
+                                                if (col.id === "__contributor") {
+                                                    return (
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} px-14 py-8 sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white group-hover:bg-slate-50 z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
+                                                            <div className="flex items-center gap-5">
+                                                                <div className="w-12 h-12 rounded-[20px] bg-slate-900 text-white flex items-center justify-center text-xs font-black uppercase ring-4 ring-slate-50">
+                                                                    {res.submittedByName ? res.submittedByName[0] : "?"}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-black text-slate-800 tracking-tight leading-none">{res.submittedByName || "Public User"}</p>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-2.5 flex items-center gap-2">
+                                                                        <Calendar size={12} className="text-indigo-500" /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
+                                                                    </p>
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                        </td>
+                                                    );
+                                                }
+
+                                                const isInternal = col.isInternal;
+                                                const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
+                                                const isLocked = !!col.isLocked;
+
+                                                return (
+                                                    <td key={col.id}
+                                                        {...commonProps}
+                                                        onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
+                                                        className={`${commonProps.className} px-14 py-8 ${isEditing ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500 z-10' : ''} ${isLocked ? 'bg-slate-50/50 cursor-not-allowed' : 'cursor-text'}`}
+                                                    >
+                                                        {/* Render Content Based on Column Type */}
                                                         {isEditing ? (
-                                                            ic.type === "dropdown" ? (
-                                                                <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-black uppercase text-indigo-700 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, ic.id, e.target.value, true); setEditingCell(null); }}>
+                                                            col.type === "dropdown" ? (
+                                                                <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-black uppercase text-indigo-700 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                     <option value="">Select...</option>
-                                                                    {Array.isArray(ic.options) && ic.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                    {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                 </select>
-                                                            ) : ic.type === "date" ? (
-                                                                <input type="date" autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
-                                                            ) : ic.type === "number" || ic.type === "currency" ? (
-                                                                <input type="number" autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
                                                             ) : (
-                                                                <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, ic.id, editValue, true); setEditingCell(null); }} />
+                                                                <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                             )
                                                         ) : (
                                                             <div className="flex items-center justify-between w-full">
-                                                                {ic.type === "dropdown" && val ? (
+                                                                {col.type === "dropdown" && val ? (
                                                                     <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${val.toLowerCase().includes('done') || val.toLowerCase().includes('won') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-white text-slate-600 border-slate-200'}`}>{val}</span>
-                                                                ) : ic.type === "file" ? (
-                                                                    <div className="flex items-center gap-3">
-                                                                        {val ? (
-                                                                            <a href={val} target="_blank" className="flex items-center gap-2 p-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase border border-indigo-100 hover:bg-indigo-100 transition-all">
-                                                                                <Paperclip size={14} /> View
-                                                                            </a>
-                                                                        ) : (
-                                                                            <label className="flex items-center gap-2 p-2 bg-slate-50 text-slate-400 rounded-xl text-[10px] font-black uppercase border border-slate-100 hover:bg-white hover:text-indigo-600 hover:border-indigo-200 transition-all cursor-pointer">
-                                                                                <Plus size={14} /> Upload
-                                                                                <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && handleFileChange(res.id, ic.id, e.target.files[0])} />
-                                                                            </label>
-                                                                        )}
-                                                                    </div>
-                                                                ) : ic.type === "checkbox" ? (
-                                                                    <button onClick={() => handleUpdateValue(res.id, ic.id, val === "true" ? "false" : "true", true)} className={`w-12 h-6 rounded-full transition-all relative ${val === "true" ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                                                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${val === "true" ? 'left-7' : 'left-1'}`} />
-                                                                    </button>
-                                                                ) : ic.type === "rating" ? (
-                                                                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                                                                        {[1, 2, 3, 4, 5].map(star => (
-                                                                            <Star key={star} size={14} onClick={() => handleUpdateValue(res.id, ic.id, String(star), true)} className={star <= Number(val) ? "fill-amber-400 text-amber-400" : "text-slate-200"} />
-                                                                        ))}
-                                                                    </div>
-                                                                ) : ic.type === "currency" ? (
+                                                                ) : col.type === "currency" ? (
                                                                     <span className="text-[13px] font-black text-indigo-900 flex items-center gap-1">
                                                                         <IndianRupee size={12} className="text-slate-400" /> {val || "0.00"}
                                                                     </span>
                                                                 ) : (
                                                                     <span className="text-[13px] font-bold text-indigo-900 truncate max-w-[180px]">{val || "—"}</span>
                                                                 )}
-                                                                {ic.isLocked && <ShieldCheck size={14} className="text-slate-300" />}
                                                             </div>
                                                         )}
                                                     </td>
