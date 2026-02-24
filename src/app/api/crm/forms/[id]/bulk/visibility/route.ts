@@ -28,6 +28,12 @@ export async function PATCH(
                 where: { id: { in: ids } },
                 data: { visibleToRoles, visibleToUsers }
             });
+        } else if (type === "FORM") {
+            const { id } = await params;
+            await prisma.dynamicForm.update({
+                where: { id },
+                data: { visibleToRoles, visibleToUsers }
+            });
         }
 
         return NextResponse.json({ success: true });

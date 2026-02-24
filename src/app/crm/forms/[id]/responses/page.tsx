@@ -48,7 +48,10 @@ import {
     Settings,
     Activity,
     Eye,
-    EyeOff
+    EyeOff,
+    Check,
+    GripVertical,
+    Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -186,6 +189,13 @@ export default function CRMSpreadsheetPage() {
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+    const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
+
+    // Permission Buffer
+    const [permRoles, setPermRoles] = useState<string[]>([]);
+    const [permUsers, setPermUsers] = useState<string[]>([]);
+    const [accessUserSearch, setAccessUserSearch] = useState("");
+    const [accessUserResults, setAccessUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
@@ -334,8 +344,45 @@ export default function CRMSpreadsheetPage() {
             setUserResults(json);
         } catch (err) { console.error(err); }
     };
+    const searchAccessUsers = async (q: string) => {
+        setAccessUserSearch(q);
+        if (q.length < 2) { setAccessUserResults([]); return; }
+        try {
+            const res = await fetch(`/api/crm/users?q=${q}`);
+            const json = await res.json();
+            setAccessUserResults(json);
+        } catch (err) { console.error(err); }
+    };
 
     useEffect(() => { fetchData(); }, [params.id]);
+
+    useEffect(() => {
+        if (data?.form) {
+            setPermRoles(data.form.visibleToRoles || []);
+            setPermUsers(data.form.visibleToUsers || []);
+        }
+    }, [data]);
+
+    const handleSavePermissions = async () => {
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "FORM",
+                    visibleToRoles: permRoles,
+                    visibleToUsers: permUsers
+                })
+            });
+            if (res.ok) {
+                toast.success("Security policies updated");
+                setIsAccessModalOpen(false);
+                fetchData();
+            }
+        } catch (err) {
+            toast.error("Policy breach: update failed");
+        }
+    };
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -911,6 +958,16 @@ export default function CRMSpreadsheetPage() {
                             Columns
                             {hiddenColumns.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{hiddenColumns.length}</span>}
                         </button>
+
+                        {isMaster && (
+                            <button
+                                onClick={() => setIsAccessModalOpen(true)}
+                                className="px-4 py-2 bg-slate-900 text-white rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                            >
+                                <Lock size={12} />
+                                Access Control
+                            </button>
+                        )}
 
                         <div className="w-[1px] h-8 bg-slate-200 mx-2" />
 
@@ -1776,6 +1833,148 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             `}</style>
-        </div >
+
+            {/* Access Control Modal */}
+            <AnimatePresence>
+                {isAccessModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAccessModalOpen(false)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden relative"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-[0.2em]">Security Matrix Panel</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Define visibility and access permissions</p>
+                                </div>
+                                <button onClick={() => setIsAccessModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                                {/* Role Selection */}
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                        <ShieldCheck size={12} /> Role Based Protocol
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
+                                            const isActive = permRoles.includes(role);
+                                            return (
+                                                <button
+                                                    key={role}
+                                                    onClick={() => setPermRoles(prev => isActive ? prev.filter(r => r !== role) : [...prev, role])}
+                                                    className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 hover:border-slate-200'}`}
+                                                >
+                                                    <span className="text-[11px] font-black uppercase tracking-widest">{role}</span>
+                                                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'bg-white border-white' : 'border-slate-200 bg-slate-50'}`}>
+                                                        {isActive && <Check size={10} className="text-slate-900" />}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="h-[1px] bg-slate-100" />
+
+                                {/* User Selection */}
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                        <UserPlus size={12} /> Personalized Exceptions
+                                    </h4>
+
+                                    <div className="relative mb-4">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                        <input
+                                            value={accessUserSearch}
+                                            onChange={(e) => searchAccessUsers(e.target.value)}
+                                            placeholder="Search by name or email..."
+                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                        />
+
+                                        <AnimatePresence>
+                                            {accessUserResults.length > 0 && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                >
+                                                    {accessUserResults.map(u => (
+                                                        <button
+                                                            key={u.clerkId}
+                                                            onClick={() => {
+                                                                if (!permUsers.includes(u.clerkId)) {
+                                                                    setPermUsers(prev => [...prev, u.clerkId]);
+                                                                }
+                                                                setAccessUserSearch("");
+                                                                setAccessUserResults([]);
+                                                            }}
+                                                            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                <div className="text-left">
+                                                                    <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
+                                                                    <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
+                                                                </div>
+                                                            </div>
+                                                            <Plus size={14} className="text-slate-300" />
+                                                        </button>
+                                                    ))}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                        {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto">No unique users specified</p>}
+                                        {permUsers.map(uid => (
+                                            <div key={uid} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm group">
+                                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{uid.slice(0, 12)}...</span>
+                                                <button
+                                                    onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
+                                                    className="p-1 hover:bg-rose-50 rounded-md transition-colors"
+                                                >
+                                                    <X size={10} className="text-slate-400 group-hover:text-rose-500" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-[#F9FAFB] border-t border-slate-100 flex justify-between items-center">
+                                <p className="text-[10px] text-slate-400 font-bold max-w-[200px]">Changes will restrict or grant access to the entire matrix workspace.</p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setIsAccessModalOpen(false)}
+                                        className="px-6 py-2.5 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:text-slate-900 transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSavePermissions}
+                                        className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center gap-2"
+                                    >
+                                        <ShieldCheck size={14} /> Commit Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </div>
     );
 }
