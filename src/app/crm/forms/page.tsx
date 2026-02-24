@@ -44,8 +44,8 @@ export default function CRMFormsList() {
             const res = await fetch("/api/crm/forms");
             const data = await res.json();
             setForms(data.forms || []);
-            setUserRole(data.userRole);
-            setIsMaster(data.isMaster);
+            setUserRole(data.userRole || "GUEST");
+            setIsMaster(data.isMaster || data.userRole === "ADMIN" || data.userRole === "MASTER");
         } catch (err) {
             toast.error("Failed to fetch forms");
         } finally {

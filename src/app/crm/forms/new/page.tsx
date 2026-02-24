@@ -48,6 +48,20 @@ export default function FormBuilderPage() {
     const [fields, setFields] = useState<FormField[]>([]);
     const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [sidebarTab, setSidebarTab] = useState<"fields" | "permissions">("fields");
+
+    // Authorization Check
+    React.useEffect(() => {
+        const checkAuth = async () => {
+            const res = await fetch("/api/crm/forms");
+            const data = await res.json();
+            if (data.userRole !== "ADMIN" && data.userRole !== "MASTER") {
+                toast.error("Unauthorized: Access Denied");
+                router.push("/crm/forms");
+            }
+        };
+        checkAuth();
+    }, []);
 
     // Visibility States
     const [visibleToRoles, setVisibleToRoles] = useState<string[]>([]);
@@ -68,6 +82,7 @@ export default function FormBuilderPage() {
         };
         setFields([...fields, newField]);
         setSelectedFieldId(newField.id);
+        setSidebarTab("fields");
     };
 
     const removeField = (id: string) => {
@@ -206,7 +221,7 @@ export default function FormBuilderPage() {
                                 <Reorder.Item
                                     key={field.id}
                                     value={field}
-                                    onClick={() => setSelectedFieldId(field.id)}
+                                    onClick={() => { setSelectedFieldId(field.id); setSidebarTab("fields"); }}
                                     className={`bg-white p-8 rounded-[32px] border-2 transition-all cursor-pointer group relative
                                         ${selectedFieldId === field.id ? 'border-indigo-600 shadow-2xl' : 'border-transparent shadow-sm hover:shadow-md'}`}
                                 >
@@ -253,91 +268,106 @@ export default function FormBuilderPage() {
                 </section>
 
                 {/* Right Sidebar: Field Settings */}
-                <aside className="w-[350px] bg-white border-l border-slate-200 p-8 overflow-y-auto">
-                    {selectedField ? (
-                        <div className="space-y-8">
-                            <div className="flex items-center gap-3 mb-8">
-                                <Settings className="text-indigo-600" size={20} />
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Field Configuration</h3>
-                            </div>
+                <aside className="w-[380px] bg-white border-l border-slate-200 p-8 overflow-y-auto flex flex-col gap-8">
+                    <div className="flex bg-slate-100 p-1.5 rounded-[22px] border border-slate-200 shrink-0">
+                        <button onClick={() => setSidebarTab("fields")} className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'fields' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Field Engine</button>
+                        <button onClick={() => setSidebarTab("permissions")} className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'permissions' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Access Matrix</button>
+                    </div>
 
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Display Label</label>
-                                    <input
-                                        type="text"
-                                        value={selectedField.label}
-                                        onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
-                                        className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                    />
+                    {sidebarTab === "fields" ? (
+                        selectedField ? (
+                            <div className="space-y-8">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Settings className="text-indigo-600" size={20} />
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Field Configuration</h3>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Placeholder Message</label>
-                                    <input
-                                        type="text"
-                                        value={selectedField.placeholder}
-                                        onChange={(e) => updateField(selectedField.id, { placeholder: e.target.value })}
-                                        className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                    />
-                                </div>
-
-                                {selectedField.type === "dropdown" && (
-                                    <div className="space-y-4">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dropdown Options</label>
-                                        {selectedField.options.map((opt, idx) => (
-                                            <div key={idx} className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={opt}
-                                                    onChange={(e) => {
-                                                        const newOpts = [...selectedField.options];
-                                                        newOpts[idx] = e.target.value;
-                                                        updateField(selectedField.id, { options: newOpts });
-                                                    }}
-                                                    className="flex-1 p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        const newOpts = selectedField.options.filter((_, i) => i !== idx);
-                                                        updateField(selectedField.id, { options: newOpts });
-                                                    }}
-                                                    className="p-4 text-rose-500 hover:bg-rose-50 rounded-2xl"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => updateField(selectedField.id, { options: [...selectedField.options, `Option ${selectedField.options.length + 1}`] })}
-                                            className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
-                                        >
-                                            Add Option
-                                        </button>
+                                <div className="space-y-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Display Label</label>
+                                        <input
+                                            type="text"
+                                            value={selectedField.label}
+                                            onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
+                                            className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                        />
                                     </div>
-                                )}
 
-                                <div className="pt-4 border-t border-slate-100">
-                                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-black text-slate-700">Required Field</span>
-                                            <span className="text-[9px] font-bold text-slate-400 uppercase">Make this input mandatory</span>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Placeholder Message</label>
+                                        <input
+                                            type="text"
+                                            value={selectedField.placeholder}
+                                            onChange={(e) => updateField(selectedField.id, { placeholder: e.target.value })}
+                                            className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                        />
+                                    </div>
+
+                                    {selectedField.type === "dropdown" && (
+                                        <div className="space-y-4">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dropdown Options</label>
+                                            {selectedField.options.map((opt, idx) => (
+                                                <div key={idx} className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={opt}
+                                                        onChange={(e) => {
+                                                            const newOpts = [...selectedField.options];
+                                                            newOpts[idx] = e.target.value;
+                                                            updateField(selectedField.id, { options: newOpts });
+                                                        }}
+                                                        className="flex-1 p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            const newOpts = selectedField.options.filter((_, i) => i !== idx);
+                                                            updateField(selectedField.id, { options: newOpts });
+                                                        }}
+                                                        className="p-4 text-rose-500 hover:bg-rose-50 rounded-2xl"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                onClick={() => updateField(selectedField.id, { options: [...selectedField.options, `Option ${selectedField.options.length + 1}`] })}
+                                                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
+                                            >
+                                                Add Option
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => updateField(selectedField.id, { required: !selectedField.required })}
-                                            className={`w-14 h-8 rounded-full relative transition-all duration-300 
-                                                ${selectedField.required ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                                        >
-                                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all 
-                                                ${selectedField.required ? 'right-1' : 'left-1'}`} />
-                                        </button>
+                                    )}
+
+                                    <div className="pt-4 border-t border-slate-100">
+                                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-black text-slate-700">Required Field</span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Make this input mandatory</span>
+                                            </div>
+                                            <button
+                                                onClick={() => updateField(selectedField.id, { required: !selectedField.required })}
+                                                className={`w-14 h-8 rounded-full relative transition-all duration-300 
+                                                    ${selectedField.required ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                                            >
+                                                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all 
+                                                    ${selectedField.required ? 'right-1' : 'left-1'}`} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center px-6 py-20">
+                                <div className="p-8 bg-slate-50 rounded-[35px] mb-8">
+                                    <Settings size={48} className="text-slate-200" />
+                                </div>
+                                <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest">Logic Hub</h4>
+                                <p className="text-xs font-bold text-slate-400 mt-4 leading-relaxed">Select a coordinate from the matrix center to calibrate its attributes.</p>
+                            </div>
+                        )
                     ) : (
                         <div className="space-y-10">
-                            <div className="flex items-center gap-3 mb-8">
+                            <div className="flex items-center gap-3 mb-4">
                                 <ShieldCheck className="text-indigo-600" size={20} />
                                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Global Access Control</h3>
                             </div>

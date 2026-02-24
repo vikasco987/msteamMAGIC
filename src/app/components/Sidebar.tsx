@@ -93,7 +93,7 @@ export default function Sidebar() {
 
   if (!mounted) return <div className="w-20 lg:w-64 h-screen bg-[#0f172a]" />;
 
-  const userRole = isLoaded ? (user?.publicMetadata?.role as string || 'user') : 'user';
+  const userRole = (isLoaded ? (user?.publicMetadata?.role as string || 'user') : 'user').toLowerCase();
 
   return (
     <>
