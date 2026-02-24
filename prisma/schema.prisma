@@ -243,6 +243,9 @@ model DynamicForm {
   
   createdBy       String   // Clerk userId
   createdByName   String?
+
+  visibleToRoles  String[] @default([])
+  visibleToUsers  String[] @default([])
   
   fields          FormField[]
   responses       FormResponse[]

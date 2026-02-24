@@ -7,12 +7,35 @@ export async function GET() {
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const dbUser = await prisma.user.findUnique({
+            where: { clerkId: userId }
+        });
+
+        const userRole = dbUser?.role || "GUEST";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+
+        let whereClause = {};
+        if (!isMaster) {
+            whereClause = {
+                OR: [
+                    { visibleToRoles: { has: userRole } },
+                    { visibleToUsers: { has: userId } },
+                    { createdBy: userId }
+                ]
+            };
+        }
+
         const forms = await prisma.dynamicForm.findMany({
+            where: whereClause,
             include: { _count: { select: { responses: true } } },
             orderBy: { createdAt: "desc" }
         });
 
-        return NextResponse.json({ forms });
+        return NextResponse.json({
+            forms,
+            userRole,
+            isMaster
+        });
     } catch (error) {
         console.error("GET Forms Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -25,8 +48,16 @@ export async function POST(req: NextRequest) {
         const user = await currentUser();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const dbUser = await prisma.user.findUnique({
+            where: { clerkId: userId }
+        });
+
+        if (dbUser?.role !== "ADMIN" && dbUser?.role !== "MASTER") {
+            return NextResponse.json({ error: "Forbidden: Only Admin/Master can build forms" }, { status: 403 });
+        }
+
         const body = await req.json();
-        const { title, description, fields } = body;
+        const { title, description, fields, visibleToRoles = [], visibleToUsers = [] } = body;
 
         if (!title) return NextResponse.json({ error: "Title is required" }, { status: 400 });
 
@@ -36,8 +67,10 @@ export async function POST(req: NextRequest) {
                 description,
                 createdBy: userId,
                 createdByName: user?.fullName || user?.firstName || "Unknown",
+                visibleToRoles,
+                visibleToUsers,
                 fields: {
-                    create: fields.map((f: any, index: number) => ({
+                    create: (fields || []).map((f: any, index: number) => ({
                         label: f.label,
                         type: f.type,
                         placeholder: f.placeholder,

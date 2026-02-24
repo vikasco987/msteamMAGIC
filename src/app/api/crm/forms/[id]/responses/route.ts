@@ -55,10 +55,22 @@ export async function GET(
             include: { fields: { orderBy: { order: "asc" } } }
         });
 
-        const isFormOwner = form?.createdBy === userId;
+        if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+
+        const isFormOwner = form.createdBy === userId;
         const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isFormOwner;
 
-        console.log(`[API] isMaster: ${isMaster}, isFormOwner: ${isFormOwner}`);
+        // Form Level Access Control
+        const hasFormAccess = isMaster ||
+            form.visibleToRoles.includes(userRole) ||
+            form.visibleToUsers.includes(userId) ||
+            (form.visibleToRoles.length === 0 && form.visibleToUsers.length === 0);
+
+        if (!hasFormAccess) {
+            return NextResponse.json({ error: "Forbidden: You do not have access to this matrix" }, { status: 403 });
+        }
+
+        console.log(`[API] Access Granted. isMaster: ${isMaster}, isFormOwner: ${isFormOwner}`);
 
         const allResponses = await prisma.formResponse.findMany({
             where: { formId },

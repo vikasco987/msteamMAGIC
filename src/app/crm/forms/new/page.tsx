@@ -19,7 +19,12 @@ import {
     Image as ImageIcon,
     Layout,
     Eye,
-    Rocket
+    Rocket,
+    ShieldCheck,
+    Search,
+    Users,
+    X,
+    Clock
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import toast from "react-hot-toast";
@@ -44,6 +49,14 @@ export default function FormBuilderPage() {
     const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
+    // Visibility States
+    const [visibleToRoles, setVisibleToRoles] = useState<string[]>([]);
+    const [visibleToUsers, setVisibleToUsers] = useState<string[]>([]);
+    const [userSearchQuery, setUserSearchQuery] = useState("");
+    const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
+
+    const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
+
     const addField = (type: FieldType) => {
         const newField: FormField = {
             id: Math.random().toString(36).substr(2, 9),
@@ -66,6 +79,16 @@ export default function FormBuilderPage() {
         setFields(fields.map(f => f.id === id ? { ...f, ...updates } : f));
     };
 
+    const searchUsers = async (q: string) => {
+        setUserSearchQuery(q);
+        if (q.length < 2) { setUserResults([]); return; }
+        try {
+            const res = await fetch(`/api/crm/users?q=${q}`);
+            const json = await res.json();
+            setUserResults(json);
+        } catch (err) { console.error(err); }
+    };
+
     const handleSave = async (publish: boolean = false) => {
         if (!title.trim()) {
             toast.error("Please enter a form title");
@@ -80,7 +103,9 @@ export default function FormBuilderPage() {
                     title,
                     description,
                     fields,
-                    isPublished: publish
+                    isPublished: publish,
+                    visibleToRoles,
+                    visibleToUsers
                 }),
             });
             if (res.ok) {
@@ -311,12 +336,88 @@ export default function FormBuilderPage() {
                             </div>
                         </div>
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-center px-6">
-                            <div className="p-6 bg-slate-50 rounded-[24px] mb-6">
-                                <Settings size={40} className="text-slate-200" />
+                        <div className="space-y-10">
+                            <div className="flex items-center gap-3 mb-8">
+                                <ShieldCheck className="text-indigo-600" size={20} />
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Global Access Control</h3>
                             </div>
-                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Configuration Matrix</h4>
-                            <p className="text-xs font-bold text-slate-400 mt-2">Select a field from the center canvas to configure its unique properties.</p>
+
+                            <div className="space-y-8">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Role-Based Access (RBAC)</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {AVAILABLE_ROLES.map(role => (
+                                            <button
+                                                key={role}
+                                                onClick={() => {
+                                                    setVisibleToRoles(prev =>
+                                                        prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+                                                    );
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${visibleToRoles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                            >
+                                                {role}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase mt-3 tracking-tighter">Only users with these roles will see this form.</p>
+                                </div>
+
+                                <div className="pt-8 border-t border-slate-100 relative">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block text-indigo-600">Exclusive User Access</label>
+                                    <div className="relative mb-4">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                        <input
+                                            value={userSearchQuery}
+                                            onChange={(e) => searchUsers(e.target.value)}
+                                            placeholder="Search by email..."
+                                            className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
+                                        />
+                                    </div>
+
+                                    {userResults.length > 0 && (
+                                        <div className="absolute left-0 right-0 top-[100px] bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 py-4 max-h-[200px] overflow-y-auto">
+                                            {userResults.map(u => (
+                                                <button
+                                                    key={u.clerkId}
+                                                    onClick={() => {
+                                                        if (!visibleToUsers.includes(u.clerkId)) {
+                                                            setVisibleToUsers([...visibleToUsers, u.clerkId]);
+                                                        }
+                                                        setUserResults([]);
+                                                        setUserSearchQuery("");
+                                                    }}
+                                                    className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between group"
+                                                >
+                                                    <span className="text-[10px] font-black text-slate-700">{u.email}</span>
+                                                    <Plus size={14} className="text-indigo-600 opacity-0 group-hover:opacity-100" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {visibleToUsers.map(uid => (
+                                            <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
+                                                <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
+                                                <X size={12} className="cursor-pointer hover:text-rose-500" onClick={() => setVisibleToUsers(visibleToUsers.filter(x => x !== uid))} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="pt-8 border-t border-slate-100">
+                                    <div className="p-6 bg-slate-900 rounded-[30px] text-white">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <Layout size={16} className="text-indigo-400" />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Global Settings</span>
+                                        </div>
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">
+                                            If no roles or users are selected, this form will be visible to <span className="text-emerald-400">Everyone</span>.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </aside>

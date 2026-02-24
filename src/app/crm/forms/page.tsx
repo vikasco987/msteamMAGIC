@@ -36,12 +36,16 @@ export default function CRMFormsList() {
     const [forms, setForms] = useState<FormSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
+    const [userRole, setUserRole] = useState<string>("GUEST");
+    const [isMaster, setIsMaster] = useState(false);
 
     const fetchForms = async () => {
         try {
             const res = await fetch("/api/crm/forms");
             const data = await res.json();
             setForms(data.forms || []);
+            setUserRole(data.userRole);
+            setIsMaster(data.isMaster);
         } catch (err) {
             toast.error("Failed to fetch forms");
         } finally {
@@ -101,12 +105,14 @@ export default function CRMFormsList() {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
-                        <Link
-                            href="/crm/forms/new"
-                            className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
-                        >
-                            <Plus size={18} /> Build New Form
-                        </Link>
+                        {isMaster && (
+                            <Link
+                                href="/crm/forms/new"
+                                className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
+                            >
+                                <Plus size={18} /> Build New Form
+                            </Link>
+                        )}
                     </div>
                 </header>
 
@@ -138,9 +144,11 @@ export default function CRMFormsList() {
                                                         <CheckCircle2 size={10} /> Live
                                                     </span>
                                                 )}
-                                                <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                {isMaster && (
+                                                    <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
@@ -207,12 +215,14 @@ export default function CRMFormsList() {
                         </div>
                         <h2 className="text-2xl font-black text-slate-900">No Forms Found</h2>
                         <p className="text-slate-400 font-bold max-w-sm mx-auto mt-2">Start by creating your first dynamic form to collect data from your team or clients.</p>
-                        <Link
-                            href="/crm/forms/new"
-                            className="mt-10 inline-flex px-10 py-5 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-2xl transition-all"
-                        >
-                            <Plus size={20} className="mr-2" /> Build Now
-                        </Link>
+                        {isMaster && (
+                            <Link
+                                href="/crm/forms/new"
+                                className="mt-10 inline-flex px-10 py-5 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-2xl transition-all"
+                            >
+                                <Plus size={20} className="mr-2" /> Build Now
+                            </Link>
+                        )}
                     </div>
                 )}
             </div>
