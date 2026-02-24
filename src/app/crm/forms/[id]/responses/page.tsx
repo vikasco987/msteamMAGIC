@@ -113,20 +113,20 @@ interface MasterData {
 }
 
 const COLUMN_TYPES = [
-    { title: "Standard Text", id: "text", icon: Type, color: "text-blue-500" },
-    { title: "Long Narrative", id: "long_text", icon: FileText, color: "text-slate-500" },
-    { title: "Pure Number", id: "number", icon: Hash, color: "text-emerald-500" },
-    { title: "Currency (INR)", id: "currency", icon: IndianRupee, color: "text-indigo-500" },
-    { title: "Smart Dropdown", id: "dropdown", icon: ListFilter, color: "text-amber-500" },
-    { title: "Multi Select", id: "multi_select", icon: Layers, color: "text-purple-500" },
-    { title: "Universal Date", id: "date", icon: CalendarDays, color: "text-rose-500" },
-    { title: "Checkbox/Binary", id: "checkbox", icon: CheckSquare, color: "text-cyan-500" },
-    { title: "Team Member", id: "user", icon: Users, color: "text-violet-500" },
-    { title: "Phone Matrix", id: "phone", icon: Phone, color: "text-green-500" },
-    { title: "Verified Email", id: "email", icon: Mail, color: "text-blue-400" },
-    { title: "Deep Formula", id: "formula", icon: FunctionSquare, color: "text-pink-500" },
-    { title: "External Link", id: "url", icon: Link, color: "text-indigo-400" },
-    { title: "Attachment Hub", id: "file", icon: Paperclip, color: "text-slate-400" },
+    { title: "Standard Text", id: "text", icon: Type, color: "text-[#667085]" },
+    { title: "Long Narrative", id: "long_text", icon: FileText, color: "text-[#667085]" },
+    { title: "Pure Number", id: "number", icon: Hash, color: "text-[#667085]" },
+    { title: "Currency (INR)", id: "currency", icon: IndianRupee, color: "text-[#667085]" },
+    { title: "Smart Dropdown", id: "dropdown", icon: ListFilter, color: "text-[#667085]" },
+    { title: "Multi Select", id: "multi_select", icon: Layers, color: "text-[#667085]" },
+    { title: "Universal Date", id: "date", icon: CalendarDays, color: "text-[#rose-500]" },
+    { title: "Checkbox/Binary", id: "checkbox", icon: CheckSquare, color: "text-[#667085]" },
+    { title: "Team Member", id: "user", icon: Users, color: "text-[#667085]" },
+    { title: "Phone Matrix", id: "phone", icon: Phone, color: "text-[#667085]" },
+    { title: "Verified Email", id: "email", icon: Mail, color: "text-[#667085]" },
+    { title: "Deep Formula", id: "formula", icon: FunctionSquare, color: "text-[#667085]" },
+    { title: "External Link", id: "url", icon: Link, color: "text-[#667085]" },
+    { title: "Attachment Hub", id: "file", icon: Paperclip, color: "text-[#667085]" },
 ];
 
 const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
@@ -179,8 +179,9 @@ export default function CRMSpreadsheetPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
-    const [editingCell, setEditingCell] = useState<{ rowId: string; colId: string } | null>(null);
     const [editValue, setEditValue] = useState("");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
 
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
@@ -341,6 +342,13 @@ export default function CRMSpreadsheetPage() {
         }
         return results;
     }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+
+    const paginatedResponses = useMemo(() => {
+        const start = (currentPage - 1) * rowsPerPage;
+        return filteredResponses.slice(start, start + rowsPerPage);
+    }, [filteredResponses, currentPage, rowsPerPage]);
+
+    useEffect(() => { setCurrentPage(1); }, [searchTerm, conditions]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
@@ -742,13 +750,13 @@ export default function CRMSpreadsheetPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-6">
-                    {/* Quick Column Filters (Dropdown based) */}
-                    <div className="flex items-center gap-2 pr-6 border-r border-slate-100 mr-2">
+                <div className="flex items-center gap-4">
+                    {/* Quick Column Filters */}
+                    <div className="flex items-center gap-2 pr-4 border-r border-[#EAECF0]">
                         {getColumns.filter(c => c.type === "dropdown" || c.type === "date").slice(0, 2).map(col => (
                             <div key={col.id} className="relative group/qf">
                                 <select
-                                    className="px-6 py-4 bg-slate-50 hover:bg-white border border-slate-100 rounded-[28px] text-[10px] font-black uppercase tracking-widest text-slate-500 focus:text-indigo-600 focus:ring-2 ring-indigo-100 outline-none appearance-none transition-all cursor-pointer min-w-[140px]"
+                                    className="px-4 py-2 bg-white border border-[#D0D5DD] rounded-lg text-sm font-semibold text-[#344054] hover:bg-[#F9FAFB] focus:ring-4 focus:ring-[#F4EBFF] focus:border-[#7F56D9] outline-none appearance-none transition-all cursor-pointer min-w-[140px] shadow-sm"
                                     onChange={(e) => {
                                         if (e.target.value) {
                                             setConditions([...conditions.filter(c => c.colId !== col.id), { colId: col.id, op: "equals", val: e.target.value }]);
@@ -769,40 +777,39 @@ export default function CRMSpreadsheetPage() {
                                         </>
                                     )}
                                 </select>
-                                <ChevronDown size={10} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none group-hover/qf:text-indigo-400" />
+                                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#667085] pointer-events-none group-hover/qf:text-[#7F56D9]" />
                             </div>
                         ))}
                     </div>
 
-                    <div className="flex items-center border border-slate-200 p-1.5 rounded-[30px] shadow-sm bg-slate-50/50">
-                        <button onClick={() => setCurrentView("table")} className={`flex items-center gap-3 px-8 py-3.5 rounded-[22px] transition-all ${currentView === 'table' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                    <div className="flex items-center border border-[#EAECF0] p-1 rounded-xl bg-[#F9FAFB] shadow-sm">
+                        <button onClick={() => setCurrentView("table")} className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${currentView === 'table' ? 'bg-white text-[#7F56D9] shadow-sm border border-[#EAECF0]' : 'text-[#667085] hover:text-[#344054]'}`}>
                             <Table size={16} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Grid View</span>
+                            <span className="text-sm font-semibold">Grid</span>
                         </button>
-                        <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-3 px-8 py-3.5 rounded-[22px] transition-all ${currentView === 'kanban' ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                        <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${currentView === 'kanban' ? 'bg-white text-[#7F56D9] shadow-sm border border-[#EAECF0]' : 'text-[#667085] hover:text-[#344054]'}`}>
                             <LayoutGrid size={16} />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Kanban</span>
+                            <span className="text-sm font-semibold">Kanban</span>
                         </button>
                     </div>
 
-                    <div className="h-10 w-px bg-slate-200" />
-
-                    <div className="flex items-center gap-2 bg-white p-2 rounded-[40px] border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2">
                         <div className="relative group">
-                            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-slate-900 transition-colors" size={18} />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#667085]" size={18} />
                             <input
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Search records..."
-                                className="pl-14 pr-4 py-4 bg-transparent outline-none font-bold text-sm min-w-[280px] transition-all"
+                                className="pl-11 pr-4 py-2 bg-white border border-[#D0D5DD] rounded-lg shadow-sm outline-none text-sm text-[#101828] placeholder-[#667085] focus:ring-4 focus:ring-[#F4EBFF] focus:border-[#7F56D9] transition-all min-w-[280px]"
                             />
                         </div>
                         <button
                             onClick={() => setIsFilterBuilderOpen(true)}
-                            className={`p-4 rounded-[32px] transition-all flex items-center gap-3 ${conditions.length > 0 ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-100'}`}
+                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border shadow-sm font-semibold text-sm ${conditions.length > 0 ? 'bg-[#F9F5FF] text-[#7F56D9] border-[#D6BBFB]' : 'bg-white text-[#344054] border-[#D0D5DD] hover:bg-[#F9FAFB]'}`}
                         >
                             <Filter size={18} />
-                            {conditions.length > 0 && <span className="text-[10px] font-black uppercase">{conditions.length}</span>}
+                            Filters
+                            {conditions.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-[#7F56D9] text-white text-[10px] rounded-full">{conditions.length}</span>}
                         </button>
                     </div>
 
@@ -828,30 +835,33 @@ export default function CRMSpreadsheetPage() {
                         >
                             <table className="border-separate border-spacing-0 w-full min-w-[max-content]">
                                 <thead className="sticky top-0 z-20">
-                                    <tr className="bg-white/80 backdrop-blur-xl">
+                                    <tr className="bg-[#F9FAFB] border-b border-[#EAECF0]">
                                         {isMaster && (
-                                            <th className="px-10 py-8 border-b border-r border-slate-100 sticky left-0 bg-white z-[35] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
-                                                <div onClick={toggleAllRows} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
-                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={14} className="text-white" />}
+                                            <th className="px-6 py-4 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[35]">
+                                                <div
+                                                    onClick={toggleAllRows}
+                                                    className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-[#7F56D9] border-[#7F56D9]' : 'bg-white border-[#D0D5DD]'}`}
+                                                >
+                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={12} className="text-white" />}
                                                 </div>
                                             </th>
                                         )}
-                                        <th className={`px-12 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white z-30 min-w-[140px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>Profile</th>
-                                        <th className={`px-14 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white z-30 min-w-[300px] shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>Primary Contributor</th>
+                                        <th className={`px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left sticky ${isMaster ? 'left-[45px]' : 'left-0'} bg-[#F9FAFB] z-30 min-w-[100px]`}>View</th>
+                                        <th className={`px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left sticky ${isMaster ? 'left-[145px]' : 'left-[100px]'} bg-[#F9FAFB] z-30 min-w-[280px]`}>Source Info</th>
                                         {data?.form?.fields?.map(f => (
-                                            <th key={f.id} className="px-14 py-8 border-b border-r border-slate-100 text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] min-w-[280px] bg-white">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-2.5 bg-slate-50 rounded-xl text-slate-400"><Type size={16} /></div> {f.label}
+                                            <th key={f.id} className="px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left min-w-[240px] bg-[#F9FAFB]">
+                                                <div className="flex items-center gap-2">
+                                                    <Type size={14} className="text-[#667085]" /> {f.label}
                                                 </div>
                                             </th>
                                         ))}
                                         {data?.internalColumns?.map(ic => {
                                             const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
                                             return (
-                                                <th key={ic.id} className="px-14 py-8 border-b border-r border-slate-200 text-[11px] font-black text-slate-900 uppercase tracking-[0.3em] bg-indigo-50/10 min-w-[280px]">
+                                                <th key={ic.id} className="px-6 py-4 border-b border-[#EAECF0] text-[12px] font-semibold text-[#475467] text-left bg-indigo-50/20 min-w-[240px]">
                                                     <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="p-2.5 bg-white rounded-xl text-indigo-600 shadow-sm border border-indigo-50"><TypeIcon size={18} /></div> {ic.label}
+                                                        <div className="flex items-center gap-2">
+                                                            <TypeIcon size={14} className="text-indigo-600" /> {ic.label}
                                                         </div>
                                                         {((ic.visibleToRoles && ic.visibleToRoles.length > 0) || (ic.visibleToUsers && ic.visibleToUsers.length > 0)) && (
                                                             <ShieldCheck size={14} className="text-indigo-400" />
@@ -863,47 +873,35 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredResponses.map((res, rIdx) => (
-                                        <tr key={res.id} className="group hover:bg-indigo-50/5 transition-all relative">
+                                    {paginatedResponses.map((res, rIdx) => (
+                                        <tr key={res.id} className="group hover:bg-[#F9FAFB] transition-all relative h-[80px]">
                                             {isMaster && (
-                                                <td className="px-10 py-8 border-b border-r border-slate-100 text-center sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]">
-                                                    <div onClick={() => toggleRowSelection(res.id)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-200'}`}>
-                                                        {selectedRows.includes(res.id) && <Check size={14} className="text-white" />}
+                                                <td className="px-6 py-4 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-10">
+                                                    <div
+                                                        onClick={() => toggleRowSelection(res.id)}
+                                                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all mx-auto ${selectedRows.includes(res.id) ? 'bg-[#7F56D9] border-[#7F56D9]' : 'bg-white border-[#D0D5DD]'}`}
+                                                    >
+                                                        {selectedRows.includes(res.id) && <Check size={12} className="text-white" />}
                                                     </div>
                                                 </td>
                                             )}
                                             {getColumns.map((col, cIdx) => {
                                                 const val = col.type === "static"
-                                                    ? (col.id === "__profile" ? "" : "") // Handle profile/contributor specially below
+                                                    ? ""
                                                     : getCellValue(res.id, col.id, col.isInternal);
 
-                                                const isInSelection = selection.start && selection.end &&
-                                                    rIdx >= Math.min(selection.start.row, selection.end.row) &&
-                                                    rIdx <= Math.max(selection.start.row, selection.end.row) &&
-                                                    cIdx >= Math.min(selection.start.col, selection.end.col) &&
-                                                    cIdx <= Math.max(selection.start.col, selection.end.col);
-
-                                                const isStart = selection.start?.row === rIdx && selection.start?.col === cIdx;
-
                                                 const commonProps = {
-                                                    onMouseDown: () => {
-                                                        setSelection({ start: { row: rIdx, col: cIdx }, end: { row: rIdx, col: cIdx } });
-                                                        setIsSelecting(true);
-                                                    },
-                                                    onMouseEnter: () => {
-                                                        if (isSelecting) {
-                                                            setSelection(prev => ({ ...prev, end: { row: rIdx, col: cIdx } }));
-                                                        }
-                                                    },
-                                                    onMouseUp: () => setIsSelecting(false),
-                                                    className: `border-b border-r border-slate-100 transition-all relative select-none ${isInSelection ? 'bg-indigo-50/40 ring-2 ring-inset ring-indigo-300' : ''} ${isStart ? 'ring-indigo-600' : ''}`
+                                                    className: `px-6 py-4 border-b border-[#EAECF0] transition-colors relative select-none cursor-default`
                                                 };
 
                                                 if (col.id === "__profile") {
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} px-12 py-8 text-center sticky ${isMaster ? 'left-[65px]' : 'left-0'} bg-white group-hover:bg-slate-50 z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
-                                                            <button onClick={() => setSelectedResponse(res)} className="p-4 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-[22px] transition-all bg-white shadow-sm border border-slate-100 hover:border-indigo-100">
-                                                                <Maximize2 size={20} />
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} text-center sticky ${isMaster ? 'left-[45px]' : 'left-0'} bg-white group-hover:bg-[#F9FAFB] z-10`}>
+                                                            <button
+                                                                onClick={() => setSelectedResponse(res)}
+                                                                className="p-2.5 text-[#475467] hover:text-[#7F56D9] hover:bg-white rounded-lg transition-all border border-transparent hover:border-[#EAECF0] hover:shadow-sm"
+                                                            >
+                                                                <Maximize2 size={18} />
                                                             </button>
                                                         </td>
                                                     );
@@ -911,15 +909,15 @@ export default function CRMSpreadsheetPage() {
 
                                                 if (col.id === "__contributor") {
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} px-14 py-8 sticky ${isMaster ? 'left-[205px]' : 'left-[140px]'} bg-white group-hover:bg-slate-50 z-10 shadow-[10px_0_30px_-15px_rgba(0,0,0,0.05)]`}>
-                                                            <div className="flex items-center gap-5">
-                                                                <div className="w-12 h-12 rounded-[20px] bg-slate-900 text-white flex items-center justify-center text-xs font-black uppercase ring-4 ring-slate-50">
+                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} sticky ${isMaster ? 'left-[145px]' : 'left-[100px]'} bg-white group-hover:bg-[#F9FAFB] z-10`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-10 h-10 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold capitalize border border-[#EAECF0]">
                                                                     {res.submittedByName ? res.submittedByName[0] : "?"}
                                                                 </div>
-                                                                <div>
-                                                                    <p className="text-sm font-black text-slate-800 tracking-tight leading-none">{res.submittedByName || "Public User"}</p>
-                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-2.5 flex items-center gap-2">
-                                                                        <Calendar size={12} className="text-indigo-500" /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <p className="text-sm font-semibold text-[#101828] truncate">{res.submittedByName || "Public User"}</p>
+                                                                    <p className="text-xs text-[#667085] flex items-center gap-1.5 mt-0.5">
+                                                                        <Clock size={12} /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -932,31 +930,41 @@ export default function CRMSpreadsheetPage() {
                                                 const isLocked = !!col.isLocked;
 
                                                 return (
-                                                    <td key={col.id}
+                                                    <td
+                                                        key={col.id}
                                                         {...commonProps}
                                                         onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
-                                                        className={`${commonProps.className} px-14 py-8 ${isEditing ? 'bg-indigo-50/50 ring-2 ring-inset ring-indigo-500 z-10' : ''} ${isLocked ? 'bg-slate-50/50 cursor-not-allowed' : 'cursor-text'}`}
+                                                        className={`${commonProps.className} ${isEditing ? 'bg-white ring-2 ring-inset ring-[#7F56D9] z-20 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
                                                     >
-                                                        {/* Render Content Based on Column Type */}
                                                         {isEditing ? (
                                                             col.type === "dropdown" ? (
-                                                                <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-black uppercase text-indigo-700 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-semibold text-[#101828] outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                     <option value="">Select...</option>
                                                                     {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                 </select>
                                                             ) : (
-                                                                <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-slate-900 font-black text-[13px]" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-[#101828] outline-none" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                             )
                                                         ) : (
-                                                            <div className="flex items-center justify-between w-full">
+                                                            <div className="flex items-center min-h-[24px]">
                                                                 {col.type === "dropdown" && val ? (
-                                                                    <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border shadow-sm ${val.toLowerCase().includes('done') || val.toLowerCase().includes('won') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-white text-slate-600 border-slate-200'}`}>{val}</span>
+                                                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border flex items-center gap-1.5 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-[#ECFDF3] text-[#027A48] border-[#ABEFC6]' :
+                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]' :
+                                                                            val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-[#F2F4F7] text-[#344054] border-[#EAECF0]' :
+                                                                                'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                                                        }`}>
+                                                                        <div className={`w-1.5 h-1.5 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-[#027A48]' :
+                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-[#B42318]' :
+                                                                                'bg-[#344054]'
+                                                                            }`} />
+                                                                        {val}
+                                                                    </span>
                                                                 ) : col.type === "currency" ? (
-                                                                    <span className="text-[13px] font-black text-indigo-900 flex items-center gap-1">
-                                                                        <IndianRupee size={12} className="text-slate-400" /> {val || "0.00"}
+                                                                    <span className="text-sm font-semibold text-[#101828] flex items-center gap-1">
+                                                                        <span className="text-[#667085] font-medium">₹</span>{val || "0.00"}
                                                                     </span>
                                                                 ) : (
-                                                                    <span className="text-[13px] font-bold text-indigo-900 truncate max-w-[180px]">{val || "—"}</span>
+                                                                    <span className="text-sm font-medium text-[#101828] truncate max-w-[200px]">{val || "—"}</span>
                                                                 )}
                                                             </div>
                                                         )}
@@ -967,6 +975,50 @@ export default function CRMSpreadsheetPage() {
                                     ))}
                                 </tbody>
                             </table>
+
+                            {/* Pagination Controls */}
+                            <div className="px-6 py-4 bg-white border-t border-[#EAECF0] flex items-center justify-between sticky left-0 w-full">
+                                <div className="text-sm text-[#475467]">
+                                    Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{filteredResponses.length}</span> responses
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                        disabled={currentPage === 1}
+                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                    >
+                                        <ChevronLeft size={16} /> Previous
+                                    </button>
+
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
+                                            const page = i + 1;
+                                            // Only show a few pages if too many
+                                            if (Math.abs(page - currentPage) > 2 && page !== 1 && page !== Math.ceil(filteredResponses.length / rowsPerPage)) {
+                                                if (Math.abs(page - currentPage) === 3) return <span key={page} className="px-2">...</span>;
+                                                return null;
+                                            }
+                                            return (
+                                                <button
+                                                    key={page}
+                                                    onClick={() => setCurrentPage(page)}
+                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === page ? 'bg-[#F9F5FF] text-[#7F56D9] border border-[#7F56D9]' : 'text-[#667085] hover:bg-[#F9FAFB]'}`}
+                                                >
+                                                    {page}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredResponses.length / rowsPerPage), prev + 1))}
+                                        disabled={currentPage === Math.ceil(filteredResponses.length / rowsPerPage)}
+                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                    >
+                                        Next <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
                         </motion.div>
                     ) : (
                         <motion.div
@@ -978,13 +1030,13 @@ export default function CRMSpreadsheetPage() {
                         >
                             {Object.entries(groupedResponses).map(([groupName, items]) => (
                                 <div key={groupName} className="w-[380px] shrink-0 flex flex-col gap-6">
-                                    <div className="flex items-center justify-between px-4">
+                                    <div className="flex items-center justify-between px-2">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">{groupName}</h3>
-                                            <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-black rounded-md">{items.length}</span>
+                                            <div className="w-2 h-2 rounded-full bg-[#7F56D9]" />
+                                            <h3 className="text-xs font-semibold text-[#475467]">{groupName}</h3>
+                                            <span className="px-2 py-0.5 bg-[#F2F4F7] text-[#344054] text-[10px] font-semibold rounded-md">{items.length}</span>
                                         </div>
-                                        <button className="p-2 text-slate-300 hover:text-slate-600"><MoreHorizontal size={16} /></button>
+                                        <button className="p-2 text-[#667085] hover:text-[#101828]"><MoreHorizontal size={16} /></button>
                                     </div>
                                     <div className="flex-1 overflow-y-auto space-y-5 custom-scrollbar pb-10">
                                         {items.map(item => (
@@ -992,32 +1044,34 @@ export default function CRMSpreadsheetPage() {
                                                 key={item.id}
                                                 layoutId={item.id}
                                                 onClick={() => setSelectedResponse(item)}
-                                                className="p-8 bg-white border-2 border-slate-100 rounded-[40px] shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group"
+                                                className="p-5 bg-white border border-[#EAECF0] rounded-xl shadow-sm hover:shadow-md hover:border-[#D6BBFB] transition-all cursor-pointer group"
                                             >
-                                                <div className="flex items-start justify-between mb-6">
-                                                    <div className="w-10 h-10 rounded-[16px] bg-slate-900 text-white flex items-center justify-center text-[10px] font-black uppercase">
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className="w-8 h-8 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold uppercase border border-[#EAECF0]">
                                                         {item.submittedByName ? item.submittedByName[0] : "?"}
                                                     </div>
-                                                    <span className="text-[9px] font-black text-slate-300 uppercase">{safeFormat(item.submittedAt, "MMM dd")}</span>
+                                                    <span className="text-[10px] font-medium text-[#667085]">{safeFormat(item.submittedAt, "MMM dd")}</span>
                                                 </div>
-                                                <h4 className="text-sm font-black text-slate-800 mb-2 truncate">{item.submittedByName}</h4>
+                                                <h4 className="text-sm font-semibold text-[#101828] mb-3 truncate">{item.submittedByName || "Public User"}</h4>
                                                 <div className="space-y-2 mt-4">
-                                                    {data?.form?.fields?.slice(0, 2).map(f => (
-                                                        <div key={f.id} className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                                                            <span>{f.label}:</span>
-                                                            <span className="text-slate-600">{getCellValue(item.id, f.id, false) || "—"}</span>
+                                                    {data?.form?.fields?.slice(0, 3).map(f => (
+                                                        <div key={f.id} className="flex items-center justify-between text-xs font-medium">
+                                                            <span className="text-[#667085]">{f.label}:</span>
+                                                            <span className="text-[#344054] truncate ml-4">{getCellValue(item.id, f.id, false) || "—"}</span>
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <div className="flex -space-x-2">
-                                                        <div className="w-6 h-6 rounded-full bg-indigo-50 border-2 border-white flex items-center justify-center text-[8px] font-black text-indigo-400"><History size={10} /></div>
+                                                <div className="mt-5 pt-3 border-t border-[#EAECF0] flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex -space-x-1">
+                                                        <div className="w-5 h-5 rounded-full bg-[#F9F5FF] border border-white flex items-center justify-center text-[#7F56D9]"><History size={10} /></div>
                                                     </div>
-                                                    <div className="p-2 text-indigo-600 group-hover:translate-x-1 transition-transform"><ArrowUpRight size={16} /></div>
+                                                    <div className="p-1 px-2 text-xs font-semibold text-[#7F56D9] bg-[#F9F5FF] rounded-md flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                                                        View <ArrowUpRight size={14} />
+                                                    </div>
                                                 </div>
                                             </motion.div>
                                         ))}
-                                        <button className="w-full py-6 border-2 border-dashed border-slate-200 rounded-[32px] text-[10px] font-black uppercase tracking-widest text-slate-400 hover:border-indigo-300 hover:text-indigo-600 transition-all">+ Drop Here</button>
+                                        <button className="w-full py-4 border-2 border-dashed border-[#EAECF0] rounded-xl text-xs font-semibold text-[#667085] hover:border-[#D6BBFB] hover:text-[#7F56D9] transition-all">+ Drop Here</button>
                                     </div>
                                 </div>
                             ))}
@@ -1033,13 +1087,18 @@ export default function CRMSpreadsheetPage() {
                         <>
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
                             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-full max-w-[650px] bg-white shadow-[-40px_0_100px_rgba(0,0,0,0.1)] z-[70] overflow-hidden flex flex-col">
-                                <div className="p-12 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/50 backdrop-blur-xl sticky top-0 z-10">
-                                    <div>
-                                        <span className="px-5 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.4em] rounded-[14px] mb-5 inline-block shadow-lg shadow-indigo-100">Profile Analysis</span>
-                                        <h2 className="text-4xl font-black tracking-tighter text-slate-900">Core Audit</h2>
+                                <div className="p-8 border-b border-[#EAECF0] flex items-center justify-between shrink-0 bg-white sticky top-0 z-10">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-full bg-[#F9F5FF] text-[#7F56D9] flex items-center justify-center border border-[#E9D7FE]">
+                                            <FileText size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-semibold text-[#101828]">Response Details</h2>
+                                            <p className="text-sm text-[#667085] mt-1">Audit trail and full record data</p>
+                                        </div>
                                     </div>
-                                    <button onClick={() => setSelectedResponse(null)} className="p-6 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-[30px] transition-all hover:rotate-90 active:scale-90">
-                                        <X size={28} />
+                                    <button onClick={() => setSelectedResponse(null)} className="p-2 text-[#667085] hover:text-[#101828] hover:bg-[#F9FAFB] rounded-lg transition-all">
+                                        <X size={24} />
                                     </button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
