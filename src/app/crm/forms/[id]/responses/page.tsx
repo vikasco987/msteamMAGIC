@@ -183,6 +183,7 @@ export default function CRMSpreadsheetPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
+    const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
 
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
@@ -496,17 +497,64 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        const cellKey = `${responseId}-${columnId}`;
+        const previousData = data;
+
+        // Optimistic Update
+        setData(prev => {
+            if (!prev) return prev;
+            if (isInternal) {
+                const newInternalValues = [...(prev.internalValues || [])];
+                const index = newInternalValues.findIndex(v => v.responseId === responseId && v.columnId === columnId);
+                if (index > -1) {
+                    newInternalValues[index] = { ...newInternalValues[index], value };
+                } else {
+                    newInternalValues.push({ responseId, columnId, value });
+                }
+                return { ...prev, internalValues: newInternalValues };
+            } else {
+                const newResponses = [...(prev.responses || [])];
+                const respIndex = newResponses.findIndex(r => r.id === responseId);
+                if (respIndex > -1) {
+                    const newValues = [...(newResponses[respIndex].values || [])];
+                    const valIndex = newValues.findIndex(v => v.fieldId === columnId);
+                    if (valIndex > -1) {
+                        newValues[valIndex] = { ...newValues[valIndex], value };
+                    } else {
+                        newValues.push({ fieldId: columnId, value });
+                    }
+                    newResponses[respIndex] = { ...newResponses[respIndex], values: newValues };
+                }
+                return { ...prev, responses: newResponses };
+            }
+        });
+
+        setSavingCells(prev => {
+            const next = new Set(prev);
+            next.add(cellKey);
+            return next;
+        });
+
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ responseId, columnId, value, isInternal })
             });
-            if (res.ok) {
-                fetchData();
+
+            if (!res.ok) {
+                toast.error("Sync failed");
+                setData(previousData); // Rollback
             }
         } catch (err) {
-            toast.error("Update failed");
+            toast.error("Matrix error");
+            setData(previousData); // Rollback
+        } finally {
+            setSavingCells(prev => {
+                const next = new Set(prev);
+                next.delete(cellKey);
+                return next;
+            });
         }
     };
 
@@ -890,6 +938,7 @@ export default function CRMSpreadsheetPage() {
                                                 const isInternal = col.isInternal;
                                                 const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
                                                 const isLocked = !!col.isLocked;
+                                                const isSaving = savingCells.has(`${res.id}-${col.id}`);
 
                                                 return (
                                                     <td
@@ -910,25 +959,36 @@ export default function CRMSpreadsheetPage() {
                                                                 )}
                                                             </div>
                                                         ) : (
-                                                            <div className="flex items-center min-h-[20px] min-w-0">
-                                                                {col.type === "dropdown" && val ? (
-                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1 shrink-0 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                            val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                                                                                'bg-indigo-50 text-indigo-700 border-indigo-100'
-                                                                        }`}>
-                                                                        <div className={`w-1 h-1 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
-                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-500' :
-                                                                                'bg-indigo-500'
-                                                                            }`} />
-                                                                        {val}
-                                                                    </span>
-                                                                ) : col.type === "currency" ? (
-                                                                    <span className="text-[13px] font-bold text-slate-900 flex items-center gap-0.5 truncate">
-                                                                        <span className="text-slate-400 font-bold">₹</span>{val || "0.00"}
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="text-[13px] font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis">{val || "—"}</span>
+                                                            <div className="flex items-center justify-between min-h-[20px] min-w-0">
+                                                                <div className="flex items-center min-w-0 overflow-hidden">
+                                                                    {col.type === "dropdown" && val ? (
+                                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1 shrink-0 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-slate-100 text-slate-700 border-slate-200' :
+                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                                                            }`}>
+                                                                            <div className={`w-1 h-1 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
+                                                                                val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-500' :
+                                                                                    'bg-indigo-500'
+                                                                                }`} />
+                                                                            {val}
+                                                                        </span>
+                                                                    ) : col.type === "currency" ? (
+                                                                        <span className="text-[13px] font-bold text-slate-900 flex items-center gap-0.5 truncate">
+                                                                            <span className="text-slate-400 font-bold">₹</span>{val || "0.00"}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[13px] font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis">{val || "—"}</span>
+                                                                    )}
+                                                                </div>
+                                                                {isSaving && (
+                                                                    <motion.div
+                                                                        initial={{ opacity: 0, scale: 0.5 }}
+                                                                        animate={{ opacity: 1, scale: 1 }}
+                                                                        className="ml-2 shrink-0"
+                                                                    >
+                                                                        <Activity size={10} className="text-indigo-500 animate-pulse" />
+                                                                    </motion.div>
                                                                 )}
                                                             </div>
                                                         )}
