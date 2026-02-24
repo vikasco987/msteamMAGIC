@@ -4,11 +4,12 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 
 export async function GET() {
     try {
-        const { userId, sessionClaims } = await auth();
+        const { userId } = await auth();
+        const user = await currentUser();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // Get role from Clerk Metadata (Robustness like TeamBoard)
-        const metaRole = (sessionClaims?.metadata as any)?.role || "user";
+        // Get role from Clerk Metadata
+        const metaRole = (user?.publicMetadata?.role as string || "user").toUpperCase();
 
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
@@ -52,23 +53,28 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
     try {
-        const { userId, sessionClaims } = await auth();
+        const { userId } = await auth();
         const user = await currentUser();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // Get role and handle authorization (TeamBoard Consistency)
-        const metaRole = ((sessionClaims?.metadata as any)?.role || "user").toUpperCase();
-        
+        // Get role and handle authorization
+        const metaRole = (user?.publicMetadata?.role as string || "user").toUpperCase();
+
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
         });
         const dbRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" || 
-                           dbRole === "ADMIN" || dbRole === "MASTER";
+        const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" ||
+            dbRole === "ADMIN" || dbRole === "MASTER";
+
+        console.log(`🔐 Authorization Check: User=${userId}, Meta=${metaRole}, DB=${dbRole}, Auth=${isAuthorized}`);
 
         if (!isAuthorized) {
-            return NextResponse.json({ error: "Forbidden: Only Admin/Master can build forms" }, { status: 403 });
+            return NextResponse.json({
+                error: "Forbidden: Only Admin/Master can build forms",
+                debug: { metaRole, dbRole, userId }
+            }, { status: 403 });
         }
 
         const body = await req.json();
