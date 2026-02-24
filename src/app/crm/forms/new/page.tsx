@@ -261,195 +261,215 @@ export default function FormBuilderPage() {
                             <div className="py-24 text-center border-4 border-dashed border-slate-200 rounded-[40px] bg-white/50">
                                 <Layout size={60} className="mx-auto text-slate-200 mb-6" />
                                 <h3 className="text-xl font-black text-slate-900">Your Canvas is Ready</h3>
-                                <p className="text-slate-400 font-bold text-sm mt-2">Pick a field from the left sidebar to start building.</p>
+                                <p className="text-slate-400 font-bold text-sm mt-2 mb-8">Pick a field from the left sidebar to start building.</p>
+                                <button
+                                    onClick={() => setSidebarTab("permissions")}
+                                    className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all flex items-center gap-2 mx-auto"
+                                >
+                                    <ShieldCheck size={14} /> Configure Access Matrix
+                                </button>
                             </div>
                         )}
                     </div>
                 </section>
 
                 {/* Right Sidebar: Field Settings */}
-                <aside className="w-[380px] bg-white border-l border-slate-200 p-8 overflow-y-auto flex flex-col gap-8">
-                    <div className="flex bg-slate-100 p-1.5 rounded-[22px] border border-slate-200 shrink-0">
-                        <button onClick={() => setSidebarTab("fields")} className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'fields' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Field Engine</button>
-                        <button onClick={() => setSidebarTab("permissions")} className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${sidebarTab === 'permissions' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Access Matrix</button>
+                <aside className="w-[400px] bg-white border-l border-slate-200 p-0 overflow-y-auto flex flex-col">
+                    <div className="flex bg-slate-50 p-2 border-b border-slate-100 shrink-0 sticky top-0 z-10">
+                        <button
+                            onClick={() => setSidebarTab("fields")}
+                            className={`flex-1 py-4 flex flex-col items-center gap-1 rounded-2xl transition-all ${sidebarTab === 'fields' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <Settings size={18} />
+                            <span className="text-[9px] font-black uppercase tracking-widest">Field Engine</span>
+                        </button>
+                        <button
+                            onClick={() => setSidebarTab("permissions")}
+                            className={`flex-1 py-4 flex flex-col items-center gap-1 rounded-2xl transition-all ${sidebarTab === 'permissions' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            <ShieldCheck size={18} />
+                            <span className="text-[9px] font-black uppercase tracking-widest">Access Matrix</span>
+                        </button>
                     </div>
 
-                    {sidebarTab === "fields" ? (
-                        selectedField ? (
-                            <div className="space-y-8">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <Settings className="text-indigo-600" size={20} />
-                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Field Configuration</h3>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Display Label</label>
-                                        <input
-                                            type="text"
-                                            value={selectedField.label}
-                                            onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
-                                            className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                        />
+                    <div className="p-8">
+                        {sidebarTab === "fields" ? (
+                            selectedField ? (
+                                <div className="space-y-8">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <Settings className="text-indigo-600" size={20} />
+                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Field Configuration</h3>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Placeholder Message</label>
-                                        <input
-                                            type="text"
-                                            value={selectedField.placeholder}
-                                            onChange={(e) => updateField(selectedField.id, { placeholder: e.target.value })}
-                                            className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                        />
-                                    </div>
-
-                                    {selectedField.type === "dropdown" && (
-                                        <div className="space-y-4">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dropdown Options</label>
-                                            {selectedField.options.map((opt, idx) => (
-                                                <div key={idx} className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={opt}
-                                                        onChange={(e) => {
-                                                            const newOpts = [...selectedField.options];
-                                                            newOpts[idx] = e.target.value;
-                                                            updateField(selectedField.id, { options: newOpts });
-                                                        }}
-                                                        className="flex-1 p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            const newOpts = selectedField.options.filter((_, i) => i !== idx);
-                                                            updateField(selectedField.id, { options: newOpts });
-                                                        }}
-                                                        className="p-4 text-rose-500 hover:bg-rose-50 rounded-2xl"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <button
-                                                onClick={() => updateField(selectedField.id, { options: [...selectedField.options, `Option ${selectedField.options.length + 1}`] })}
-                                                className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
-                                            >
-                                                Add Option
-                                            </button>
+                                    <div className="space-y-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Display Label</label>
+                                            <input
+                                                type="text"
+                                                value={selectedField.label}
+                                                onChange={(e) => updateField(selectedField.id, { label: e.target.value })}
+                                                className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                            />
                                         </div>
-                                    )}
 
-                                    <div className="pt-4 border-t border-slate-100">
-                                        <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-black text-slate-700">Required Field</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Make this input mandatory</span>
-                                            </div>
-                                            <button
-                                                onClick={() => updateField(selectedField.id, { required: !selectedField.required })}
-                                                className={`w-14 h-8 rounded-full relative transition-all duration-300 
-                                                    ${selectedField.required ? 'bg-indigo-600' : 'bg-slate-300'}`}
-                                            >
-                                                <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all 
-                                                    ${selectedField.required ? 'right-1' : 'left-1'}`} />
-                                            </button>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Placeholder Message</label>
+                                            <input
+                                                type="text"
+                                                value={selectedField.placeholder}
+                                                onChange={(e) => updateField(selectedField.id, { placeholder: e.target.value })}
+                                                className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                            />
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-center px-6 py-20">
-                                <div className="p-8 bg-slate-50 rounded-[35px] mb-8">
-                                    <Settings size={48} className="text-slate-200" />
-                                </div>
-                                <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest">Logic Hub</h4>
-                                <p className="text-xs font-bold text-slate-400 mt-4 leading-relaxed">Select a coordinate from the matrix center to calibrate its attributes.</p>
-                            </div>
-                        )
-                    ) : (
-                        <div className="space-y-10">
-                            <div className="flex items-center gap-3 mb-4">
-                                <ShieldCheck className="text-indigo-600" size={20} />
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Global Access Control</h3>
-                            </div>
 
-                            <div className="space-y-8">
-                                <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Role-Based Access (RBAC)</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {AVAILABLE_ROLES.map(role => (
-                                            <button
-                                                key={role}
-                                                onClick={() => {
-                                                    setVisibleToRoles(prev =>
-                                                        prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
-                                                    );
-                                                }}
-                                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${visibleToRoles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
-                                            >
-                                                {role}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase mt-3 tracking-tighter">Only users with these roles will see this form.</p>
-                                </div>
-
-                                <div className="pt-8 border-t border-slate-100 relative">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block text-indigo-600">Exclusive User Access</label>
-                                    <div className="relative mb-4">
-                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            value={userSearchQuery}
-                                            onChange={(e) => searchUsers(e.target.value)}
-                                            placeholder="Search by email..."
-                                            className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
-                                        />
-                                    </div>
-
-                                    {userResults.length > 0 && (
-                                        <div className="absolute left-0 right-0 top-[100px] bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 py-4 max-h-[200px] overflow-y-auto">
-                                            {userResults.map(u => (
+                                        {selectedField.type === "dropdown" && (
+                                            <div className="space-y-4">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dropdown Options</label>
+                                                {selectedField.options.map((opt, idx) => (
+                                                    <div key={idx} className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={opt}
+                                                            onChange={(e) => {
+                                                                const newOpts = [...selectedField.options];
+                                                                newOpts[idx] = e.target.value;
+                                                                updateField(selectedField.id, { options: newOpts });
+                                                            }}
+                                                            className="flex-1 p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-600 rounded-2xl font-bold text-slate-700 outline-none transition-all"
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                const newOpts = selectedField.options.filter((_, i) => i !== idx);
+                                                                updateField(selectedField.id, { options: newOpts });
+                                                            }}
+                                                            className="p-4 text-rose-500 hover:bg-rose-50 rounded-2xl"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                ))}
                                                 <button
-                                                    key={u.clerkId}
-                                                    onClick={() => {
-                                                        if (!visibleToUsers.includes(u.clerkId)) {
-                                                            setVisibleToUsers([...visibleToUsers, u.clerkId]);
-                                                        }
-                                                        setUserResults([]);
-                                                        setUserSearchQuery("");
-                                                    }}
-                                                    className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between group"
+                                                    onClick={() => updateField(selectedField.id, { options: [...selectedField.options, `Option ${selectedField.options.length + 1}`] })}
+                                                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black uppercase text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all"
                                                 >
-                                                    <span className="text-[10px] font-black text-slate-700">{u.email}</span>
-                                                    <Plus size={14} className="text-indigo-600 opacity-0 group-hover:opacity-100" />
+                                                    Add Option
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        <div className="pt-4 border-t border-slate-100">
+                                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-black text-slate-700">Required Field</span>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase">Make this input mandatory</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => updateField(selectedField.id, { required: !selectedField.required })}
+                                                    className={`w-14 h-8 rounded-full relative transition-all duration-300 
+                                                        ${selectedField.required ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                                                >
+                                                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all 
+                                                        ${selectedField.required ? 'right-1' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col items-center justify-center text-center px-6 py-20">
+                                    <div className="p-8 bg-slate-50 rounded-[35px] mb-8">
+                                        <Settings size={48} className="text-slate-200" />
+                                    </div>
+                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-widest">Logic Hub</h4>
+                                    <p className="text-xs font-bold text-slate-400 mt-4 leading-relaxed">Select a coordinate from the matrix center to calibrate its attributes.</p>
+                                </div>
+                            )
+                        ) : (
+                            <div className="space-y-10">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <ShieldCheck className="text-indigo-600" size={20} />
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Global Access Control</h3>
+                                </div>
+
+                                <div className="space-y-8">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Role-Based Access (RBAC)</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {AVAILABLE_ROLES.map(role => (
+                                                <button
+                                                    key={role}
+                                                    onClick={() => {
+                                                        setVisibleToRoles(prev =>
+                                                            prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+                                                        );
+                                                    }}
+                                                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${visibleToRoles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                                >
+                                                    {role}
                                                 </button>
                                             ))}
                                         </div>
-                                    )}
-
-                                    <div className="flex flex-wrap gap-2">
-                                        {visibleToUsers.map(uid => (
-                                            <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
-                                                <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
-                                                <X size={12} className="cursor-pointer hover:text-rose-500" onClick={() => setVisibleToUsers(visibleToUsers.filter(x => x !== uid))} />
-                                            </div>
-                                        ))}
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase mt-3 tracking-tighter">Only users with these roles will see this form.</p>
                                     </div>
-                                </div>
 
-                                <div className="pt-8 border-t border-slate-100">
-                                    <div className="p-6 bg-slate-900 rounded-[30px] text-white">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <Layout size={16} className="text-indigo-400" />
-                                            <span className="text-[10px] font-black uppercase tracking-widest">Global Settings</span>
+                                    <div className="pt-8 border-t border-slate-100 relative">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block text-indigo-600">Exclusive User Access</label>
+                                        <div className="relative mb-4">
+                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                            <input
+                                                value={userSearchQuery}
+                                                onChange={(e) => searchUsers(e.target.value)}
+                                                placeholder="Search by email..."
+                                                className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
+                                            />
                                         </div>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">
-                                            If no roles or users are selected, this form will be visible to <span className="text-emerald-400">Everyone</span>.
-                                        </p>
+
+                                        {userResults.length > 0 && (
+                                            <div className="absolute left-0 right-0 top-[100px] bg-white rounded-3xl shadow-2xl border border-slate-100 z-50 py-4 max-h-[200px] overflow-y-auto">
+                                                {userResults.map(u => (
+                                                    <button
+                                                        key={u.clerkId}
+                                                        onClick={() => {
+                                                            if (!visibleToUsers.includes(u.clerkId)) {
+                                                                setVisibleToUsers([...visibleToUsers, u.clerkId]);
+                                                            }
+                                                            setUserResults([]);
+                                                            setUserSearchQuery("");
+                                                        }}
+                                                        className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between group"
+                                                    >
+                                                        <span className="text-[10px] font-black text-slate-700">{u.email}</span>
+                                                        <Plus size={14} className="text-indigo-600 opacity-0 group-hover:opacity-100" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-wrap gap-2">
+                                            {visibleToUsers.map(uid => (
+                                                <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
+                                                    <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
+                                                    <X size={12} className="cursor-pointer hover:text-rose-500" onClick={() => setVisibleToUsers(visibleToUsers.filter(x => x !== uid))} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-8 border-t border-slate-100">
+                                        <div className="p-6 bg-slate-900 rounded-[30px] text-white">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <Layout size={16} className="text-indigo-400" />
+                                                <span className="text-[10px] font-black uppercase tracking-widest">Global Settings</span>
+                                            </div>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase leading-relaxed">
+                                                If no roles or users are selected, this form will be visible to <span className="text-emerald-400">Everyone</span>.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </aside>
             </main>
         </div>

@@ -11,7 +11,7 @@ export async function GET() {
             where: { clerkId: userId }
         });
 
-        const userRole = dbUser?.role || "GUEST";
+        const userRole = (dbUser?.role || "GUEST").toUpperCase();
         const isMaster = userRole === "ADMIN" || userRole === "MASTER";
 
         let whereClause = {};
