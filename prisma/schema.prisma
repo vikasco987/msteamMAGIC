@@ -348,3 +348,14 @@ model FormActivity {
   newValue        String?
   createdAt       DateTime    @default(now())
 }
+
+model SavedView {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  formId          String   @db.ObjectId
+  conditions      Json     // Array of { colId, op, val, val2 }
+  conjunction     String   // "AND" | "OR"
+  createdBy       String   // Clerk userId
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

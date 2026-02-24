@@ -89,6 +89,13 @@ interface FormActivity {
     createdAt: string;
 }
 
+interface SavedView {
+    id: string;
+    name: string;
+    conditions: { colId: string, op: string, val: string, val2?: string }[];
+    conjunction: "AND" | "OR";
+}
+
 interface FormResponse {
     id: string;
     submittedAt: string;
@@ -123,6 +130,46 @@ const COLUMN_TYPES = [
 
 const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
 
+const FILTER_OPERATORS = {
+    text: [
+        { label: "Equals", value: "equals" },
+        { label: "Contains", value: "contains" },
+        { label: "Starts With", value: "starts_with" },
+        { label: "Ends With", value: "ends_with" },
+        { label: "Complement (Not)", value: "not_equals" },
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
+    ],
+    number: [
+        { label: "Equals", value: "eq" },
+        { label: "Greater Than", value: "gt" },
+        { label: "Less Than", value: "lt" },
+        { label: "Greater or Equal", value: "gte" },
+        { label: "Less or Equal", value: "lte" },
+        { label: "Between", value: "between" },
+        { label: "Is Empty", value: "is_empty" }
+    ],
+    date: [
+        { label: "Is Today", value: "today" },
+        { label: "Is Yesterday", value: "yesterday" },
+        { label: "Before", value: "before" },
+        { label: "After", value: "after" },
+        { label: "Is Tomorrow", value: "tomorrow" },
+        { label: "This Week", value: "this_week" },
+        { label: "Between", value: "between" },
+        { label: "Is Empty", value: "is_empty" }
+    ],
+    dropdown: [
+        { label: "Is", value: "equals" },
+        { label: "Is Not", value: "not_equals" },
+        { label: "Is Empty", value: "is_empty" }
+    ],
+    checkbox: [
+        { label: "Is Checked", value: "is_true" },
+        { label: "Is Unchecked", value: "is_false" }
+    ]
+};
+
 export default function CRMSpreadsheetPage() {
     const router = useRouter();
     const params = useParams();
@@ -137,7 +184,11 @@ export default function CRMSpreadsheetPage() {
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
     const [isFilterBuilderOpen, setIsFilterBuilderOpen] = useState(false);
-    const [conditions, setConditions] = useState<{ colId: string, op: string, val: string }[]>([]);
+    const [conditions, setConditions] = useState<SavedView['conditions']>([]);
+    const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("AND");
+    const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+    const [autoApply, setAutoApply] = useState(true);
+
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
@@ -164,11 +215,20 @@ export default function CRMSpreadsheetPage() {
 
     const fetchData = async () => {
         try {
-            const res = await fetch(`/api/crm/forms/${params.id}/responses`);
-            const json = await res.json();
+            const [dataRes, viewsRes] = await Promise.all([
+                fetch(`/api/crm/forms/${params.id}/responses`),
+                fetch(`/api/crm/forms/${params.id}/views`)
+            ]);
+
+            const json = await dataRes.json();
             setData(json);
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
+
+            if (viewsRes.ok) {
+                const viewsJson = await viewsRes.json();
+                setSavedViews(viewsJson);
+            }
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
             if (!groupByColId) {
@@ -228,22 +288,57 @@ export default function CRMSpreadsheetPage() {
 
         if (conditions.length > 0) {
             results = results.filter(r => {
-                return conditions.every(cond => {
-                    const isInternal = !!(data.internalColumns || []).find(ic => ic.id === cond.colId);
+                const matches = conditions.map(cond => {
+                    const col = getColumns.find(c => c.id === cond.colId);
+                    const isInternal = col?.isInternal;
                     const cellVal = getCellValue(r.id, cond.colId, isInternal);
                     const val = (cellVal || "").toLowerCase();
                     const targetVal = cond.val.toLowerCase();
-                    if (cond.op === "equals") return val === targetVal;
-                    if (cond.op === "contains") return val.includes(targetVal);
-                    if (cond.op === "gt") return parseFloat(val) > parseFloat(targetVal);
-                    if (cond.op === "lt") return parseFloat(val) < parseFloat(targetVal);
-                    if (cond.op === "not_empty") return val.trim().length > 0;
-                    return true;
+                    const targetVal2 = cond.val2?.toLowerCase() || "";
+
+                    switch (cond.op) {
+                        case "equals": return val === targetVal;
+                        case "not_equals": return val !== targetVal;
+                        case "contains": return val.includes(targetVal);
+                        case "starts_with": return val.startsWith(targetVal);
+                        case "ends_with": return val.endsWith(targetVal);
+                        case "is_empty": return val.trim().length === 0;
+                        case "is_not_empty": return val.trim().length > 0;
+
+                        case "eq": return parseFloat(val) === parseFloat(targetVal);
+                        case "gt": return parseFloat(val) > parseFloat(targetVal);
+                        case "lt": return parseFloat(val) < parseFloat(targetVal);
+                        case "gte": return parseFloat(val) >= parseFloat(targetVal);
+                        case "lte": return parseFloat(val) <= parseFloat(targetVal);
+                        case "between": return parseFloat(val) >= parseFloat(targetVal) && parseFloat(val) <= parseFloat(targetVal2);
+
+                        case "is_true": return val === "true";
+                        case "is_false": return val === "false" || val === "";
+
+                        case "today": {
+                            const d = new Date(cellVal);
+                            const now = new Date();
+                            return d.toDateString() === now.toDateString();
+                        }
+                        case "this_week": {
+                            const d = new Date(cellVal);
+                            const now = new Date();
+                            const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                            return d >= startOfWeek;
+                        }
+                        case "before": return new Date(cellVal) < new Date(cond.val);
+                        case "after": return new Date(cellVal) > new Date(cond.val);
+
+                        default: return true;
+                    }
                 });
+
+                if (filterConjunction === "AND") return matches.every(m => m);
+                return matches.some(m => m);
             });
         }
         return results;
-    }, [data, searchTerm, conditions, getCellValue]);
+    }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
@@ -483,6 +578,58 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleSaveView = async () => {
+        const name = prompt("Enter view name:");
+        if (!name) return;
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/views`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, conditions, conjunction: filterConjunction })
+            });
+
+            if (res.ok) {
+                const newView = await res.json();
+                setSavedViews([newView, ...savedViews]);
+                toast.success("View Archived Correctly");
+            }
+        } catch (err) {
+            toast.error("Failed to save view");
+        }
+    };
+
+    const handleDeleteView = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm("Destroy this architecture?")) return;
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/views?id=${id}`, { method: "DELETE" });
+            if (res.ok) {
+                setSavedViews(savedViews.filter(v => v.id !== id));
+                toast.success("View Purged");
+            }
+        } catch (err) { toast.error("Purge failed"); }
+    };
+
+    const handleDuplicateView = async (view: any) => {
+        const name = prompt("Enter name for duplicate:", `${view.name} (Copy)`);
+        if (!name) return;
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/views`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, conditions: view.conditions, conjunction: view.conjunction })
+            });
+            if (res.ok) {
+                const newView = await res.json();
+                setSavedViews([newView, ...savedViews]);
+                toast.success("Architecture Duplicated");
+            }
+        } catch (err) { toast.error("Duplication failed"); }
+    };
+
     const handleBulkVisibilityUpdate = async (type: "COLUMN" | "ROW", roles: string[]) => {
         const ids = type === "ROW" ? selectedRows : []; // Add column selection later if needed
         if (ids.length === 0) return;
@@ -505,6 +652,12 @@ export default function CRMSpreadsheetPage() {
 
     const toggleRowSelection = (id: string) => {
         setSelectedRows(prev => prev.includes(id) ? prev.filter(rid => rid !== id) : [...prev, id]);
+    };
+
+    const applySavedView = (view: any) => {
+        setConditions(view.conditions);
+        setFilterConjunction(view.conjunction as any);
+        toast.success(`Matrix calibrated: ${view.name}`);
     };
 
     const toggleAllRows = () => {
@@ -532,21 +685,48 @@ export default function CRMSpreadsheetPage() {
         <div className="min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900">
             {/* SaaS Header */}
             <header className="h-[110px] bg-white border-b border-slate-200 px-12 flex items-center justify-between shrink-0 z-30 shadow-sm relative">
-                <div className="flex items-center gap-12">
+                <div className="flex items-center gap-10">
                     <button onClick={() => router.back()} className="p-4 bg-slate-50 border border-slate-100 rounded-[28px] hover:bg-white transition-all shadow-sm active:scale-90">
                         <ArrowLeft size={22} className="text-slate-500" />
                     </button>
                     <div>
-                        <h1 className="text-3xl font-black tracking-tighter leading-none mb-3">{data?.form?.title || "Project Ledger"}</h1>
-                        <div className="flex items-center gap-6">
-                            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                                <button onClick={() => setCurrentView("table")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Table</button>
-                                <button onClick={() => setCurrentView("kanban")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>Kanban</button>
-                            </div>
-                            <span className="h-4 w-[1px] bg-slate-200" />
+                        <div className="flex items-center gap-4 mb-3">
+                            <h1 className="text-3xl font-black tracking-tighter leading-none">{data?.form?.title || "Project Ledger"}</h1>
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
                                 <ShieldCheck size={14} className="text-indigo-500" /> Administrative Matrix
                             </span>
+                        </div>
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+                                <button onClick={() => setCurrentView("table")} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all ${currentView === 'table' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                                    <Table size={16} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Grid View</span>
+                                </button>
+                                <button onClick={() => setCurrentView("kanban")} className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all ${currentView === 'kanban' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:bg-white active:scale-95'}`}>
+                                    <LayoutGrid size={16} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-inherit">Kanban</span>
+                                </button>
+                            </div>
+
+                            <div className="h-10 w-px bg-slate-200" />
+
+                            <div className="flex items-center gap-3 overflow-x-auto max-w-[500px] no-scrollbar">
+                                <button onClick={() => setConditions([])} className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border shrink-0 ${conditions.length === 0 ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>
+                                    Raw Data
+                                </button>
+                                {savedViews.map(view => {
+                                    const isActive = JSON.stringify(conditions) === JSON.stringify(view.conditions);
+                                    return (
+                                        <button
+                                            key={view.id}
+                                            onClick={() => applySavedView(view)}
+                                            className={`px-5 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border whitespace-nowrap shrink-0 ${isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200 hover:text-indigo-600'}`}
+                                        >
+                                            {view.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -793,320 +973,422 @@ export default function CRMSpreadsheetPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </main>
+            </main >
 
             {/* Sidebar Details Drawer */}
             <AnimatePresence>
-                {selectedResponse && (
-                    <>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
-                        <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-full max-w-[650px] bg-white shadow-[-40px_0_100px_rgba(0,0,0,0.1)] z-[70] overflow-hidden flex flex-col">
-                            <div className="p-12 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/50 backdrop-blur-xl sticky top-0 z-10">
-                                <div>
-                                    <span className="px-5 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.4em] rounded-[14px] mb-5 inline-block shadow-lg shadow-indigo-100">Profile Analysis</span>
-                                    <h2 className="text-4xl font-black tracking-tighter text-slate-900">Core Audit</h2>
+                {
+                    selectedResponse && (
+                        <>
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
+                            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-full max-w-[650px] bg-white shadow-[-40px_0_100px_rgba(0,0,0,0.1)] z-[70] overflow-hidden flex flex-col">
+                                <div className="p-12 border-b border-slate-100 flex items-center justify-between shrink-0 bg-white/50 backdrop-blur-xl sticky top-0 z-10">
+                                    <div>
+                                        <span className="px-5 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.4em] rounded-[14px] mb-5 inline-block shadow-lg shadow-indigo-100">Profile Analysis</span>
+                                        <h2 className="text-4xl font-black tracking-tighter text-slate-900">Core Audit</h2>
+                                    </div>
+                                    <button onClick={() => setSelectedResponse(null)} className="p-6 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-[30px] transition-all hover:rotate-90 active:scale-90">
+                                        <X size={28} />
+                                    </button>
                                 </div>
-                                <button onClick={() => setSelectedResponse(null)} className="p-6 bg-slate-50 text-slate-400 hover:text-slate-900 rounded-[30px] transition-all hover:rotate-90 active:scale-90">
-                                    <X size={28} />
-                                </button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-                                <div className="space-y-16">
-                                    <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
-                                        <div className="relative z-10">
-                                            <h4 className="text-2xl font-black mb-4 tracking-tight">Active Workflows</h4>
-                                            <div className="grid grid-cols-2 gap-5 mt-12">
-                                                <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4">
-                                                    <UserPlus size={22} className="text-indigo-600" /> CRM Sync
-                                                </button>
-                                                <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4">
-                                                    <Mail size={22} className="text-indigo-400" /> Notify
-                                                </button>
+                                <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
+                                    <div className="space-y-16">
+                                        <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
+                                            <div className="relative z-10">
+                                                <h4 className="text-2xl font-black mb-4 tracking-tight">Active Workflows</h4>
+                                                <div className="grid grid-cols-2 gap-5 mt-12">
+                                                    <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4">
+                                                        <UserPlus size={22} className="text-indigo-600" /> CRM Sync
+                                                    </button>
+                                                    <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4">
+                                                        <Mail size={22} className="text-indigo-400" /> Notify
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-8">
+                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><History size={20} className="text-indigo-500" /> Modification Archive</h3>
+                                            <div className="space-y-4">
+                                                {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
+                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                        <div key={act.id} className="p-8 bg-slate-50 rounded-[36px] border border-slate-100 flex items-start gap-6">
+                                                            <div className="w-12 h-12 rounded-[18px] bg-white border border-slate-100 flex items-center justify-center font-black text-xs text-slate-800 shadow-sm">{act.userName[0]}</div>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center justify-between mb-3"><p className="text-[13px] font-black text-slate-900">{act.userName}</p><span className="text-[10px] font-bold text-slate-400 uppercase">{safeFormat(act.createdAt, "MMM dd, HH:mm")}</span></div>
+                                                                <p className="text-xs text-slate-500 font-bold leading-relaxed">Changed <span className="text-indigo-600 font-black">{act.columnName}</span> to <span className="text-emerald-600 font-black">{act.newValue}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-center py-20 p-8 bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
+                                                        <Clock size={40} className="mx-auto text-slate-200 mb-4" />
+                                                        <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No modifications detected</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-8">
+                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><Database size={20} className="text-indigo-500" /> Attribute Core</h3>
+                                            <div className="grid grid-cols-1 gap-4">
+                                                {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => (
+                                                    <div key={col.id} className="p-10 bg-white border-2 border-slate-50 rounded-[44px] hover:border-slate-200 transition-all shadow-sm">
+                                                        <div className="flex items-center justify-between mb-4"><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{col.label}</p></div>
+                                                        <p className="text-xl font-black text-slate-900 leading-tight">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || <span className="text-slate-200 italic">No entry</span>}</p>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="space-y-8">
-                                        <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><History size={20} className="text-indigo-500" /> Modification Archive</h3>
-                                        <div className="space-y-4">
-                                            {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
-                                                data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
-                                                    <div key={act.id} className="p-8 bg-slate-50 rounded-[36px] border border-slate-100 flex items-start gap-6">
-                                                        <div className="w-12 h-12 rounded-[18px] bg-white border border-slate-100 flex items-center justify-center font-black text-xs text-slate-800 shadow-sm">{act.userName[0]}</div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center justify-between mb-3"><p className="text-[13px] font-black text-slate-900">{act.userName}</p><span className="text-[10px] font-bold text-slate-400 uppercase">{safeFormat(act.createdAt, "MMM dd, HH:mm")}</span></div>
-                                                            <p className="text-xs text-slate-500 font-bold leading-relaxed">Changed <span className="text-indigo-600 font-black">{act.columnName}</span> to <span className="text-emerald-600 font-black">{act.newValue}</span></p>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-center py-20 p-8 bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
-                                                    <Clock size={40} className="mx-auto text-slate-200 mb-4" />
-                                                    <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No modifications detected</p>
-                                                </div>
-                                            )}
-                                        </div>
+                                </div>
+                            </motion.div>
+                        </>
+                    )
+                }
+            </AnimatePresence >
+
+            {/* Filter Builder Modal — Phase 2 Upgrade */}
+            <AnimatePresence>
+                {
+                    isFilterBuilderOpen && (
+                        <div className="fixed inset-0 flex items-center justify-center z-[100] p-10">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
+                            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[60px] shadow-2xl w-full max-w-[900px] relative z-10 p-12 overflow-hidden flex flex-col gap-10 border-4 border-indigo-50">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-3xl font-black tracking-tighter mb-2">Matrix Filter Hub</h3>
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Architect your data segmentation</p>
                                     </div>
-                                    <div className="space-y-8">
-                                        <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><Database size={20} className="text-indigo-500" /> Attribute Core</h3>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => (
-                                                <div key={col.id} className="p-10 bg-white border-2 border-slate-50 rounded-[44px] hover:border-slate-200 transition-all shadow-sm">
-                                                    <div className="flex items-center justify-between mb-4"><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{col.label}</p></div>
-                                                    <p className="text-xl font-black text-slate-900 leading-tight">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || <span className="text-slate-200 italic">No entry</span>}</p>
+                                    <div className="flex bg-slate-100 p-1 rounded-2xl border">
+                                        <button onClick={() => setFilterConjunction("AND")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'AND' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match All (AND)</button>
+                                        <button onClick={() => setFilterConjunction("OR")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'OR' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match Any (OR)</button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[450px] pr-4">
+                                    {conditions.map((c, i) => {
+                                        const col = getColumns.find(col => col.id === c.colId);
+                                        const colType = col?.type || "text";
+                                        const operators = (FILTER_OPERATORS as any)[colType] || FILTER_OPERATORS.text;
+
+                                        return (
+                                            <div key={i} className="flex gap-4 items-center bg-slate-50 p-6 rounded-[32px] border border-slate-100 group">
+                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-black text-indigo-300 border mb-auto mt-2">
+                                                    {i + 1}
+                                                </div>
+                                                <div className="flex-1 grid grid-cols-12 gap-3">
+                                                    <div className="col-span-4">
+                                                        <select value={c.colId} onChange={(e) => { const n = [...conditions]; n[i].colId = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
+                                                            <option value="">Select Field...</option>
+                                                            {getColumns.filter(f => f.type !== "static").map(f => (
+                                                                <option key={f.id} value={f.id}>{f.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <select value={c.op} onChange={(e) => { const n = [...conditions]; n[i].op = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
+                                                            {operators.map((op: any) => <option key={op.value} value={op.value}>{op.label}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="col-span-4 flex gap-2">
+                                                        {!["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "is_true", "is_false"].includes(c.op) && (
+                                                            <>
+                                                                {colType === "date" ? (
+                                                                    <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
+                                                                ) : colType === "dropdown" ? (
+                                                                    <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
+                                                                        <option value="">Value...</option>
+                                                                        {Array.isArray(col?.options) && col?.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                    </select>
+                                                                ) : (
+                                                                    <input value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} placeholder="Value..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
+                                                                )}
+                                                                {c.op === "between" && (
+                                                                    <input value={c.val2 || ""} onChange={(e) => { const n = [...conditions]; n[i].val2 = e.target.value; setConditions(n); }} placeholder="To..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    <div className="col-span-1 flex flex-col gap-1">
+                                                        <button onClick={() => {
+                                                            const n = [...conditions];
+                                                            if (i > 0) {
+                                                                [n[i], n[i - 1]] = [n[i - 1], n[i]];
+                                                                setConditions(n);
+                                                            }
+                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} className="rotate-180" /></button>
+                                                        <button onClick={() => {
+                                                            const n = [...conditions];
+                                                            if (i < n.length - 1) {
+                                                                [n[i], n[i + 1]] = [n[i + 1], n[i]];
+                                                                setConditions(n);
+                                                            }
+                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} /></button>
+                                                    </div>
+                                                    <div className="col-span-1">
+                                                        <button onClick={() => setConditions(conditions.filter((_, idx) => idx !== i))} className="w-full h-full p-4 bg-rose-50 text-rose-500 rounded-3xl hover:bg-rose-100 transition-colors flex items-center justify-center"><Trash2 size={16} /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <button onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])} className="w-full py-8 border-2 border-dashed border-slate-200 rounded-[40px] text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all flex items-center justify-center gap-3">
+                                        <Plus size={18} /> Spawn New Rule
+                                    </button>
+                                    <div className="mt-12 pt-12 border-t border-slate-100">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Saved Architectures</h4>
+                                        <div className="flex flex-wrap gap-4">
+                                            {savedViews.map(view => (
+                                                <div key={view.id} className="relative group/view">
+                                                    <button
+                                                        onClick={() => applySavedView(view)}
+                                                        className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center gap-2 group pr-12"
+                                                    >
+                                                        <Star size={12} className="group-hover:fill-current" />
+                                                        {view.name}
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleDeleteView(view.id, e)}
+                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-rose-500 hover:text-white text-rose-300 rounded-lg transition-all opacity-0 group-hover/view:opacity-100"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
                                                 </div>
                                             ))}
+                                            {savedViews.length === 0 && (
+                                                <>
+                                                    <button onClick={() => { setConditions([{ colId: "Status", op: "equals", val: "New" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all">New Leads</button>
+                                                    <button onClick={() => { setConditions([{ colId: "Budget", op: "gt", val: "50000" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-emerald-50 text-emerald-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all">High Value</button>
+                                                </>
+                                            )}
+                                            <button onClick={handleSaveView} className="px-6 py-4 bg-slate-50 text-slate-400 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-slate-100 border-dashed hover:border-indigo-300 hover:text-indigo-500 transition-all">+ Save Current View</button>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
 
-            {/* Filter Builder Modal — Phase 2 */}
-            <AnimatePresence>
-                {isFilterBuilderOpen && (
-                    <div className="fixed inset-0 flex items-center justify-center z-[100] p-10">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[60px] shadow-2xl w-full max-w-[800px] relative z-10 p-12 overflow-hidden flex flex-col gap-10">
-                            <div>
-                                <h3 className="text-3xl font-black tracking-tighter mb-2">Condition Builder</h3>
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Create professional level data filters</p>
-                            </div>
-                            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[400px] pr-4">
-                                {conditions.map((c, i) => (
-                                    <div key={i} className="flex gap-4 items-center bg-slate-50 p-6 rounded-[32px] border border-slate-100">
-                                        <select value={c.colId} onChange={(e) => { const n = [...conditions]; n[i].colId = e.target.value; setConditions(n); }} className="bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm flex-1">
-                                            <option value="">Select Column...</option>
-                                            {[...(data?.form.fields || []), ...(data?.internalColumns || [])].map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
-                                        </select>
-                                        <select value={c.op} onChange={(e) => { const n = [...conditions]; n[i].op = e.target.value; setConditions(n); }} className="bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm w-[140px]">
-                                            <option value="equals">Equals</option>
-                                            <option value="contains">Contains</option>
-                                            <option value="gt">&gt; Greater</option>
-                                            <option value="lt">&lt; Less</option>
-                                            <option value="not_empty">Not Empty</option>
-                                        </select>
-                                        <input value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} placeholder="Value..." className="bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm flex-1 outline-none focus:ring-2 ring-indigo-500" />
-                                        <button onClick={() => setConditions(conditions.filter((_, idx) => idx !== i))} className="p-4 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-100"><Trash2 size={18} /></button>
+                                <div className="flex gap-4 pt-6">
+                                    <button onClick={() => { setConditions([]); setIsFilterBuilderOpen(false); }} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em]">Wipe Clears</button>
+                                    <div className="flex-1 flex gap-2">
+                                        <button onClick={() => setIsFilterBuilderOpen(false)} className="flex-1 py-6 bg-slate-900 text-white rounded-[35px] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl transition-all shadow-indigo-100 border-b-4 border-indigo-600">Deploy Segmentation ({filteredResponses.length} Matches)</button>
+                                        <button onClick={() => setAutoApply(!autoApply)} className={`px-6 rounded-[35px] border-2 transition-all flex items-center gap-2 ${autoApply ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                                            <Clock size={14} />
+                                            <span className="text-[9px] font-black uppercase tracking-tighter">{autoApply ? "Live" : "Manual"}</span>
+                                        </button>
                                     </div>
-                                ))}
-                                <button onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])} className="w-full py-6 border-2 border-dashed border-slate-200 rounded-[32px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add New Condition</button>
-                            </div>
-                            <div className="flex gap-4 pt-6">
-                                <button onClick={() => setConditions([])} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[30px] text-[10px] font-black uppercase tracking-widest">Clear All</button>
-                                <button onClick={() => setIsFilterBuilderOpen(false)} className="flex-1 py-6 bg-slate-900 text-white rounded-[30px] text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg shadow-slate-200">Apply Filters</button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* Previous Column Modal Kept... (Simplified for this file Write) */}
             <AnimatePresence>
-                {isAddColumnOpen && (
-                    <div className="fixed inset-0 flex items-center justify-center z-[100] p-10 overflow-hidden">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddColumnOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
-                        <motion.div initial={{ scale: 0.9, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 50 }} className="bg-white rounded-[70px] shadow-[0_40px_100px_rgba(0,0,0,0.3)] w-full max-w-[1100px] h-[85vh] relative z-10 border-8 border-white flex overflow-hidden">
-                            <div className="w-[350px] bg-slate-50 border-r border-slate-100 p-12 overflow-y-auto custom-scrollbar">
-                                <h3 className="text-2xl font-black tracking-tighter mb-10 flex items-center gap-4"><Plus className="text-indigo-600" /> Dimension Lab</h3>
-                                <div className="space-y-3">
-                                    {COLUMN_TYPES.map(type => (
-                                        <button key={type.id} onClick={() => setNewColType(type.id)} className={`w-full p-6 rounded-[30px] flex items-center gap-5 transition-all ${newColType === type.id ? 'bg-white shadow-xl ring-2 ring-indigo-500 scale-105' : 'hover:bg-slate-100 text-slate-400'}`}>
-                                            <div className={`p-3 rounded-2xl bg-white shadow-sm ${type.color}`}><type.icon size={20} /></div>
-                                            <span className={`text-[11px] font-black uppercase tracking-widest ${newColType === type.id ? 'text-slate-900' : ''}`}>{type.title}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex-1 p-16 flex flex-col justify-between overflow-y-auto">
-                                <div className="space-y-16">
-                                    <div>
-                                        <label className="text-[12px] font-black text-slate-400 uppercase tracking-[0.4em] ml-6 mb-6 block">Visual Identifier</label>
-                                        <input autoFocus value={newColLabel} onChange={(e) => setNewColLabel(e.target.value)} placeholder="e.g. Production Status..." className="w-full p-10 bg-slate-50 border-4 border-transparent focus:border-indigo-600 rounded-[50px] outline-none font-black text-3xl tracking-tighter text-slate-800 transition-all shadow-inner" />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-12">
-                                        <div className="space-y-8">
-                                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Constraint Systems</h4>
-                                            <div className="space-y-6">
-                                                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
-                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><ShieldCheck size={16} className="text-indigo-500" /> Mandatory Input</span>
-                                                    <button onClick={() => setNewColSettings({ ...newColSettings, isRequired: !newColSettings.isRequired })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isRequired ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isRequired ? 'left-7' : 'left-1'}`} />
-                                                    </button>
-                                                </div>
-                                                <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
-                                                    <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><Trash2 size={16} className="text-rose-500" /> Immutable Mode</span>
-                                                    <button onClick={() => setNewColSettings({ ...newColSettings, isLocked: !newColSettings.isLocked })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isLocked ? 'bg-indigo-600' : 'bg-slate-200'}`}>
-                                                        <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isLocked ? 'left-7' : 'left-1'}`} />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-8">
-                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Access Control (RBAC)</h4>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {AVAILABLE_ROLES.map(role => (
-                                                        <button
-                                                            key={role}
-                                                            onClick={() => {
-                                                                const roles = newColPermissions.roles.includes(role)
-                                                                    ? newColPermissions.roles.filter(r => r !== role)
-                                                                    : [...newColPermissions.roles, role];
-                                                                setNewColPermissions({ ...newColPermissions, roles });
-                                                            }}
-                                                            className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${newColPermissions.roles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
-                                                        >
-                                                            {role}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-8 relative">
-                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Individual Analytics Access</h4>
-                                                <div className="space-y-4">
-                                                    <div className="relative">
-                                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                                        <input
-                                                            value={userSearchQuery}
-                                                            onChange={(e) => searchUsers(e.target.value)}
-                                                            placeholder="Search users by email..."
-                                                            className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
-                                                        />
-                                                    </div>
-
-                                                    {userResults.length > 0 && (
-                                                        <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto">
-                                                            {userResults.map(u => (
-                                                                <button
-                                                                    key={u.clerkId}
-                                                                    onClick={() => {
-                                                                        if (!newColPermissions.users.includes(u.clerkId)) {
-                                                                            setNewColPermissions({ ...newColPermissions, users: [...newColPermissions.users, u.clerkId] });
-                                                                        }
-                                                                        setUserResults([]);
-                                                                        setUserSearchQuery("");
-                                                                    }}
-                                                                    className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between"
-                                                                >
-                                                                    <span className="text-[10px] font-black text-slate-700">{u.email}</span>
-                                                                    <Plus size={14} className="text-indigo-600" />
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {newColPermissions.users.map(uid => (
-                                                            <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
-                                                                <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
-                                                                <X size={12} className="cursor-pointer" onClick={() => setNewColPermissions({ ...newColPermissions, users: newColPermissions.users.filter(x => x !== uid) })} />
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-8">
-                                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Type Configuration</h4>
-                                            {newColType === 'dropdown' ? (
-                                                <div className="space-y-4">
-                                                    {newColOptions.map((opt, i) => (
-                                                        <div key={i} className="flex gap-3">
-                                                            <input value={opt.label} onChange={(e) => { const n = [...newColOptions]; n[i].label = e.target.value; setNewColOptions(n); }} placeholder="Status/Label..." className="flex-1 p-4 bg-slate-50 border-none rounded-2xl font-black text-xs shadow-inner" />
-                                                            <button onClick={() => setNewColOptions(newColOptions.filter((_, idx) => idx !== i))} className="p-4 text-rose-500 bg-rose-50 rounded-2xl hover:bg-rose-100 transition-colors"><X size={16} /></button>
-                                                        </div>
-                                                    ))}
-                                                    <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add Lifecycle Node</button>
-                                                </div>
-                                            ) : newColType === 'formula' ? (
-                                                <div className="p-8 bg-slate-900 rounded-[40px] border border-slate-800">
-                                                    <div className="flex items-center gap-3 text-indigo-400 mb-4">
-                                                        <FunctionSquare size={20} />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest">Logic Engine</span>
-                                                    </div>
-                                                    <textarea placeholder="e.g. {Price} * {Quantity}" className="w-full bg-slate-800 border-none rounded-2xl p-4 text-white font-mono text-xs focus:ring-1 ring-indigo-500 min-h-[100px]" />
-                                                    <p className="text-[8px] text-slate-500 mt-3 font-bold uppercase tracking-tight">Use curly braces for column names</p>
-                                                </div>
-                                            ) : (
-                                                <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center text-center opacity-40">
-                                                    <Settings size={30} className="mb-4 text-slate-400 animate-spin-slow" />
-                                                    <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Dynamic Logic Enabled <br />For {newColType} Type</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="pt-20 flex gap-6">
-                                    <button onClick={() => setIsAddColumnOpen(false)} className="px-14 py-8 bg-slate-50 text-slate-500 rounded-[36px] text-xs font-black uppercase tracking-[0.2em]">Abort</button>
-                                    <button onClick={handleAddColumn} className="flex-1 py-8 bg-slate-900 text-white rounded-[36px] text-xs font-black uppercase tracking-[0.4em] shadow-2xl">Deploy Dimension</button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-
-            {/* Bulk Action Bar — Floating Permission Lab */}
-            <AnimatePresence>
-                {selectedRows.length > 0 && (
-                    <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-6 bg-slate-900 border border-slate-800 p-4 px-8 rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl">
-                        <div className="flex items-center gap-4 border-r border-slate-800 pr-6 mr-2">
-                            <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">{selectedRows.length}</div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Records Selected</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-black uppercase text-indigo-400 mr-2 tracking-tighter">Set Visibility:</span>
-                            {AVAILABLE_ROLES.map(role => (
-                                <button key={role} onClick={() => handleBulkVisibilityUpdate("ROW", [role])} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Visible to {role}</button>
-                            ))}
-                            <div className="relative">
-                                <input
-                                    className="bg-slate-800 border-none rounded-xl px-4 py-2 text-[9px] font-black uppercase text-white outline-none w-[150px] focus:ring-1 ring-indigo-500"
-                                    placeholder="Search User..."
-                                    value={userSearchQuery}
-                                    onChange={(e) => searchUsers(e.target.value)}
-                                />
-                                {userResults.length > 0 && (
-                                    <div className="absolute bottom-full mb-4 left-0 w-[200px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 overflow-hidden">
-                                        {userResults.map(u => (
-                                            <button
-                                                key={u.clerkId}
-                                                onClick={() => {
-                                                    // For bulk, we'll just set it to this one user for now as a quick action
-                                                    const res = fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
-                                                        method: "PATCH",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ ids: selectedRows, type: "ROW", visibleToRoles: [], visibleToUsers: [u.clerkId] })
-                                                    }).then(() => {
-                                                        toast.success(`Exclusive access granted to ${u.email.split('@')[0]}`);
-                                                        setSelectedRows([]);
-                                                        fetchData();
-                                                    });
-                                                    setUserResults([]);
-                                                    setUserSearchQuery("");
-                                                }}
-                                                className="w-full px-4 py-2 text-left hover:bg-indigo-600 text-[9px] font-black uppercase text-slate-300 hover:text-white"
-                                            >
-                                                {u.email}
+                {
+                    isAddColumnOpen && (
+                        <div className="fixed inset-0 flex items-center justify-center z-[100] p-10 overflow-hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddColumnOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
+                            <motion.div initial={{ scale: 0.9, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 50 }} className="bg-white rounded-[70px] shadow-[0_40px_100px_rgba(0,0,0,0.3)] w-full max-w-[1100px] h-[85vh] relative z-10 border-8 border-white flex overflow-hidden">
+                                <div className="w-[350px] bg-slate-50 border-r border-slate-100 p-12 overflow-y-auto custom-scrollbar">
+                                    <h3 className="text-2xl font-black tracking-tighter mb-10 flex items-center gap-4"><Plus className="text-indigo-600" /> Dimension Lab</h3>
+                                    <div className="space-y-3">
+                                        {COLUMN_TYPES.map(type => (
+                                            <button key={type.id} onClick={() => setNewColType(type.id)} className={`w-full p-6 rounded-[30px] flex items-center gap-5 transition-all ${newColType === type.id ? 'bg-white shadow-xl ring-2 ring-indigo-500 scale-105' : 'hover:bg-slate-100 text-slate-400'}`}>
+                                                <div className={`p-3 rounded-2xl bg-white shadow-sm ${type.color}`}><type.icon size={20} /></div>
+                                                <span className={`text-[11px] font-black uppercase tracking-widest ${newColType === type.id ? 'text-slate-900' : ''}`}>{type.title}</span>
                                             </button>
                                         ))}
                                     </div>
-                                )}
-                            </div>
-                            <button onClick={() => handleBulkVisibilityUpdate("ROW", [])} className="px-4 py-2 bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-900/50 transition-all">Make Public</button>
+                                </div>
+                                <div className="flex-1 p-16 flex flex-col justify-between overflow-y-auto">
+                                    <div className="space-y-16">
+                                        <div>
+                                            <label className="text-[12px] font-black text-slate-400 uppercase tracking-[0.4em] ml-6 mb-6 block">Visual Identifier</label>
+                                            <input autoFocus value={newColLabel} onChange={(e) => setNewColLabel(e.target.value)} placeholder="e.g. Production Status..." className="w-full p-10 bg-slate-50 border-4 border-transparent focus:border-indigo-600 rounded-[50px] outline-none font-black text-3xl tracking-tighter text-slate-800 transition-all shadow-inner" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-12">
+                                            <div className="space-y-8">
+                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Constraint Systems</h4>
+                                                <div className="space-y-6">
+                                                    <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
+                                                        <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><ShieldCheck size={16} className="text-indigo-500" /> Mandatory Input</span>
+                                                        <button onClick={() => setNewColSettings({ ...newColSettings, isRequired: !newColSettings.isRequired })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isRequired ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isRequired ? 'left-7' : 'left-1'}`} />
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center justify-between p-6 bg-slate-50 rounded-[30px]">
+                                                        <span className="text-[11px] font-black uppercase tracking-widest flex items-center gap-3"><Trash2 size={16} className="text-rose-500" /> Immutable Mode</span>
+                                                        <button onClick={() => setNewColSettings({ ...newColSettings, isLocked: !newColSettings.isLocked })} className={`w-14 h-8 rounded-full transition-all relative ${newColSettings.isLocked ? 'bg-indigo-600' : 'bg-slate-200'}`}>
+                                                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${newColSettings.isLocked ? 'left-7' : 'left-1'}`} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-8">
+                                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Access Control (RBAC)</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {AVAILABLE_ROLES.map(role => (
+                                                            <button
+                                                                key={role}
+                                                                onClick={() => {
+                                                                    const roles = newColPermissions.roles.includes(role)
+                                                                        ? newColPermissions.roles.filter(r => r !== role)
+                                                                        : [...newColPermissions.roles, role];
+                                                                    setNewColPermissions({ ...newColPermissions, roles });
+                                                                }}
+                                                                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${newColPermissions.roles.includes(role) ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`}
+                                                            >
+                                                                {role}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-8 relative">
+                                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 mb-6">Individual Analytics Access</h4>
+                                                    <div className="space-y-4">
+                                                        <div className="relative">
+                                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                            <input
+                                                                value={userSearchQuery}
+                                                                onChange={(e) => searchUsers(e.target.value)}
+                                                                placeholder="Search users by email..."
+                                                                className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
+                                                            />
+                                                        </div>
+
+                                                        {userResults.length > 0 && (
+                                                            <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto">
+                                                                {userResults.map(u => (
+                                                                    <button
+                                                                        key={u.clerkId}
+                                                                        onClick={() => {
+                                                                            if (!newColPermissions.users.includes(u.clerkId)) {
+                                                                                setNewColPermissions({ ...newColPermissions, users: [...newColPermissions.users, u.clerkId] });
+                                                                            }
+                                                                            setUserResults([]);
+                                                                            setUserSearchQuery("");
+                                                                        }}
+                                                                        className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between"
+                                                                    >
+                                                                        <span className="text-[10px] font-black text-slate-700">{u.email}</span>
+                                                                        <Plus size={14} className="text-indigo-600" />
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {newColPermissions.users.map(uid => (
+                                                                <div key={uid} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg border border-indigo-100">
+                                                                    <span className="text-[9px] font-black">User: {uid.split('_').pop()?.slice(0, 5)}...</span>
+                                                                    <X size={12} className="cursor-pointer" onClick={() => setNewColPermissions({ ...newColPermissions, users: newColPermissions.users.filter(x => x !== uid) })} />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-8">
+                                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b pb-4">Type Configuration</h4>
+                                                {newColType === 'dropdown' ? (
+                                                    <div className="space-y-4">
+                                                        {newColOptions.map((opt, i) => (
+                                                            <div key={i} className="flex gap-3">
+                                                                <input value={opt.label} onChange={(e) => { const n = [...newColOptions]; n[i].label = e.target.value; setNewColOptions(n); }} placeholder="Status/Label..." className="flex-1 p-4 bg-slate-50 border-none rounded-2xl font-black text-xs shadow-inner" />
+                                                                <button onClick={() => setNewColOptions(newColOptions.filter((_, idx) => idx !== i))} className="p-4 text-rose-500 bg-rose-50 rounded-2xl hover:bg-rose-100 transition-colors"><X size={16} /></button>
+                                                            </div>
+                                                        ))}
+                                                        <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add Lifecycle Node</button>
+                                                    </div>
+                                                ) : newColType === 'formula' ? (
+                                                    <div className="p-8 bg-slate-900 rounded-[40px] border border-slate-800">
+                                                        <div className="flex items-center gap-3 text-indigo-400 mb-4">
+                                                            <FunctionSquare size={20} />
+                                                            <span className="text-[10px] font-black uppercase tracking-widest">Logic Engine</span>
+                                                        </div>
+                                                        <textarea placeholder="e.g. {Price} * {Quantity}" className="w-full bg-slate-800 border-none rounded-2xl p-4 text-white font-mono text-xs focus:ring-1 ring-indigo-500 min-h-[100px]" />
+                                                        <p className="text-[8px] text-slate-500 mt-3 font-bold uppercase tracking-tight">Use curly braces for column names</p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center text-center opacity-40">
+                                                        <Settings size={30} className="mb-4 text-slate-400 animate-spin-slow" />
+                                                        <p className="text-[10px] font-black uppercase tracking-widest leading-relaxed">Dynamic Logic Enabled <br />For {newColType} Type</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="pt-20 flex gap-6">
+                                        <button onClick={() => setIsAddColumnOpen(false)} className="px-14 py-8 bg-slate-50 text-slate-500 rounded-[36px] text-xs font-black uppercase tracking-[0.2em]">Abort</button>
+                                        <button onClick={handleAddColumn} className="flex-1 py-8 bg-slate-900 text-white rounded-[36px] text-xs font-black uppercase tracking-[0.4em] shadow-2xl">Deploy Dimension</button>
+                                    </div>
+                                </div>
+                            </motion.div>
                         </div>
+                    )
+                }
+            </AnimatePresence >
 
-                        <div className="h-6 w-[1px] bg-slate-800 mx-2" />
+            {/* Bulk Action Bar — Floating Permission Lab */}
+            <AnimatePresence>
+                {
+                    selectedRows.length > 0 && (
+                        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-6 bg-slate-900 border border-slate-800 p-4 px-8 rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                            <div className="flex items-center gap-4 border-r border-slate-800 pr-6 mr-2">
+                                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">{selectedRows.length}</div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Records Selected</span>
+                            </div>
 
-                        <button onClick={() => setSelectedRows([])} className="p-3 text-slate-400 hover:text-white transition-colors"><X size={20} /></button>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[9px] font-black uppercase text-indigo-400 mr-2 tracking-tighter">Set Visibility:</span>
+                                {AVAILABLE_ROLES.map(role => (
+                                    <button key={role} onClick={() => handleBulkVisibilityUpdate("ROW", [role])} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Visible to {role}</button>
+                                ))}
+                                <div className="relative">
+                                    <input
+                                        className="bg-slate-800 border-none rounded-xl px-4 py-2 text-[9px] font-black uppercase text-white outline-none w-[150px] focus:ring-1 ring-indigo-500"
+                                        placeholder="Search User..."
+                                        value={userSearchQuery}
+                                        onChange={(e) => searchUsers(e.target.value)}
+                                    />
+                                    {userResults.length > 0 && (
+                                        <div className="absolute bottom-full mb-4 left-0 w-[200px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 overflow-hidden">
+                                            {userResults.map(u => (
+                                                <button
+                                                    key={u.clerkId}
+                                                    onClick={() => {
+                                                        // For bulk, we'll just set it to this one user for now as a quick action
+                                                        const res = fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                                                            method: "PATCH",
+                                                            headers: { "Content-Type": "application/json" },
+                                                            body: JSON.stringify({ ids: selectedRows, type: "ROW", visibleToRoles: [], visibleToUsers: [u.clerkId] })
+                                                        }).then(() => {
+                                                            toast.success(`Exclusive access granted to ${u.email.split('@')[0]}`);
+                                                            setSelectedRows([]);
+                                                            fetchData();
+                                                        });
+                                                        setUserResults([]);
+                                                        setUserSearchQuery("");
+                                                    }}
+                                                    className="w-full px-4 py-2 text-left hover:bg-indigo-600 text-[9px] font-black uppercase text-slate-300 hover:text-white"
+                                                >
+                                                    {u.email}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={() => handleBulkVisibilityUpdate("ROW", [])} className="px-4 py-2 bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900 rounded-xl text-[9px] font-black uppercase tracking-widest border border-emerald-900/50 transition-all">Make Public</button>
+                            </div>
+
+                            <div className="h-6 w-[1px] bg-slate-800 mx-2" />
+
+                            <button onClick={() => setSelectedRows([])} className="p-3 text-slate-400 hover:text-white transition-colors"><X size={20} /></button>
+                        </motion.div>
+                    )
+                }
+            </AnimatePresence >
 
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -1114,6 +1396,6 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             `}</style>
-        </div>
+        </div >
     );
 }
