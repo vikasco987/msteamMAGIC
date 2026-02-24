@@ -47,7 +47,8 @@ import {
     Trash2,
     Settings,
     Check,
-    GripVertical
+    GripVertical,
+    Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -293,9 +294,9 @@ export default function CRMSpreadsheetPage() {
                     const col = getColumns.find(c => c.id === cond.colId);
                     const isInternal = col?.isInternal;
                     const cellVal = getCellValue(r.id, cond.colId, isInternal);
-                    const val = (cellVal || "").toLowerCase();
-                    const targetVal = cond.val.toLowerCase();
-                    const targetVal2 = cond.val2?.toLowerCase() || "";
+                    const val = (cellVal || "").toString().toLowerCase();
+                    const targetVal = (cond.val || "").toString().toLowerCase();
+                    const targetVal2 = (cond.val2 || "").toString().toLowerCase();
 
                     switch (cond.op) {
                         case "equals": return val === targetVal;
