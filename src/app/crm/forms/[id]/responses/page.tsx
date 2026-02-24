@@ -46,9 +46,9 @@ import {
     Mail,
     Trash2,
     Settings,
-    Check,
-    GripVertical,
-    Activity
+    Activity,
+    Eye,
+    EyeOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -184,6 +184,8 @@ export default function CRMSpreadsheetPage() {
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
+    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+    const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
 
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
@@ -195,6 +197,33 @@ export default function CRMSpreadsheetPage() {
     const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+    // Load initial width from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem(`matrix_widths_${params.id}`);
+        if (saved) {
+            try { setColumnWidths(JSON.parse(saved)); } catch (e) { console.error(e); }
+        }
+    }, [params.id]);
+
+    // Save width to localStorage on change
+    useEffect(() => {
+        if (Object.keys(columnWidths).length > 0) {
+            localStorage.setItem(`matrix_widths_${params.id}`, JSON.stringify(columnWidths));
+        }
+    }, [columnWidths, params.id]);
+
+    // Hidden Columns Persistence
+    useEffect(() => {
+        const saved = localStorage.getItem(`matrix_hidden_${params.id}`);
+        if (saved) {
+            try { setHiddenColumns(JSON.parse(saved)); } catch (e) { console.error(e); }
+        }
+    }, [params.id]);
+
+    useEffect(() => {
+        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
+    }, [hiddenColumns, params.id]);
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>("GUEST");
@@ -214,15 +243,25 @@ export default function CRMSpreadsheetPage() {
 
     const totalTableWidth = useMemo(() => {
         if (!data) return 1400;
-        let w = (isMaster ? 50 : 0) + (columnWidths["__profile"] || 70) + (columnWidths["__contributor"] || 240);
+        let w = (isMaster ? 50 : 0);
+        const profileW = columnWidths["__profile"] || 70;
+        const contribW = columnWidths["__contributor"] || 240;
+
+        if (!hiddenColumns.includes("__profile")) w += profileW;
+        if (!hiddenColumns.includes("__contributor")) w += contribW;
+
         (data.form?.fields || []).forEach(f => {
-            w += (columnWidths[f.id] || 180);
+            if (!hiddenColumns.includes(f.id)) {
+                w += (columnWidths[f.id] || 180);
+            }
         });
         (data.internalColumns || []).forEach(ic => {
-            w += (columnWidths[ic.id] || 180);
+            if (!hiddenColumns.includes(ic.id)) {
+                w += (columnWidths[ic.id] || 180);
+            }
         });
         return w;
-    }, [columnWidths, data, isMaster]);
+    }, [columnWidths, data, isMaster, hiddenColumns]);
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
         e.preventDefault();
@@ -299,6 +338,18 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => { fetchData(); }, [params.id]);
 
     const getColumns = useMemo(() => {
+        if (!data) return [];
+        const cols: any[] = [
+            { id: "__profile", label: "Profile", isPublic: false, type: "static" },
+            { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
+        ];
+        (data.form?.fields || []).forEach(f => cols.push({ ...f, isInternal: false }));
+        (data.internalColumns || []).forEach(ic => cols.push({ ...ic, isInternal: true }));
+
+        return cols.filter(c => !hiddenColumns.includes(c.id));
+    }, [data, hiddenColumns]);
+
+    const allColumns = useMemo(() => {
         if (!data) return [];
         const cols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
@@ -539,7 +590,9 @@ export default function CRMSpreadsheetPage() {
         const cellKey = `${responseId}-${columnId}`;
         const previousData = data;
 
-        // Optimistic Update
+        // Prevent redundant saves if value hasn't changed
+        const currentVal = getCellValue(responseId, columnId, isInternal);
+        if (currentVal === value) return;
         setData(prev => {
             if (!prev) return prev;
             if (isInternal) {
@@ -848,6 +901,15 @@ export default function CRMSpreadsheetPage() {
                             <Filter size={12} />
                             Filters
                             {conditions.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{conditions.length}</span>}
+                        </button>
+
+                        <button
+                            onClick={() => setIsColumnManagerOpen(true)}
+                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${hiddenColumns.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                        >
+                            <Eye size={12} />
+                            Columns
+                            {hiddenColumns.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{hiddenColumns.length}</span>}
                         </button>
 
                         <div className="w-[1px] h-8 bg-slate-200 mx-2" />
@@ -1636,7 +1698,77 @@ export default function CRMSpreadsheetPage() {
                         </motion.div>
                     )
                 }
-            </AnimatePresence >
+            </AnimatePresence>
+
+            {/* Column Manager Modal */}
+            <AnimatePresence>
+                {isColumnManagerOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsColumnManagerOpen(false)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-[#F9FAFB]">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Manage Columns</h3>
+                                    <p className="text-[10px] text-slate-500 font-bold mt-1">Select columns to display in the matrix</p>
+                                </div>
+                                <button onClick={() => setIsColumnManagerOpen(false)} className="p-2 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
+                            <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                <div className="space-y-1">
+                                    {allColumns.map(col => {
+                                        const isHidden = hiddenColumns.includes(col.id);
+                                        return (
+                                            <div
+                                                key={col.id}
+                                                onClick={() => {
+                                                    setHiddenColumns(prev =>
+                                                        isHidden ? prev.filter(id => id !== col.id) : [...prev, col.id]
+                                                    );
+                                                }}
+                                                className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-all group border border-transparent hover:border-slate-100"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isHidden ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                        {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className={`text-xs font-bold ${isHidden ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{col.label}</p>
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">{col.isInternal ? 'Internal Matrix' : 'Form Field'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isHidden ? 'border-slate-200 bg-white' : 'border-indigo-600 bg-indigo-600 shadow-lg shadow-indigo-100'}`}>
+                                                    {!isHidden && <Check size={10} className="text-white" />}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                                <button
+                                    onClick={() => setIsColumnManagerOpen(false)}
+                                    className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                                >
+                                    Apply Configuration
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
