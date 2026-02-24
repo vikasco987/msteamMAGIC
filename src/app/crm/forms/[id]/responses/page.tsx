@@ -210,6 +210,45 @@ export default function CRMSpreadsheetPage() {
     // Visibility & User Search
     const [userSearchQuery, setUserSearchQuery] = useState("");
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
+    const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
+
+    const totalTableWidth = useMemo(() => {
+        if (!data) return 1400;
+        let w = (isMaster ? 50 : 0) + (columnWidths["__profile"] || 70) + (columnWidths["__contributor"] || 240);
+        (data.form?.fields || []).forEach(f => {
+            w += (columnWidths[f.id] || 180);
+        });
+        (data.internalColumns || []).forEach(ic => {
+            w += (columnWidths[ic.id] || 180);
+        });
+        return w;
+    }, [columnWidths, data, isMaster]);
+
+    const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
+        e.preventDefault();
+        setResizing({ id, startX: e.clientX, startWidth: currentWidth });
+    };
+
+    useEffect(() => {
+        if (!resizing) return;
+
+        const handleMouseMove = (e: MouseEvent) => {
+            const deltaX = e.clientX - resizing.startX;
+            const newWidth = Math.max(80, resizing.startWidth + deltaX);
+            setColumnWidths(prev => ({ ...prev, [resizing.id]: newWidth }));
+        };
+
+        const handleMouseUp = () => {
+            setResizing(null);
+        };
+
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [resizing]);
 
     // Phase 3 — Excel Level Features
     const [selection, setSelection] = useState<{
@@ -843,7 +882,10 @@ export default function CRMSpreadsheetPage() {
                             exit={{ opacity: 0, x: 20 }}
                             className="h-full w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200"
                         >
-                            <table className="table-fixed w-full min-w-[1400px] border-separate border-spacing-0">
+                            <table
+                                style={{ minWidth: totalTableWidth }}
+                                className="table-fixed w-full border-separate border-spacing-0"
+                            >
                                 <thead className="sticky top-0 z-[40]">
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0]">
                                         {isMaster && (
@@ -856,19 +898,59 @@ export default function CRMSpreadsheetPage() {
                                                 </div>
                                             </th>
                                         )}
-                                        <th className={`w-[70px] px-3 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-center sticky ${isMaster ? 'left-[50px]' : 'left-0'} bg-[#F9FAFB] z-40`}>View</th>
-                                        <th className={`w-[240px] px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left sticky ${isMaster ? 'left-[120px]' : 'left-[70px]'} bg-[#F9FAFB] z-40`}>Submitter info</th>
-                                        {data?.form?.fields?.map(f => (
-                                            <th key={f.id} className="min-w-[180px] px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left bg-[#F9FAFB]">
-                                                <div className="flex items-center gap-2 truncate">
-                                                    <Type size={12} className="text-[#667085] shrink-0" /> {f.label}
-                                                </div>
-                                            </th>
-                                        ))}
+                                        <th
+                                            style={{
+                                                width: columnWidths["__profile"] || 70,
+                                                left: isMaster ? 50 : 0
+                                            }}
+                                            className={`px-3 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-center sticky bg-[#F9FAFB] z-40 group/h`}
+                                        >
+                                            View
+                                            <div
+                                                onMouseDown={(e) => handleResizeStart(e, "__profile", columnWidths["__profile"] || 70)}
+                                                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
+                                            />
+                                        </th>
+                                        <th
+                                            style={{
+                                                width: columnWidths["__contributor"] || 240,
+                                                left: (isMaster ? 50 : 0) + (columnWidths["__profile"] || 70)
+                                            }}
+                                            className={`px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left sticky bg-[#F9FAFB] z-40 group/h`}
+                                        >
+                                            Submitter info
+                                            <div
+                                                onMouseDown={(e) => handleResizeStart(e, "__contributor", columnWidths["__contributor"] || 240)}
+                                                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
+                                            />
+                                        </th>
+                                        {data?.form?.fields?.map(f => {
+                                            const width = columnWidths[f.id] || 180;
+                                            return (
+                                                <th
+                                                    key={f.id}
+                                                    style={{ width }}
+                                                    className="px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left bg-[#F9FAFB] relative group/h"
+                                                >
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <Type size={12} className="text-[#667085] shrink-0" /> {f.label}
+                                                    </div>
+                                                    <div
+                                                        onMouseDown={(e) => handleResizeStart(e, f.id, width)}
+                                                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
+                                                    />
+                                                </th>
+                                            );
+                                        })}
                                         {data?.internalColumns?.map(ic => {
                                             const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
+                                            const width = columnWidths[ic.id] || 180;
                                             return (
-                                                <th key={ic.id} className="min-w-[180px] px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-indigo-600 text-left bg-indigo-50/30">
+                                                <th
+                                                    key={ic.id}
+                                                    style={{ width }}
+                                                    className="px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-indigo-600 text-left bg-indigo-50/30 relative group/h"
+                                                >
                                                     <div className="flex items-center justify-between gap-2">
                                                         <div className="flex items-center gap-2 truncate">
                                                             <TypeIcon size={12} className="text-indigo-600 shrink-0" /> {ic.label}
@@ -877,6 +959,10 @@ export default function CRMSpreadsheetPage() {
                                                             <ShieldCheck size={12} className="text-indigo-400 shrink-0" />
                                                         )}
                                                     </div>
+                                                    <div
+                                                        onMouseDown={(e) => handleResizeStart(e, ic.id, width)}
+                                                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
+                                                    />
                                                 </th>
                                             );
                                         })}
@@ -905,8 +991,17 @@ export default function CRMSpreadsheetPage() {
                                                 };
 
                                                 if (col.id === "__profile") {
+                                                    const profileWidth = columnWidths["__profile"] || 70;
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} w-[70px] text-center sticky ${isMaster ? 'left-[50px]' : 'left-0'} bg-white group-hover:bg-[#F9FAFB] z-30`}>
+                                                        <td
+                                                            key={col.id}
+                                                            {...commonProps}
+                                                            style={{
+                                                                width: profileWidth,
+                                                                left: isMaster ? 50 : 0
+                                                            }}
+                                                            className={`${commonProps.className} text-center sticky bg-white group-hover:bg-[#F9FAFB] z-30`}
+                                                        >
                                                             <button
                                                                 onClick={() => setSelectedResponse(res)}
                                                                 className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
@@ -918,8 +1013,18 @@ export default function CRMSpreadsheetPage() {
                                                 }
 
                                                 if (col.id === "__contributor") {
+                                                    const contributorWidth = columnWidths["__contributor"] || 240;
+                                                    const profileWidth = columnWidths["__profile"] || 70;
                                                     return (
-                                                        <td key={col.id} {...commonProps} className={`${commonProps.className} w-[240px] sticky ${isMaster ? 'left-[120px]' : 'left-[70px]'} bg-white group-hover:bg-[#F9FAFB] z-30`}>
+                                                        <td
+                                                            key={col.id}
+                                                            {...commonProps}
+                                                            style={{
+                                                                width: contributorWidth,
+                                                                left: (isMaster ? 50 : 0) + profileWidth
+                                                            }}
+                                                            className={`${commonProps.className} sticky bg-white group-hover:bg-[#F9FAFB] z-30`}
+                                                        >
                                                             <div className="flex items-center gap-2 min-w-0">
                                                                 <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-black capitalize border border-slate-200 shrink-0">
                                                                     {res.submittedByName ? res.submittedByName[0] : "?"}
@@ -944,6 +1049,7 @@ export default function CRMSpreadsheetPage() {
                                                     <td
                                                         key={col.id}
                                                         {...commonProps}
+                                                        style={{ width: columnWidths[col.id] || 180 }}
                                                         onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
                                                         className={`${commonProps.className} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
                                                     >
