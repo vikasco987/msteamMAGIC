@@ -207,6 +207,7 @@ export default function CRMSpreadsheetPage() {
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
+    const [isFullScreen, setIsFullScreen] = useState(false);
 
     // Permission Buffer
     const [permRoles, setPermRoles] = useState<string[]>([]);
@@ -1061,136 +1062,161 @@ export default function CRMSpreadsheetPage() {
     );
 
     return (
-        <div className="min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900">
+        <div className={`min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900 ${isFullScreen ? 'p-0' : ''}`}>
             {/* Premium Enterprise Header */}
-            <header className="h-[68px] bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
-                        <ArrowLeft size={16} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
-                    </button>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Live Matrix</span>
+            {!isFullScreen && (
+                <header className="h-[68px] bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
+                    <div className="flex items-center gap-4">
+                        <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
+                            <ArrowLeft size={16} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
+                        </button>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Live Matrix</span>
+                                </div>
+                            </div>
+
+                            {/* Fast View Switchers */}
+                            <div className="flex items-center gap-4 mt-1.5">
+                                <button
+                                    onClick={handleClearFilters}
+                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    Default Canvas
+                                </button>
+                                {savedViews.slice(0, 3).map(view => (
+                                    <button
+                                        key={view.id}
+                                        onClick={() => applySavedView(view)}
+                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                    >
+                                        {view.name}
+                                    </button>
+                                ))}
                             </div>
                         </div>
-
-                        {/* Fast View Switchers */}
-                        <div className="flex items-center gap-4 mt-1.5">
-                            <button
-                                onClick={handleClearFilters}
-                                className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                            >
-                                Default Canvas
-                            </button>
-                            {savedViews.slice(0, 3).map(view => (
-                                <button
-                                    key={view.id}
-                                    onClick={() => applySavedView(view)}
-                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                                >
-                                    {view.name}
-                                </button>
-                            ))}
-                        </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-4">
-                    {/* Integrated Search & Actions */}
-                    <div className="flex items-center gap-2">
-                        <div className="relative group">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
-                            <input
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Search records..."
-                                className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[280px]"
-                            />
-                        </div>
+                    <div className="flex items-center gap-4">
+                        {/* Integrated Search & Actions */}
+                        <div className="flex items-center gap-2">
+                            <div className="relative group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
+                                <input
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Search records..."
+                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[280px]"
+                                />
+                            </div>
 
-                        <button
-                            onClick={() => setIsFilterBuilderOpen(true)}
-                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                        >
-                            <Filter size={12} />
-                            Filters
-                            {conditions.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{conditions.length}</span>}
-                        </button>
-
-                        <button
-                            onClick={() => setIsColumnManagerOpen(true)}
-                            className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${hiddenColumns.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                        >
-                            <Eye size={12} />
-                            Columns
-                            {hiddenColumns.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{hiddenColumns.length}</span>}
-                        </button>
-
-                        {isMaster && (
                             <button
-                                onClick={() => setIsAccessModalOpen(true)}
-                                className="px-4 py-2 bg-slate-900 text-white rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                onClick={() => setIsFilterBuilderOpen(true)}
+                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                             >
-                                <Lock size={12} />
-                                Access Control
+                                <Filter size={12} />
+                                Filters
+                                {conditions.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{conditions.length}</span>}
                             </button>
-                        )}
 
-                        <button
-                            onClick={handleAddRow}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-                        >
-                            <Plus size={14} />
-                            Add Row
-                        </button>
-
-                        <div className="w-[1px] h-8 bg-slate-200 mx-2" />
-
-                        <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
-                            <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                                <Table size={16} />
-                            </button>
-                            <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                                <LayoutGrid size={16} />
-                            </button>
-                        </div>
-
-                        <button
-                            onClick={() => setIsAddColumnOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-                        >
-                            <Plus size={14} /> Add Column
-                        </button>
-
-                        <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
                             <button
-                                onClick={() => setDensity("compact")}
-                                className={`p-1.5 rounded-md transition-all ${density === 'compact' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                title="Compact View"
+                                onClick={() => setIsColumnManagerOpen(true)}
+                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${hiddenColumns.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                             >
-                                <Minimize2 size={16} />
+                                <Eye size={12} />
+                                Columns
+                                {hiddenColumns.length > 0 && <span className="ml-1 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px]">{hiddenColumns.length}</span>}
                             </button>
+
+                            {isMaster && (
+                                <button
+                                    onClick={() => setIsAccessModalOpen(true)}
+                                    className="px-4 py-2 bg-slate-900 text-white rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                >
+                                    <Lock size={12} />
+                                    Access Control
+                                </button>
+                            )}
+
                             <button
-                                onClick={() => setDensity("standard")}
-                                className={`p-1.5 rounded-md transition-all ${density === 'standard' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                title="Standard View"
+                                onClick={handleAddRow}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                             >
-                                <LayoutGrid size={16} />
+                                <Plus size={14} />
+                                Add Row
                             </button>
+
+                            <div className="w-[1px] h-8 bg-slate-200 mx-2" />
+
+                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                                <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <Table size={16} />
+                                </button>
+                                <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                    <LayoutGrid size={16} />
+                                </button>
+                            </div>
+
                             <button
-                                onClick={() => setDensity("comfortable")}
-                                className={`p-1.5 rounded-md transition-all ${density === 'comfortable' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
-                                title="Comfortable View"
+                                onClick={() => setIsAddColumnOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                            >
+                                <Plus size={14} /> Add Column
+                            </button>
+
+                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                                <button
+                                    onClick={() => setDensity("compact")}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'compact' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Compact View"
+                                >
+                                    <Minimize2 size={16} />
+                                    <span className="text-[9px] font-black uppercase">Small</span>
+                                </button>
+                                <button
+                                    onClick={() => setDensity("standard")}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'standard' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Standard View"
+                                >
+                                    <Table size={16} />
+                                    <span className="text-[9px] font-black uppercase">Medium</span>
+                                </button>
+                                <button
+                                    onClick={() => setDensity("comfortable")}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'comfortable' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    title="Comfortable View"
+                                >
+                                    <Maximize2 size={16} />
+                                    <span className="text-[9px] font-black uppercase">Large</span>
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setIsFullScreen(true)}
+                                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all active:scale-95"
+                                title="Full Screen Mode"
                             >
                                 <Maximize2 size={16} />
                             </button>
                         </div>
                     </div>
-                </div>
-            </header>
+                </header>
+            )}
+
+            {isFullScreen && (
+                <button
+                    onClick={() => setIsFullScreen(false)}
+                    className="fixed top-4 right-4 z-[100] p-3 bg-slate-900/80 text-white rounded-full backdrop-blur-md hover:bg-slate-900 transition-all shadow-2xl flex items-center gap-2 pr-6 group"
+                >
+                    <div className="p-1 bg-white/20 rounded-full group-hover:rotate-90 transition-transform">
+                        <X size={14} />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Exit Matrix Focus</span>
+                </button>
+            )}
 
             {/* Matrix Console */}
             <main className="flex-1 overflow-hidden bg-slate-50 relative">
@@ -1288,10 +1314,10 @@ export default function CRMSpreadsheetPage() {
                                                     {isMaster && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"
-                                                            title="Delete Record"
+                                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                                                            title="Purge Record"
                                                         >
-                                                            <Trash2 size={12} />
+                                                            <Trash2 size={14} />
                                                         </button>
                                                     )}
                                                 </div>
@@ -1424,8 +1450,20 @@ export default function CRMSpreadsheetPage() {
 
                             {/* Pagination Controls */}
                             <div className="px-6 py-4 bg-white border-t border-[#EAECF0] flex items-center justify-between sticky left-0 w-full">
-                                <div className="text-sm text-[#475467]">
-                                    Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{filteredResponses.length}</span> responses
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2 border-r pr-4 border-slate-200">
+                                        <span className="text-[10px] font-black uppercase text-slate-400">Rows per page:</span>
+                                        <select
+                                            value={rowsPerPage}
+                                            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                                            className="bg-slate-50 border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0"
+                                        >
+                                            {[10, 25, 50, 100].map(v => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="text-sm text-[#475467]">
+                                        Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{filteredResponses.length}</span> responses
+                                    </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button

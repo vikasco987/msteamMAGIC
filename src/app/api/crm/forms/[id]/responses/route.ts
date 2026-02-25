@@ -362,20 +362,32 @@ export async function PUT(
     }
 }
 
-// Delete response(s) (Admin/Master only)
+// Delete response(s) (Admin/Master/Owner only)
 export async function DELETE(
     req: NextRequest,
     { params }: { params: { id: string } }
 ) {
     try {
         const { userId } = await auth();
+        const { id: formId } = await params;
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
         const userRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        if (userRole !== "ADMIN" && userRole !== "MASTER") {
-            return NextResponse.json({ error: "Forbidden: Only Master/Admin can delete data" }, { status: 403 });
+        const form = await prisma.dynamicForm.findUnique({
+            where: { id: formId },
+            select: { createdBy: true }
+        });
+
+        const isOwner = form?.createdBy === userId;
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isOwner;
+
+        if (!isMaster) {
+            return NextResponse.json({
+                error: "Forbidden: Only Master, Admin, or Form Owner can delete data",
+                debug: { userRole, isOwner, userId }
+            }, { status: 403 });
         }
 
         const { searchParams } = new URL(req.url);
@@ -385,12 +397,18 @@ export async function DELETE(
         if (bulk) {
             const ids = bulk.split(",");
             await prisma.formResponse.deleteMany({
-                where: { id: { in: ids } }
+                where: {
+                    id: { in: ids },
+                    formId: formId // Security: ensure records belong to this form
+                }
             });
             return NextResponse.json({ success: true, deleted: ids.length });
         } else if (responseId) {
             await prisma.formResponse.delete({
-                where: { id: responseId }
+                where: {
+                    id: responseId,
+                    formId: formId // Security: ensure records belong to this form
+                }
             });
             return NextResponse.json({ success: true });
         }
