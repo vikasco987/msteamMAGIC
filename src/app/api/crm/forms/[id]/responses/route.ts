@@ -45,11 +45,17 @@ export async function GET(
         console.log(`[API] Fetching responses for ${formId}, user: ${userId}`);
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        const user = await currentUser();
+        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
+
         const dbUser = await prisma.user.findUnique({
             where: { clerkId: userId }
         });
-        console.log(`[API] DB User:`, dbUser);
-        const userRole = (dbUser?.role || "GUEST").toUpperCase();
+
+        const dbRole = (dbUser?.role || "").toUpperCase();
+        const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
+
+        console.log(`[API] Resolved Role: ${userRole} (Clerk: ${metaRole}, DB: ${dbRole})`);
         const form = await prisma.dynamicForm.findUnique({
             where: { id: formId },
             include: { fields: { orderBy: { order: "asc" } } }
@@ -374,15 +380,20 @@ export async function DELETE(
         const { id: formId } = await params;
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
-        const userRole = (dbUser?.role || "GUEST").toUpperCase();
+        const user = await currentUser();
+        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
 
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const dbRole = (dbUser?.role || "").toUpperCase();
+
+        const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
         const isMasterRole = userRole === "MASTER";
 
         if (!isMasterRole) {
+            console.warn(`[API] DELETE Forbidden. userRole: ${userRole}, clerkId: ${userId}`);
             return NextResponse.json({
-                error: "Forbidden: Only users with MASTER role can delete data",
-                debug: { userRole, userId }
+                error: "Forbidden: Only users with MASTER role can delete data in this protocol.",
+                debug: { resolvedRole: userRole, clerkMetaRole: metaRole, dbRole: dbRole, userId }
             }, { status: 403 });
         }
 

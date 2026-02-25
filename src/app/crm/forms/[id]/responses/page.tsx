@@ -949,6 +949,26 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleDeleteColumn = async (columnId: string) => {
+        if (!isPureMaster) return toast.error("MASTER MODE REQUIRED");
+        if (!confirm("PURGE PROTOCOL: This will permanently delete the entire column and all associated data. Continue?")) return;
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/columns?columnId=${columnId}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("COLUMN PURGED");
+                fetchData();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || "Purge Failed");
+            }
+        } catch (error) {
+            toast.error("Network Error During Purge");
+        }
+    };
+
     const handleSaveView = async () => {
         const name = prompt("Enter view name:");
         if (!name) return;
@@ -1077,8 +1097,14 @@ export default function CRMSpreadsheetPage() {
                                 <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Live Matrix</span>
+                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{isPureMaster ? "Master Core" : "Live Matrix"}</span>
                                 </div>
+                                {isPureMaster && (
+                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-600 rounded-full shadow-lg shadow-indigo-200">
+                                        <ShieldCheck size={10} className="text-white" />
+                                        <span className="text-[9px] font-black text-white uppercase tracking-widest">Master Auth</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Fast View Switchers */}
@@ -2063,6 +2089,15 @@ export default function CRMSpreadsheetPage() {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
+                                                    {isPureMaster && col.isInternal && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteColumn(col.id); }}
+                                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all border border-transparent hover:border-rose-100"
+                                                            title="Purge Column"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    )}
                                                     <div
                                                         onClick={() => {
                                                             setHiddenColumns(prev =>
