@@ -22,18 +22,8 @@ const presetColors = [
 ];
 
 export default function HighlightColorPicker({ taskId, value, onChange }: Props) {
-  const handleColorChange = async (color: string) => {
+  const handleColorChange = (color: string) => {
     onChange(color);
-
-    try {
-      await fetch("/api/tasks/highlight", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, highlightColor: color }),
-      });
-    } catch (err) {
-      console.error("❌ Failed to persist highlight color:", err);
-    }
   };
 
   return (

@@ -288,10 +288,10 @@ export default function KamTableView() {
           aValue = aAssignee;
           bValue = bAssignee;
         }
-       else {
-  aValue = a[sortConfig.key as keyof Task] as string | number;
-  bValue = b[sortConfig.key as keyof Task] as string | number;
-}
+        else {
+          aValue = a[sortConfig.key as keyof Task] as string | number;
+          bValue = b[sortConfig.key as keyof Task] as string | number;
+        }
         if (aValue === undefined && bValue === undefined) return 0;
         if (aValue === undefined) return sortConfig.direction === "ascending" ? 1 : -1;
         if (bValue === undefined) return sortConfig.direction === "ascending" ? -1 : 1;
@@ -336,9 +336,9 @@ export default function KamTableView() {
       prev.map((t) =>
         t.id === taskId
           ? {
-              ...t,
-              status: value,
-            }
+            ...t,
+            status: value,
+          }
           : t
       )
     );
@@ -399,9 +399,9 @@ export default function KamTableView() {
         prev.map((t) =>
           t.id === taskId
             ? {
-                ...t,
-                status: allRawTasks.find((task) => task.id === taskId)?.status,
-              }
+              ...t,
+              status: allRawTasks.find((task) => task.id === taskId)?.status,
+            }
             : t
         )
       );
@@ -446,9 +446,9 @@ export default function KamTableView() {
           prev.map((t) =>
             t.id === taskId
               ? {
-                  ...t,
-                  [field]: value,
-                }
+                ...t,
+                [field]: value,
+              }
               : t
           )
         );
@@ -471,9 +471,9 @@ export default function KamTableView() {
           prev.map((t) =>
             t.id === taskId
               ? {
-                  ...t,
-                  [field]: originalValue,
-                }
+                ...t,
+                [field]: originalValue,
+              }
               : t
           )
         );
@@ -527,7 +527,7 @@ export default function KamTableView() {
 
 
 
-  
+
   const getSortIcon = (key: keyof Task | "pendingAmount" | "daysRemaining") => {
     if (!sortConfig || sortConfig.key !== key) {
       return null;
@@ -585,9 +585,9 @@ export default function KamTableView() {
       //   "—",
 
       Assignee:
-  (task.assignees?.map((a) => a?.name ?? a?.email).filter(Boolean).join(", ")) ??
-  task.assigneeName ??
-  "—",
+        (task.assignees?.map((a) => a?.name ?? a?.email).filter(Boolean).join(", ")) ??
+        task.assigneeName ??
+        "—",
 
       Amount: task.amount,
       Received: task.received,
@@ -724,12 +724,10 @@ export default function KamTableView() {
           <button
             onClick={() => setEditMode((prev) => !prev)}
             className={`px-6 py-2.5 rounded-xl font-semibold shadow-md transition-all duration-300 flex items-center gap-2 text-base
-              ${
-                editMode
-                  ? "bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
-                  : "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800"
-              } focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-                editMode ? "focus:ring-red-500" : "focus:ring-indigo-500"
+              ${editMode
+                ? "bg-red-600 text-white hover:bg-red-700 active:bg-red-800"
+                : "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800"
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 ${editMode ? "focus:ring-red-500" : "focus:ring-indigo-500"
               }`}
           >
             {editMode ? (
@@ -992,13 +990,13 @@ export default function KamTableView() {
                 </div>
               </th>
 
-               <th
-  className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider text-center border-b border-gray-200 border-r"
->
-  <div className="flex items-center justify-center whitespace-nowrap">
-    <FaStickyNote className="mr-2 text-gray-500" /> Notes
-  </div>
-</th>
+              <th
+                className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider text-center border-b border-gray-200 border-r"
+              >
+                <div className="flex items-center justify-center whitespace-nowrap">
+                  <FaStickyNote className="mr-2 text-gray-500" /> Notes
+                </div>
+              </th>
 
               <th
                 className="px-4 py-3 text-xs font-bold text-gray-600 uppercase tracking-wider text-center border-b border-gray-200
@@ -1006,7 +1004,7 @@ export default function KamTableView() {
               >
                 Highlight
               </th>
-             
+
 
             </tr>
           </thead>
@@ -1034,13 +1032,19 @@ export default function KamTableView() {
                 >
                   <td
                     className="px-4 py-3 whitespace-nowrap text-center text-gray-700 font-medium border-r border-b
-                                 sticky left-0 bg-white z-10"
+                                 sticky left-0 z-10"
+                    style={{
+                      backgroundColor: t.highlightColor || "white",
+                    }}
                   >
                     {(page - 1) * limit + index + 1}
                   </td>
                   <td
                     className="px-4 py-3 whitespace-nowrap text-left text-gray-700 border-r border-b
-                                 sticky left-[calc(0rem+48px)] bg-white z-10"
+                                 sticky left-[calc(0rem+48px)] z-10"
+                    style={{
+                      backgroundColor: t.highlightColor || "white",
+                    }}
                   >
                     {t.shopName || "—"}
                   </td>
@@ -1059,10 +1063,10 @@ export default function KamTableView() {
                             handleStatusChange(
                               t.id,
                               e.target.value as
-                                | "todo"
-                                | "inprogress"
-                                | "done"
-                                | "Archived"
+                              | "todo"
+                              | "inprogress"
+                              | "done"
+                              | "Archived"
                             )
                           }
                           disabled={isStatusSaving}
@@ -1182,29 +1186,29 @@ export default function KamTableView() {
                     )} */}
 
                     {editMode && userRole === "master" ? (
-  <div className="relative flex items-center justify-end">
-    <input
-      type="number"
-      className="w-28 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition text-right modern-input"
-      value={editedValues[`${t.id}-amount`] ?? amount}
-      onChange={(e) =>
-        handleInputChange(t.id, "amount", Number(e.target.value))
-      }
-      onBlur={() => handleBlur(t.id, "amount")}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-      }}
-      disabled={isAmountSaving}
-    />
-    {isAmountSaving && (
-      <FaSpinner className="animate-spin absolute right-3 text-blue-500 text-sm" />
-    )}
-  </div>
-) : (
-  <span className="font-medium text-blue-700">
-    {formatCurrency(amount)}
-  </span>
-)}
+                      <div className="relative flex items-center justify-end">
+                        <input
+                          type="number"
+                          className="w-28 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition text-right modern-input"
+                          value={editedValues[`${t.id}-amount`] ?? amount}
+                          onChange={(e) =>
+                            handleInputChange(t.id, "amount", Number(e.target.value))
+                          }
+                          onBlur={() => handleBlur(t.id, "amount")}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                          }}
+                          disabled={isAmountSaving}
+                        />
+                        {isAmountSaving && (
+                          <FaSpinner className="animate-spin absolute right-3 text-blue-500 text-sm" />
+                        )}
+                      </div>
+                    ) : (
+                      <span className="font-medium text-blue-700">
+                        {formatCurrency(amount)}
+                      </span>
+                    )}
 
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right border-r border-b">
@@ -1246,30 +1250,30 @@ export default function KamTableView() {
 
  */}
 
-{editMode && userRole === "master" ? (
-  <div className="relative flex items-center justify-end">
-    <input
-      type="number"
-      className="w-28 px-3 py-2 border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition text-right modern-input"
-      value={editedValues[`${t.id}-received`] ?? received}
-      onChange={(e) =>
-        handleInputChange(t.id, "received", Number(e.target.value))
-      }
-      onBlur={() => handleBlur(t.id, "received")}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") e.currentTarget.blur();
-      }}
-      disabled={isReceivedSaving}
-    />
-    {isReceivedSaving && (
-      <FaSpinner className="animate-spin absolute right-3 text-emerald-500 text-sm" />
-    )}
-  </div>
-) : (
-  <span className="text-emerald-600 font-medium">
-    {formatCurrency(received)}
-  </span>
-)}
+                    {editMode && userRole === "master" ? (
+                      <div className="relative flex items-center justify-end">
+                        <input
+                          type="number"
+                          className="w-28 px-3 py-2 border border-emerald-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition text-right modern-input"
+                          value={editedValues[`${t.id}-received`] ?? received}
+                          onChange={(e) =>
+                            handleInputChange(t.id, "received", Number(e.target.value))
+                          }
+                          onBlur={() => handleBlur(t.id, "received")}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") e.currentTarget.blur();
+                          }}
+                          disabled={isReceivedSaving}
+                        />
+                        {isReceivedSaving && (
+                          <FaSpinner className="animate-spin absolute right-3 text-emerald-500 text-sm" />
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-emerald-600 font-medium">
+                        {formatCurrency(received)}
+                      </span>
+                    )}
 
 
 
@@ -1288,13 +1292,13 @@ export default function KamTableView() {
 
 
                   <td className="px-4 py-3 whitespace-nowrap text-center border-r border-b">
-  <button
-    onClick={() => setSelectedTask(t)}
-    className="p-2 rounded-full hover:bg-gray-100 transition"
-  >
-    <FaStickyNote className="text-indigo-600" />
-  </button>
-</td>
+                    <button
+                      onClick={() => setSelectedTask(t)}
+                      className="p-2 rounded-full hover:bg-gray-100 transition"
+                    >
+                      <FaStickyNote className="text-indigo-600" />
+                    </button>
+                  </td>
 
                   <td className="px-4 py-3 text-center border-b">
                     <HighlightColorPicker
@@ -1341,26 +1345,26 @@ export default function KamTableView() {
           </tbody>
         </table>
       </div>
-      
-{/* Notes Modal */}
-{selectedTask && (
-  <NotesModal
-    taskId={selectedTask.id}               // ✅ pass taskId only
-    initialNotes={selectedTask.notes || []} // ✅ optional if you preload notes
-    onClose={(updatedNotes) => {
-      if (updatedNotes) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === selectedTask.id ? { ...t, notes: updatedNotes } : t
-          )
-        );
-      }
-      setSelectedTask(null);
-    }}
-  />
-)}
 
-      
+      {/* Notes Modal */}
+      {selectedTask && (
+        <NotesModal
+          taskId={selectedTask.id}               // ✅ pass taskId only
+          initialNotes={selectedTask.notes || []} // ✅ optional if you preload notes
+          onClose={(updatedNotes) => {
+            if (updatedNotes) {
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === selectedTask.id ? { ...t, notes: updatedNotes } : t
+                )
+              );
+            }
+            setSelectedTask(null);
+          }}
+        />
+      )}
+
+
       <div className="mt-2 pt-6 pb-6 flex justify-end bg-gradient-to-r from-gray-50 to-gray-100 rounded-b-3xl shadow-lg">
         <PaginationControls
           limit={limit}
