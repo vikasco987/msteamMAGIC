@@ -314,6 +314,7 @@ export default function CRMSpreadsheetPage() {
     const [newColOptions, setNewColOptions] = useState<{ label: string, color: string }[]>([]);
     const [newColSettings, setNewColSettings] = useState({ isRequired: false, isLocked: false, showInPublic: false });
     const [newColPermissions, setNewColPermissions] = useState<{ roles: string[], users: string[] }>({ roles: [], users: [] });
+    const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
 
     // Visibility & User Search
     const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -435,10 +436,13 @@ export default function CRMSpreadsheetPage() {
             });
             if (res.ok) {
                 const result = await res.json();
+                if (!result || !result.response) {
+                    throw new Error("Invalid response format");
+                }
                 toast.success("Sector Deployed", { id: "add-row" });
                 // Replace temp with real data
                 setData(prev => {
-                    if (!prev) return prev;
+                    if (!prev || !prev.responses) return prev;
                     const responses = prev.responses.map(r => r.id === tempId ? result.response : r);
                     return { ...prev, responses };
                 });
@@ -678,7 +682,7 @@ export default function CRMSpreadsheetPage() {
             const term = searchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
-                r.values.some(v => (v.value || "").toLowerCase().includes(term))
+                (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
             );
         }
 
@@ -1030,7 +1034,7 @@ export default function CRMSpreadsheetPage() {
                 body: JSON.stringify({
                     label: newColLabel,
                     type: newColType,
-                    options: newColOptions,
+                    options: newColType === 'user' ? selectedUserIds : newColOptions,
                     isRequired: newColSettings.isRequired,
                     isLocked: newColSettings.isLocked,
                     showInPublic: newColSettings.showInPublic,
@@ -1569,7 +1573,9 @@ export default function CRMSpreadsheetPage() {
                                                                     ) : col.type === "user" ? (
                                                                         <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                             <option value="">Assigned To...</option>
-                                                                            {teamMembers.map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
+                                                                            {teamMembers
+                                                                                .filter(m => !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.includes(m.clerkId)))
+                                                                                .map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
                                                                         <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
@@ -2126,10 +2132,35 @@ export default function CRMSpreadsheetPage() {
                                                         <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add Lifecycle Node</button>
                                                     </div>
                                                 ) : newColType === 'user' ? (
-                                                    <div className="p-8 bg-indigo-50 rounded-[40px] border border-indigo-100 flex flex-col items-center justify-center text-center">
-                                                        <Users size={32} className="text-indigo-500 mb-4 animate-bounce" />
-                                                        <h5 className="text-[11px] font-black uppercase tracking-widest text-indigo-600 mb-2">Team Allocation Active</h5>
-                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px]">This column will allow you to assign records to specific staff members</p>
+                                                    <div className="space-y-6">
+                                                        <div className="p-8 bg-indigo-50 rounded-[40px] border border-indigo-100 flex flex-col items-center justify-center text-center">
+                                                            <Users size={32} className="text-indigo-500 mb-4 animate-bounce" />
+                                                            <h5 className="text-[11px] font-black uppercase tracking-widest text-indigo-600 mb-2">Team Allocation Active</h5>
+                                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px]">Select which staff members should be available for this dimension</p>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                            {teamMembers.map(m => (
+                                                                <button
+                                                                    key={m.clerkId}
+                                                                    onClick={() => setSelectedUserIds(prev => prev.includes(m.clerkId) ? prev.filter(id => id !== m.clerkId) : [...prev, m.clerkId])}
+                                                                    className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${selectedUserIds.includes(m.clerkId) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black uppercase ${selectedUserIds.includes(m.clerkId) ? 'bg-white/20' : 'bg-indigo-600 text-white'}`}>
+                                                                            {m.email[0]}
+                                                                        </div>
+                                                                        <div className="text-left">
+                                                                            <p className="text-[10px] font-black truncate max-w-[100px]">{m.email.split('@')[0]}</p>
+                                                                            <p className={`text-[8px] font-bold uppercase tracking-tighter ${selectedUserIds.includes(m.clerkId) ? 'text-indigo-200' : 'text-slate-400'}`}>{m.role || 'STAFF'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    {selectedUserIds.includes(m.clerkId) && <Check size={14} />}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                        {selectedUserIds.length === 0 && (
+                                                            <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center">Warning: No members selected. All staff will be allowed.</p>
+                                                        )}
                                                     </div>
                                                 ) : newColType === 'date' ? (
                                                     <div className="p-8 bg-rose-50 rounded-[40px] border border-rose-100 flex flex-col items-center justify-center text-center">
