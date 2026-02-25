@@ -1306,6 +1306,10 @@ export default function CRMSpreadsheetPage() {
                                                 const userPerm = gac.users?.[currentClerkId]?.[col.id];
                                                 const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "read");
 
+                                                const canEdit = isMaster || finalPerm === "edit";
+                                                const isLocked = !!col.isLocked || !canEdit;
+                                                const isSaving = savingCells.has(`${res.id}-${col.id}`);
+
                                                 return (
                                                     <td
                                                         key={col.id}
