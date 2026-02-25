@@ -183,6 +183,12 @@ const FILTER_OPERATORS = {
     dropdown: [
         { label: "Is", value: "equals" },
         { label: "Is Not", value: "not_equals" },
+        { label: "Is One Of", value: "one_of" },
+        { label: "Is Empty", value: "is_empty" }
+    ],
+    multi_select: [
+        { label: "Contains", value: "contains" },
+        { label: "Is One Of", value: "one_of" },
         { label: "Is Empty", value: "is_empty" }
     ],
     checkbox: [
@@ -615,6 +621,10 @@ export default function CRMSpreadsheetPage() {
                         case "equals": return val === targetVal;
                         case "not_equals": return val !== targetVal;
                         case "contains": return val.includes(targetVal);
+                        case "one_of": {
+                            const targets = (cond.val || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+                            return targets.includes(val);
+                        }
                         case "starts_with": return val.startsWith(targetVal);
                         case "ends_with": return val.endsWith(targetVal);
                         case "is_empty": return val.trim().length === 0;
@@ -1718,11 +1728,39 @@ export default function CRMSpreadsheetPage() {
                                                             <>
                                                                 {colType === "date" ? (
                                                                     <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                ) : colType === "dropdown" ? (
-                                                                    <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
-                                                                        <option value="">Value...</option>
-                                                                        {Array.isArray(col?.options) && col?.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
-                                                                    </select>
+                                                                ) : colType === "dropdown" || colType === "multi_select" ? (
+                                                                    <div className="flex-1 flex flex-col gap-2">
+                                                                        {c.op === "one_of" ? (
+                                                                            <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
+                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
+                                                                                    const currentVals = (c.val || "").split(",").map(v => v.trim()).filter(Boolean);
+                                                                                    const isSelected = currentVals.includes(opt.label);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={opt.label}
+                                                                                            onClick={() => {
+                                                                                                const n = [...conditions];
+                                                                                                const newVals = isSelected
+                                                                                                    ? currentVals.filter(v => v !== opt.label)
+                                                                                                    : [...currentVals, opt.label];
+                                                                                                n[i].val = newVals.join(",");
+                                                                                                setConditions(n);
+                                                                                            }}
+                                                                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+                                                                                        >
+                                                                                            {opt.label}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                                {(!col?.options || col.options.length === 0) && <p className="text-[10px] text-slate-300 m-auto uppercase font-bold">No Options Defined</p>}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
+                                                                                <option value="">Value...</option>
+                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                            </select>
+                                                                        )}
+                                                                    </div>
                                                                 ) : (
                                                                     <input value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} placeholder="Value..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
                                                                 )}
