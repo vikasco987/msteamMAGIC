@@ -327,7 +327,7 @@ export default function CRMSpreadsheetPage() {
         const fetchTeam = async () => {
             try {
                 // Fetch more users to ensure 'All' are available for selection
-                const res = await fetch('/api/crm/users?role=STAFF&limit=100');
+                const res = await fetch('/api/crm/users?limit=1000');
                 const json = await res.json();
                 setTeamMembers(json);
             } catch (err) { console.error("Team sync failure", err); }

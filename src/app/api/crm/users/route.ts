@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
 
         const { searchParams } = new URL(req.url);
         const query = searchParams.get("q") || "";
+        const limit = parseInt(searchParams.get("limit") || "100");
 
         const users = await prisma.user.findMany({
             where: {
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
                     { email: { contains: query, mode: 'insensitive' } },
                 ]
             },
-            take: 10,
+            take: limit,
             select: {
                 clerkId: true,
                 email: true,
