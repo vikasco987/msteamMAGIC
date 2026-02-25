@@ -81,7 +81,7 @@ export async function GET(
         const allResponses = await prisma.formResponse.findMany({
             where: { formId },
             include: { values: true },
-            orderBy: { submittedAt: "desc" }
+            orderBy: { submittedAt: "asc" }
         });
 
         // Filter responses in JS for non-masters

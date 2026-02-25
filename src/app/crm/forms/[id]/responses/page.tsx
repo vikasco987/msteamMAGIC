@@ -53,7 +53,8 @@ import {
     GripVertical,
     Lock,
     ArrowUp,
-    ArrowDown
+    ArrowDown,
+    Minimize2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -277,6 +278,7 @@ export default function CRMSpreadsheetPage() {
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
+    const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("standard");
 
     // New Column Advanced State
     const [newColLabel, setNewColLabel] = useState("");
@@ -369,7 +371,9 @@ export default function CRMSpreadsheetPage() {
             });
             if (res.ok) {
                 toast.success("New row initialized", { id: loadingToast });
-                fetchData();
+                await fetchData();
+                // Move to last page to see the new row
+                setCurrentPage(Math.ceil((data?.responses?.length || 0) / rowsPerPage) || 1);
             } else {
                 toast.error("Failed to add row", { id: loadingToast });
             }
@@ -1121,6 +1125,30 @@ export default function CRMSpreadsheetPage() {
                         >
                             <Plus size={14} /> Add Column
                         </button>
+
+                        <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                            <button
+                                onClick={() => setDensity("compact")}
+                                className={`p-1.5 rounded-md transition-all ${density === 'compact' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                title="Compact View"
+                            >
+                                <Minimize2 size={16} />
+                            </button>
+                            <button
+                                onClick={() => setDensity("standard")}
+                                className={`p-1.5 rounded-md transition-all ${density === 'standard' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                title="Standard View"
+                            >
+                                <LayoutGrid size={16} />
+                            </button>
+                            <button
+                                onClick={() => setDensity("comfortable")}
+                                className={`p-1.5 rounded-md transition-all ${density === 'comfortable' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                title="Comfortable View"
+                            >
+                                <Maximize2 size={16} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -1204,8 +1232,8 @@ export default function CRMSpreadsheetPage() {
                                 </thead>
                                 <tbody>
                                     {paginatedResponses.map((res, rIdx) => (
-                                        <tr key={res.id} className="group hover:bg-indigo-50/30 transition-all relative h-[54px]">
-                                            <td className="w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 h-[54px]">
+                                        <tr key={res.id} className={`group hover:bg-indigo-50/30 transition-all relative ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
+                                            <td className={`w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
                                                 {isMaster && (
                                                     <div
                                                         onClick={() => toggleRowSelection(res.id)}
@@ -1278,49 +1306,45 @@ export default function CRMSpreadsheetPage() {
                                                 const userPerm = gac.users?.[currentClerkId]?.[col.id];
                                                 const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "read");
 
-                                                const canEdit = isMaster || finalPerm === "edit";
-                                                const isLocked = !!col.isLocked || !canEdit;
-                                                const isSaving = savingCells.has(`${res.id}-${col.id}`);
-
                                                 return (
                                                     <td
                                                         key={col.id}
                                                         style={{ width, left: isSticky ? leftOffset : undefined }}
                                                         onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
-                                                        className={`px-4 py-2 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
+                                                        className={`px-4 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-5' : 'py-2'}`}
                                                     >
                                                         {isEditing ? (
                                                             <div className="w-full">
                                                                 {col.type === "dropdown" ? (
-                                                                    <select autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-bold text-slate-900 outline-none" value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                    <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                         <option value="">Select...</option>
                                                                         {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                     </select>
                                                                 ) : (
-                                                                    <input autoFocus className="w-full bg-transparent border-none focus:ring-0 p-0 text-[13px] font-bold text-slate-900 outline-none" value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                    <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                 )}
                                                             </div>
                                                         ) : (
                                                             <div className="flex items-center justify-between min-h-[20px] min-w-0">
                                                                 <div className="flex items-center min-w-0 overflow-hidden">
                                                                     {col.type === "dropdown" && val ? (
-                                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1 shrink-0 ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                        <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border flex items-center gap-1 shrink-0 ${density === 'compact' ? 'text-[7px]' : 'text-[9px]'} ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                                                             val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
                                                                                 val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-slate-100 text-slate-700 border-slate-200' :
                                                                                     'bg-indigo-50 text-indigo-700 border-indigo-100'
                                                                             }`}>
-                                                                            <div className={`w-1 h-1 rounded-full ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
+                                                                            <div className={`rounded-full ${density === 'compact' ? 'w-0.5 h-0.5' : 'w-1 h-1'} ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
                                                                                 val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-500' :
                                                                                     'bg-indigo-500'
                                                                                 }`} />
                                                                             {val}
                                                                         </span>
                                                                     ) : col.type === "currency" ? (
-                                                                        <span className="text-[13px] font-bold text-slate-900 flex items-center gap-0.5 truncate">
+                                                                        <span className={`font-bold text-slate-900 flex items-center gap-0.5 truncate ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
                                                                             <span className="text-slate-400 font-bold">₹</span>{val || "0.00"}
                                                                         </span>
                                                                     ) : (
-                                                                        <span className="text-[13px] font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis">{val || "—"}</span>
+                                                                        <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
                                                                     )}
                                                                 </div>
                                                                 {isSaving && (
