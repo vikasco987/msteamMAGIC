@@ -454,6 +454,45 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleDeleteRow = async (responseId: string) => {
+        if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return;
+        const loadingToast = toast.loading("Deleting record...");
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses?responseId=${responseId}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("Record purged successfully", { id: loadingToast });
+                await fetchData();
+            } else {
+                const error = await res.json();
+                toast.error(error.error || "Execution failed", { id: loadingToast });
+            }
+        } catch (err) {
+            toast.error("Process interrupted", { id: loadingToast });
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (!confirm(`Are you sure you want to delete ${selectedRows.length} records? This action is irreversible.`)) return;
+        const loadingToast = toast.loading(`Purging ${selectedRows.length} records...`);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses?bulk=${selectedRows.join(",")}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                toast.success("Bulk purge complete", { id: loadingToast });
+                setSelectedRows([]);
+                await fetchData();
+            } else {
+                const error = await res.json();
+                toast.error(error.error || "Bulk execution failed", { id: loadingToast });
+            }
+        } catch (err) {
+            toast.error("Network failure during bulk purge", { id: loadingToast });
+        }
+    };
+
     const getColumns = useMemo(() => {
         if (!data) return [];
         const baseCols: any[] = [
@@ -1242,9 +1281,20 @@ export default function CRMSpreadsheetPage() {
                                                         {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
                                                     </div>
                                                 )}
-                                                <span className="text-[10px] font-black text-slate-400">
-                                                    {((currentPage - 1) * rowsPerPage) + rIdx + 1}
-                                                </span>
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-[10px] font-black text-slate-400">
+                                                        {((currentPage - 1) * rowsPerPage) + rIdx + 1}
+                                                    </span>
+                                                    {isMaster && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"
+                                                            title="Delete Record"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                             {getColumns.map((col, cIdx) => {
                                                 const val = col.type === "static"
@@ -1304,7 +1354,9 @@ export default function CRMSpreadsheetPage() {
                                                 const gac = colPermissions || { roles: {}, users: {} };
                                                 const rolePerm = gac.roles?.[userRole]?.[col.id];
                                                 const userPerm = gac.users?.[currentClerkId]?.[col.id];
-                                                const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "read");
+
+                                                // NEW: Logic sync with backend -- if assigned, default to edit unless hidden
+                                                const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "edit");
 
                                                 const canEdit = isMaster || finalPerm === "edit";
                                                 const isLocked = !!col.isLocked || !canEdit;
@@ -1895,6 +1947,16 @@ export default function CRMSpreadsheetPage() {
                             </div>
 
                             <div className="h-6 w-[1px] bg-slate-800 mx-2" />
+
+                            {isMaster && (
+                                <button
+                                    onClick={handleBulkDelete}
+                                    className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                >
+                                    <Trash2 size={14} />
+                                    Delete Selected
+                                </button>
+                            )}
 
                             <button onClick={() => setSelectedRows([])} className="p-3 text-slate-400 hover:text-white transition-colors"><X size={20} /></button>
                         </motion.div>

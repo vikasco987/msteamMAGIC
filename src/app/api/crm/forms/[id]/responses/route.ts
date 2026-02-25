@@ -49,7 +49,7 @@ export async function GET(
             where: { clerkId: userId }
         });
         console.log(`[API] DB User:`, dbUser);
-        const userRole = dbUser?.role || "GUEST";
+        const userRole = (dbUser?.role || "GUEST").toUpperCase();
         const form = await prisma.dynamicForm.findUnique({
             where: { id: formId },
             include: { fields: { orderBy: { order: "asc" } } }
@@ -164,22 +164,38 @@ export async function PATCH(
 
         // Permissions Check
         const dbUser = await prisma.user.findUnique({ where: { clerkId: user.id } });
-        const userRole = dbUser?.role || "GUEST";
+        const userRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        if (userRole !== "ADMIN" && userRole !== "MASTER") {
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+
+        if (!isMaster) {
             const form = await prisma.dynamicForm.findUnique({
                 where: { id: formId },
                 select: { columnPermissions: true, createdBy: true }
             });
-            if (form && form.createdBy !== user.id) {
-                const gac: any = form.columnPermissions || { roles: {}, users: {} };
-                const rolePerm = gac.roles?.[userRole]?.[columnId];
-                const userPerm = gac.users?.[user.id]?.[columnId];
-                const finalPerm = userPerm || rolePerm;
+            const response = await prisma.formResponse.findUnique({
+                where: { id: responseId },
+                select: { visibleToUsers: true, visibleToRoles: true, submittedBy: true }
+            });
 
-                if (finalPerm !== "edit") {
-                    return NextResponse.json({ error: "Forbidden: You do not have edit rights for this column" }, { status: 403 });
-                }
+            const isOwner = form?.createdBy === user.id;
+            const isSubmitter = response?.submittedBy === user.id;
+            const isAssigned = response?.visibleToUsers?.includes(user.id) ||
+                response?.visibleToRoles?.includes(userRole);
+
+            if (!isOwner && !isSubmitter && !isAssigned) {
+                return NextResponse.json({ error: "Forbidden: You do not have access to this record" }, { status: 403 });
+            }
+
+            // Column Level check
+            const gac: any = form?.columnPermissions || { roles: {}, users: {} };
+            const rolePerm = gac.roles?.[userRole]?.[columnId];
+            const userPerm = gac.users?.[user.id]?.[columnId];
+            const finalPerm = userPerm || rolePerm;
+
+            // NEW: Default to 'edit' if assigned, unless explicitly set to 'hide' or 'read'
+            if (finalPerm === "hide" || finalPerm === "read") {
+                return NextResponse.json({ error: "Forbidden: Manual column restrictions active" }, { status: 403 });
             }
         }
 
@@ -342,6 +358,46 @@ export async function PUT(
         return NextResponse.json({ success: true, count: updates.length });
     } catch (error) {
         console.error("PUT Bulk Update Error:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
+
+// Delete response(s) (Admin/Master only)
+export async function DELETE(
+    req: NextRequest,
+    { params }: { params: { id: string } }
+) {
+    try {
+        const { userId } = await auth();
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const userRole = (dbUser?.role || "GUEST").toUpperCase();
+
+        if (userRole !== "ADMIN" && userRole !== "MASTER") {
+            return NextResponse.json({ error: "Forbidden: Only Master/Admin can delete data" }, { status: 403 });
+        }
+
+        const { searchParams } = new URL(req.url);
+        const responseId = searchParams.get("responseId");
+        const bulk = searchParams.get("bulk"); // comma separated list of IDs
+
+        if (bulk) {
+            const ids = bulk.split(",");
+            await prisma.formResponse.deleteMany({
+                where: { id: { in: ids } }
+            });
+            return NextResponse.json({ success: true, deleted: ids.length });
+        } else if (responseId) {
+            await prisma.formResponse.delete({
+                where: { id: responseId }
+            });
+            return NextResponse.json({ success: true });
+        }
+
+        return NextResponse.json({ error: "Missing responseId or bulk parameter" }, { status: 400 });
+    } catch (error) {
+        console.error("DELETE Response Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
