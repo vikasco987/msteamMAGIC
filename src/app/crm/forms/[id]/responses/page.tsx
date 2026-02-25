@@ -320,12 +320,14 @@ export default function CRMSpreadsheetPage() {
     const [userSearchQuery, setUserSearchQuery] = useState("");
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+    const [teamMemberSearch, setTeamMemberSearch] = useState("");
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     useEffect(() => {
         const fetchTeam = async () => {
             try {
-                const res = await fetch('/api/crm/users?role=STAFF'); // Hypothetical role filter or just get all
+                // Fetch more users to ensure 'All' are available for selection
+                const res = await fetch('/api/crm/users?role=STAFF&limit=100');
                 const json = await res.json();
                 setTeamMembers(json);
             } catch (err) { console.error("Team sync failure", err); }
@@ -2138,25 +2140,50 @@ export default function CRMSpreadsheetPage() {
                                                             <h5 className="text-[11px] font-black uppercase tracking-widest text-indigo-600 mb-2">Team Allocation Active</h5>
                                                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px]">Select which staff members should be available for this dimension</p>
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                                                            {teamMembers.map(m => (
+                                                        <div className="space-y-4">
+                                                            <div className="relative">
+                                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                                <input
+                                                                    value={teamMemberSearch}
+                                                                    onChange={(e) => setTeamMemberSearch(e.target.value)}
+                                                                    placeholder="Quick search team..."
+                                                                    className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
+                                                                />
+                                                            </div>
+                                                            <div className="flex items-center justify-between px-2">
+                                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{teamMembers.length} Operatives Detected</span>
                                                                 <button
-                                                                    key={m.clerkId}
-                                                                    onClick={() => setSelectedUserIds(prev => prev.includes(m.clerkId) ? prev.filter(id => id !== m.clerkId) : [...prev, m.clerkId])}
-                                                                    className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${selectedUserIds.includes(m.clerkId) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                                                                    onClick={() => {
+                                                                        if (selectedUserIds.length === teamMembers.length) setSelectedUserIds([]);
+                                                                        else setSelectedUserIds(teamMembers.map(m => m.clerkId));
+                                                                    }}
+                                                                    className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
                                                                 >
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black uppercase ${selectedUserIds.includes(m.clerkId) ? 'bg-white/20' : 'bg-indigo-600 text-white'}`}>
-                                                                            {m.email[0]}
-                                                                        </div>
-                                                                        <div className="text-left">
-                                                                            <p className="text-[10px] font-black truncate max-w-[100px]">{m.email.split('@')[0]}</p>
-                                                                            <p className={`text-[8px] font-bold uppercase tracking-tighter ${selectedUserIds.includes(m.clerkId) ? 'text-indigo-200' : 'text-slate-400'}`}>{m.role || 'STAFF'}</p>
-                                                                        </div>
-                                                                    </div>
-                                                                    {selectedUserIds.includes(m.clerkId) && <Check size={14} />}
+                                                                    {selectedUserIds.length === teamMembers.length ? 'Deselect All' : 'Select All'}
                                                                 </button>
-                                                            ))}
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                                                            {teamMembers
+                                                                .filter(m => m.email.toLowerCase().includes(teamMemberSearch.toLowerCase()))
+                                                                .map(m => (
+                                                                    <button
+                                                                        key={m.clerkId}
+                                                                        onClick={() => setSelectedUserIds(prev => prev.includes(m.clerkId) ? prev.filter(id => id !== m.clerkId) : [...prev, m.clerkId])}
+                                                                        className={`p-4 rounded-2xl flex items-center justify-between border transition-all ${selectedUserIds.includes(m.clerkId) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black uppercase ${selectedUserIds.includes(m.clerkId) ? 'bg-white/20' : 'bg-indigo-600 text-white'}`}>
+                                                                                {m.email[0]}
+                                                                            </div>
+                                                                            <div className="text-left">
+                                                                                <p className="text-[10px] font-black truncate max-w-[100px]">{m.email.split('@')[0]}</p>
+                                                                                <p className={`text-[8px] font-bold uppercase tracking-tighter ${selectedUserIds.includes(m.clerkId) ? 'text-indigo-200' : 'text-slate-400'}`}>{m.role || 'STAFF'}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        {selectedUserIds.includes(m.clerkId) && <Check size={14} />}
+                                                                    </button>
+                                                                ))}
                                                         </div>
                                                         {selectedUserIds.length === 0 && (
                                                             <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center">Warning: No members selected. All staff will be allowed.</p>
