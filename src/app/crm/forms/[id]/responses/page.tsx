@@ -279,6 +279,7 @@ export default function CRMSpreadsheetPage() {
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
+    const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("standard");
 
     // New Column Advanced State
@@ -339,6 +340,7 @@ export default function CRMSpreadsheetPage() {
             setData(json);
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
+            setIsPureMaster(json.isPureMaster);
 
             if (viewsRes.ok) {
                 const viewsJson = await viewsRes.json();
@@ -510,7 +512,7 @@ export default function CRMSpreadsheetPage() {
         const colAccess = { ...rolePerms, ...userPerms };
 
         let filtered = baseCols;
-        if (!isMaster) {
+        if (!isPureMaster) {
             filtered = baseCols.filter(col => {
                 const perm = colAccess[col.id];
                 if (perm === "hide") return false;
@@ -536,7 +538,7 @@ export default function CRMSpreadsheetPage() {
         }
 
         return ordered.filter(c => !hiddenColumns.includes(c.id));
-    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster]);
+    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster, isPureMaster]);
 
     const allColumns = useMemo(() => {
         if (!data) return [];
@@ -571,12 +573,12 @@ export default function CRMSpreadsheetPage() {
 
     const totalTableWidth = useMemo(() => {
         if (!data) return 1400;
-        let w = (isMaster ? 50 : 0);
+        let w = (isMaster || isPureMaster ? 50 : 0);
         getColumns.forEach(c => {
             w += (columnWidths[c.id] || (c.id === "__profile" ? 70 : c.id === "__contributor" ? 220 : 180));
         });
         return w;
-    }, [columnWidths, data, isMaster, getColumns]);
+    }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
         if (!data) return "";
@@ -1311,13 +1313,14 @@ export default function CRMSpreadsheetPage() {
                                                     <span className="text-[10px] font-black text-slate-400">
                                                         {((currentPage - 1) * rowsPerPage) + rIdx + 1}
                                                     </span>
-                                                    {isMaster && (
+                                                    {isPureMaster && (
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                                                            title="Purge Record"
+                                                            className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
+                                                            title="Master Purge"
                                                         >
-                                                            <Trash2 size={14} />
+                                                            <Trash2 size={12} />
+                                                            <span className="text-[7px] font-black uppercase">Purge</span>
                                                         </button>
                                                     )}
                                                 </div>
@@ -1442,7 +1445,8 @@ export default function CRMSpreadsheetPage() {
                                                         )}
                                                     </td>
                                                 );
-                                            })}
+                                            })
+                                            }
                                         </tr>
                                     ))}
                                 </tbody>
@@ -1986,7 +1990,7 @@ export default function CRMSpreadsheetPage() {
 
                             <div className="h-6 w-[1px] bg-slate-800 mx-2" />
 
-                            {isMaster && (
+                            {isPureMaster && (
                                 <button
                                     onClick={handleBulkDelete}
                                     className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
@@ -2384,6 +2388,6 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             `}</style>
-        </div>
+        </div >
     );
 }

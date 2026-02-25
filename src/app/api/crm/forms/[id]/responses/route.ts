@@ -58,7 +58,8 @@ export async function GET(
         if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
 
         const isFormOwner = form.createdBy === userId;
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isFormOwner;
+        const isMasterRole = userRole === "MASTER"; // Ultimate Authority
+        const isMaster = isMasterRole || userRole === "ADMIN" || isFormOwner;
 
         // Granular Access Control (GAC)
         const gac: any = form.columnPermissions || { roles: {}, users: {} };
@@ -67,7 +68,7 @@ export async function GET(
         const colAccess = { ...rolePerms, ...userPerms };
 
         // Form Level Access Control
-        const hasFormAccess = isMaster ||
+        const hasFormAccess = isMasterRole || isMaster ||
             form.visibleToRoles.includes(userRole) ||
             form.visibleToUsers.includes(userId) ||
             (form.visibleToRoles.length === 0 && form.visibleToUsers.length === 0);
@@ -76,7 +77,7 @@ export async function GET(
             return NextResponse.json({ error: "Forbidden: You do not have access to this matrix" }, { status: 403 });
         }
 
-        console.log(`[API] Access Granted. isMaster: ${isMaster}, isFormOwner: ${isFormOwner}`);
+        console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
 
         const allResponses = await prisma.formResponse.findMany({
             where: { formId },
@@ -84,14 +85,14 @@ export async function GET(
             orderBy: { submittedAt: "asc" }
         });
 
-        // Filter responses in JS for non-masters
-        const responses = isMaster ? allResponses : allResponses.filter(res => {
+        // Filter responses: ONLY Pure Master bypasses all checks.
+        // Admins and Owners follow visibility rules (unless records are shared with them or they are the submitter)
+        const responses = isMasterRole ? allResponses : allResponses.filter(res => {
             const roles = res.visibleToRoles || [];
             const users = res.visibleToUsers || [];
             if (roles.length === 0 && users.length === 0) return true; // Public
-            return roles.includes(userRole) || users.includes(userId);
+            return roles.includes(userRole) || users.includes(userId) || res.submittedBy === userId;
         });
-
 
         // We also need the internal columns for the form
         let internalColumns = await prisma.internalColumn.findMany({
@@ -100,13 +101,13 @@ export async function GET(
         });
 
         // Filter columns by GAC for non-masters
-        if (!isMaster) {
+        if (!isMasterRole) {
             // Filter internal columns
             internalColumns = internalColumns.filter(col => {
                 const perm = colAccess[col.id];
                 if (perm === "hide") return false;
 
-                // Legacy check as fallback
+                // Legacy visibility check
                 const roles = col.visibleToRoles || [];
                 const users = col.visibleToUsers || [];
                 if (roles.length === 0 && users.length === 0) return true;
@@ -141,7 +142,8 @@ export async function GET(
             internalValues,
             activities,
             userRole,
-            isMaster,
+            isMaster: isMaster,
+            isPureMaster: isMasterRole, // Specifically for deletion and absolute power
             clerkId: userId
         });
     } catch (error) {
@@ -362,7 +364,7 @@ export async function PUT(
     }
 }
 
-// Delete response(s) (Admin/Master/Owner only)
+// Delete response(s) (MASTER only)
 export async function DELETE(
     req: NextRequest,
     { params }: { params: { id: string } }
@@ -375,18 +377,12 @@ export async function DELETE(
         const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
         const userRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        const form = await prisma.dynamicForm.findUnique({
-            where: { id: formId },
-            select: { createdBy: true }
-        });
+        const isMasterRole = userRole === "MASTER";
 
-        const isOwner = form?.createdBy === userId;
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isOwner;
-
-        if (!isMaster) {
+        if (!isMasterRole) {
             return NextResponse.json({
-                error: "Forbidden: Only Master, Admin, or Form Owner can delete data",
-                debug: { userRole, isOwner, userId }
+                error: "Forbidden: Only users with MASTER role can delete data",
+                debug: { userRole, userId }
             }, { status: 403 });
         }
 
@@ -399,7 +395,7 @@ export async function DELETE(
             await prisma.formResponse.deleteMany({
                 where: {
                     id: { in: ids },
-                    formId: formId // Security: ensure records belong to this form
+                    formId: formId
                 }
             });
             return NextResponse.json({ success: true, deleted: ids.length });
@@ -407,7 +403,7 @@ export async function DELETE(
             await prisma.formResponse.delete({
                 where: {
                     id: responseId,
-                    formId: formId // Security: ensure records belong to this form
+                    formId: formId
                 }
             });
             return NextResponse.json({ success: true });
