@@ -403,7 +403,30 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleAddRow = async () => {
-        const loadingToast = toast.loading("Adding new record...");
+        if (!data) return;
+        const tempId = `temp-${Date.now()}`;
+        const previousData = { ...data };
+
+        // Optimistic Update
+        const newResponse: FormResponse = {
+            id: tempId,
+            submittedAt: new Date().toISOString(),
+            submittedByName: "Creating...",
+            values: [],
+            isOptimistic: true // Custom flag
+        } as any;
+
+        setData(prev => {
+            if (!prev) return prev;
+            const next = { ...prev, responses: [...(prev.responses || []), newResponse] };
+            // Move to last page
+            setTimeout(() => {
+                setCurrentPage(Math.ceil((next.responses?.length || 0) / rowsPerPage) || 1);
+            }, 0);
+            return next;
+        });
+        toast.loading("Deploying new sector...", { id: "add-row" });
+
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
                 method: "POST",
@@ -411,15 +434,21 @@ export default function CRMSpreadsheetPage() {
                 body: JSON.stringify({ values: {} })
             });
             if (res.ok) {
-                toast.success("New row initialized", { id: loadingToast });
-                await fetchData();
-                // Move to last page to see the new row
-                setCurrentPage(Math.ceil((data?.responses?.length || 0) / rowsPerPage) || 1);
+                const result = await res.json();
+                toast.success("Sector Deployed", { id: "add-row" });
+                // Replace temp with real data
+                setData(prev => {
+                    if (!prev) return prev;
+                    const responses = prev.responses.map(r => r.id === tempId ? result.response : r);
+                    return { ...prev, responses };
+                });
             } else {
-                toast.error("Failed to add row", { id: loadingToast });
+                toast.error("Deployment failed", { id: "add-row" });
+                setData(previousData); // Rollback
             }
         } catch (err) {
-            toast.error("Matrix failure", { id: loadingToast });
+            toast.error("Matrix failure", { id: "add-row" });
+            setData(previousData); // Rollback
         }
     };
 
@@ -503,20 +532,28 @@ export default function CRMSpreadsheetPage() {
 
     const handleDeleteRow = async (responseId: string) => {
         if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return;
-        const loadingToast = toast.loading("Deleting record...");
+        if (!data) return;
+
+        const previousData = { ...data };
+        const loadingToast = toast.loading("Purging sector...", { id: `del-${responseId}` });
+
+        // Optimistic Delete
+        setData(prev => prev ? { ...prev, responses: prev.responses.filter(r => r.id !== responseId) } : prev);
+
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/responses?responseId=${responseId}`, {
                 method: "DELETE"
             });
             if (res.ok) {
-                toast.success("Record purged successfully", { id: loadingToast });
-                await fetchData();
+                toast.success("Sector Purged", { id: `del-${responseId}` });
             } else {
                 const error = await res.json();
-                toast.error(error.error || "Execution failed", { id: loadingToast });
+                toast.error(error.error || "Purge failed", { id: `del-${responseId}` });
+                setData(previousData); // Rollback
             }
         } catch (err) {
-            toast.error("Process interrupted", { id: loadingToast });
+            toast.error("Process interrupted", { id: `del-${responseId}` });
+            setData(previousData); // Rollback
         }
     };
 
@@ -968,7 +1005,24 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleAddColumn = async () => {
-        if (!newColLabel) return;
+        if (!newColLabel || !data) return;
+        const tempId = `temp-col-${Date.now()}`;
+        const previousData = { ...data };
+
+        // Optimistic Column
+        const newCol: InternalColumn = {
+            id: tempId,
+            label: newColLabel,
+            type: newColType,
+            options: newColOptions,
+            isInternal: true,
+            isOptimistic: true
+        } as any;
+
+        setData(prev => prev ? { ...prev, internalColumns: [...(prev.internalColumns || []), newCol] } : prev);
+        setIsAddColumnOpen(false);
+        toast.loading("Adding dimension...", { id: "add-col" });
+
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/columns`, {
                 method: "POST",
@@ -985,35 +1039,51 @@ export default function CRMSpreadsheetPage() {
                 })
             });
             if (res.ok) {
-                toast.success("Dimension Deployed");
-                setIsAddColumnOpen(false);
+                const result = await res.json();
+                toast.success("Dimension Deployed", { id: "add-col" });
                 setNewColLabel("");
                 setNewColOptions([]);
-                setNewColPermissions({ roles: [], users: [] });
-                fetchData();
+                // Update with real ID
+                setData(prev => {
+                    if (!prev) return prev;
+                    const cols = prev.internalColumns.map(c => c.id === tempId ? result.column : c);
+                    return { ...prev, internalColumns: cols };
+                });
+            } else {
+                toast.error("Failed to deploy dimension", { id: "add-col" });
+                setData(previousData);
             }
         } catch (err) {
-            toast.error("Failed to add column");
+            toast.error("Network error during deployment", { id: "add-col" });
+            setData(previousData);
         }
     };
 
     const handleDeleteColumn = async (columnId: string) => {
         if (!isPureMaster) return toast.error("MASTER MODE REQUIRED");
         if (!confirm("PURGE PROTOCOL: This will permanently delete the entire column and all associated data. Continue?")) return;
+        if (!data) return;
+
+        const previousData = { ...data };
+        toast.loading("Purging dimension...", { id: `del-col-${columnId}` });
+
+        // Optimistic Delete
+        setData(prev => prev ? { ...prev, internalColumns: prev.internalColumns.filter(c => c.id !== columnId) } : prev);
 
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/columns?columnId=${columnId}`, {
                 method: "DELETE"
             });
             if (res.ok) {
-                toast.success("COLUMN PURGED");
-                fetchData();
+                toast.success("Dimension Purged", { id: `del-col-${columnId}` });
             } else {
                 const err = await res.json();
-                toast.error(err.error || "Purge Failed");
+                toast.error(err.error || "Purge Failed", { id: `del-col-${columnId}` });
+                setData(previousData);
             }
         } catch (error) {
-            toast.error("Network Error During Purge");
+            toast.error("Network Error During Purge", { id: `del-col-${columnId}` });
+            setData(previousData);
         }
     };
 
@@ -1380,186 +1450,195 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {paginatedResponses.map((res, rIdx) => (
-                                        <tr key={res.id} className={`group hover:bg-indigo-50/30 transition-all relative ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
-                                            <td className={`w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
-                                                {isMaster && (
-                                                    <div
-                                                        onClick={() => toggleRowSelection(res.id)}
-                                                        className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                                    >
-                                                        {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
-                                                    </div>
-                                                )}
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-[10px] font-black text-slate-400">
-                                                        {((currentPage - 1) * rowsPerPage) + rIdx + 1}
-                                                    </span>
-                                                    {isPureMaster && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                            className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
-                                                            title="Master Purge"
+                                    <AnimatePresence initial={false}>
+                                        {paginatedResponses.map((res, rIdx) => (
+                                            <motion.tr
+                                                key={res.id}
+                                                layout
+                                                initial={{ opacity: 0, x: -20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, scale: 0.95 }}
+                                                transition={{ duration: 0.2, delay: rIdx * 0.03 }}
+                                                className={`group hover:bg-indigo-50/30 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
+                                            >
+                                                <td className={`w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
+                                                    {isMaster && (
+                                                        <div
+                                                            onClick={() => toggleRowSelection(res.id)}
+                                                            className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
                                                         >
-                                                            <Trash2 size={12} />
-                                                            <span className="text-[7px] font-black uppercase">Purge</span>
-                                                        </button>
+                                                            {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
+                                                        </div>
                                                     )}
-                                                </div>
-                                            </td>
-                                            {getColumns.map((col, cIdx) => {
-                                                const val = col.type === "static"
-                                                    ? ""
-                                                    : getCellValue(res.id, col.id, col.isInternal);
-
-                                                const isSticky = cIdx < 2;
-                                                let leftOffset = isMaster ? 50 : 0;
-                                                if (isSticky && cIdx > 0) {
-                                                    for (let i = 0; i < cIdx; i++) {
-                                                        const prevCol = getColumns[i];
-                                                        leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
-                                                    }
-                                                }
-                                                const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
-
-                                                if (col.id === "__profile") {
-                                                    return (
-                                                        <td
-                                                            key={col.id}
-                                                            style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                            className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
-                                                        >
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] font-black text-slate-400">
+                                                            {((currentPage - 1) * rowsPerPage) + rIdx + 1}
+                                                        </span>
+                                                        {isPureMaster && (
                                                             <button
-                                                                onClick={() => setSelectedResponse(res)}
-                                                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
+                                                                className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
+                                                                title="Master Purge"
                                                             >
-                                                                <Maximize2 size={14} />
+                                                                <Trash2 size={12} />
+                                                                <span className="text-[7px] font-black uppercase">Purge</span>
                                                             </button>
-                                                        </td>
-                                                    );
-                                                }
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                {getColumns.map((col, cIdx) => {
+                                                    const val = col.type === "static"
+                                                        ? ""
+                                                        : getCellValue(res.id, col.id, col.isInternal);
 
-                                                if (col.id === "__contributor") {
+                                                    const isSticky = cIdx < 2;
+                                                    let leftOffset = isMaster ? 50 : 0;
+                                                    if (isSticky && cIdx > 0) {
+                                                        for (let i = 0; i < cIdx; i++) {
+                                                            const prevCol = getColumns[i];
+                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
+                                                        }
+                                                    }
+                                                    const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
+
+                                                    if (col.id === "__profile") {
+                                                        return (
+                                                            <td
+                                                                key={col.id}
+                                                                style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                                className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
+                                                            >
+                                                                <button
+                                                                    onClick={() => setSelectedResponse(res)}
+                                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                                                >
+                                                                    <Maximize2 size={14} />
+                                                                </button>
+                                                            </td>
+                                                        );
+                                                    }
+
+                                                    if (col.id === "__contributor") {
+                                                        return (
+                                                            <td
+                                                                key={col.id}
+                                                                style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                                className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100">
+                                                                        {res.submittedByName ? res.submittedByName[0].toUpperCase() : 'U'}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tighter">{res.submittedByName || "Guest User"}</p>
+                                                                        <p className="text-[9px] text-slate-400 font-bold">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    }
+
+                                                    const isInternal = col.isInternal;
+                                                    const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
+                                                    const currentClerkId = (data as any).clerkId;
+                                                    const gac = colPermissions || { roles: {}, users: {} };
+                                                    const rolePerm = gac.roles?.[userRole]?.[col.id];
+                                                    const userPerm = gac.users?.[currentClerkId]?.[col.id];
+
+                                                    // NEW: Logic sync with backend -- if assigned, default to edit unless hidden
+                                                    const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "edit");
+
+                                                    const canEdit = isMaster || finalPerm === "edit";
+                                                    const isLocked = !!col.isLocked || !canEdit;
+                                                    const isSaving = savingCells.has(`${res.id}-${col.id}`);
+
                                                     return (
                                                         <td
                                                             key={col.id}
                                                             style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                            className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                            onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
+                                                            className={`px-4 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-5' : 'py-2'}`}
                                                         >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100">
-                                                                    {res.submittedByName ? res.submittedByName[0].toUpperCase() : 'U'}
-                                                                </div>
-                                                                <div className="min-w-0">
-                                                                    <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tighter">{res.submittedByName || "Guest User"}</p>
-                                                                    <p className="text-[9px] text-slate-400 font-bold">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
-                                                                </div>
-                                                            </div>
-                                                        </td>
-                                                    );
-                                                }
-
-                                                const isInternal = col.isInternal;
-                                                const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
-                                                const currentClerkId = (data as any).clerkId;
-                                                const gac = colPermissions || { roles: {}, users: {} };
-                                                const rolePerm = gac.roles?.[userRole]?.[col.id];
-                                                const userPerm = gac.users?.[currentClerkId]?.[col.id];
-
-                                                // NEW: Logic sync with backend -- if assigned, default to edit unless hidden
-                                                const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "edit");
-
-                                                const canEdit = isMaster || finalPerm === "edit";
-                                                const isLocked = !!col.isLocked || !canEdit;
-                                                const isSaving = savingCells.has(`${res.id}-${col.id}`);
-
-                                                return (
-                                                    <td
-                                                        key={col.id}
-                                                        style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                        onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
-                                                        className={`px-4 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-5' : 'py-2'}`}
-                                                    >
-                                                        {isEditing ? (
-                                                            <div className="w-full">
-                                                                {col.type === "dropdown" ? (
-                                                                    <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                        <option value="">Select...</option>
-                                                                        {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
-                                                                    </select>
-                                                                ) : col.type === "user" ? (
-                                                                    <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                        <option value="">Assigned To...</option>
-                                                                        {teamMembers.map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
-                                                                    </select>
-                                                                ) : col.type === "date" ? (
-                                                                    <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
-                                                                ) : col.type === "number" || col.type === "currency" ? (
-                                                                    <input type="number" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
-                                                                ) : col.type === "long_text" ? (
-                                                                    <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
-                                                                ) : (
-                                                                    <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center justify-between min-h-[20px] min-w-0">
-                                                                <div className="flex items-center min-w-0 overflow-hidden">
-                                                                    {col.type === "dropdown" && val ? (
-                                                                        <div className="flex -space-x-1 group/badge shrink-0">
-                                                                            <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                                val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-100'}`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
-                                                                                {val}
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : col.type === "user" && val ? (
-                                                                        <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
-                                                                            <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase">
-                                                                                {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
-                                                                            </div>
-                                                                            <span className="text-[10px] font-black text-slate-600 truncate max-w-[80px]">
-                                                                                {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : col.type === "date" && val ? (
-                                                                        <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-tighter bg-slate-100/50 px-2 py-1 rounded-md shrink-0">
-                                                                            <Calendar size={10} className="text-rose-400" />
-                                                                            {safeFormat(val, "MMM dd, yyyy")}
-                                                                        </span>
-                                                                    ) : col.type === "checkbox" ? (
-                                                                        <div
-                                                                            onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
-                                                                            className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white border-slate-200'}`}
-                                                                        >
-                                                                            {val === "true" && <Check size={12} className="text-white" />}
-                                                                        </div>
-                                                                    ) : col.type === "currency" && val ? (
-                                                                        <span className="text-[11px] font-black text-slate-900 flex items-center gap-0.5 shrink-0">
-                                                                            <IndianRupee size={10} className="text-slate-400" />
-                                                                            {parseFloat(val).toLocaleString('en-IN')}
-                                                                        </span>
+                                                            {isEditing ? (
+                                                                <div className="w-full">
+                                                                    {col.type === "dropdown" ? (
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                            <option value="">Select...</option>
+                                                                            {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                        </select>
+                                                                    ) : col.type === "user" ? (
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                            <option value="">Assigned To...</option>
+                                                                            {teamMembers.map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
+                                                                        </select>
+                                                                    ) : col.type === "date" ? (
+                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                    ) : col.type === "number" || col.type === "currency" ? (
+                                                                        <input type="number" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                    ) : col.type === "long_text" ? (
+                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : (
-                                                                        <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
+                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     )}
                                                                 </div>
-                                                                {isSaving && (
-                                                                    <motion.div
-                                                                        initial={{ opacity: 0, scale: 0.5 }}
-                                                                        animate={{ opacity: 1, scale: 1 }}
-                                                                        className="ml-2 shrink-0"
-                                                                    >
-                                                                        <Activity size={10} className="text-indigo-500 animate-pulse" />
-                                                                    </motion.div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                );
-                                            })
-                                            }
-                                        </tr>
-                                    ))}
+                                                            ) : (
+                                                                <div className="flex items-center justify-between min-h-[20px] min-w-0">
+                                                                    <div className="flex items-center min-w-0 overflow-hidden">
+                                                                        {col.type === "dropdown" && val ? (
+                                                                            <div className="flex -space-x-1 group/badge shrink-0">
+                                                                                <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                    val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-100'}`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
+                                                                                    {val}
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : col.type === "user" && val ? (
+                                                                            <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
+                                                                                <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase">
+                                                                                    {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
+                                                                                </div>
+                                                                                <span className="text-[10px] font-black text-slate-600 truncate max-w-[80px]">
+                                                                                    {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
+                                                                                </span>
+                                                                            </div>
+                                                                        ) : col.type === "date" && val ? (
+                                                                            <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-tighter bg-slate-100/50 px-2 py-1 rounded-md shrink-0">
+                                                                                <Calendar size={10} className="text-rose-400" />
+                                                                                {safeFormat(val, "MMM dd, yyyy")}
+                                                                            </span>
+                                                                        ) : col.type === "checkbox" ? (
+                                                                            <div
+                                                                                onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
+                                                                                className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white border-slate-200'}`}
+                                                                            >
+                                                                                {val === "true" && <Check size={12} className="text-white" />}
+                                                                            </div>
+                                                                        ) : col.type === "currency" && val ? (
+                                                                            <span className="text-[11px] font-black text-slate-900 flex items-center gap-0.5 shrink-0">
+                                                                                <IndianRupee size={10} className="text-slate-400" />
+                                                                                {parseFloat(val).toLocaleString('en-IN')}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {isSaving && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, scale: 0.5 }}
+                                                                            animate={{ opacity: 1, scale: 1 }}
+                                                                            className="ml-2 shrink-0"
+                                                                        >
+                                                                            <Activity size={10} className="text-indigo-500 animate-pulse" />
+                                                                        </motion.div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    );
+                                                })}
+                                            </motion.tr>
+                                        ))}
+                                    </AnimatePresence>
                                 </tbody>
                             </table>
 
