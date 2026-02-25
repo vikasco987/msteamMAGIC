@@ -57,7 +57,7 @@ import {
     Minimize2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 
@@ -200,6 +200,7 @@ const FILTER_OPERATORS = {
 export default function CRMSpreadsheetPage() {
     const router = useRouter();
     const params = useParams();
+    const searchParams = useSearchParams();
     const [data, setData] = useState<MasterData | null>(null);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
@@ -409,6 +410,12 @@ export default function CRMSpreadsheetPage() {
             setAccessUserResults(json);
         } catch (err) { console.error(err); }
     };
+
+    useEffect(() => {
+        if (searchParams.get("fullview") === "true") {
+            setIsFullScreen(true);
+        }
+    }, [searchParams]);
 
     useEffect(() => { fetchData(); }, [params.id]);
 
@@ -1147,9 +1154,17 @@ export default function CRMSpreadsheetPage() {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search records..."
-                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[280px]"
+                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[200px]"
                                 />
                             </div>
+
+                            <button
+                                onClick={() => window.open(`${window.location.pathname}?fullview=true`, "_blank")}
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-slate-100"
+                            >
+                                <Maximize2 size={12} />
+                                Full View
+                            </button>
 
                             <button
                                 onClick={() => setIsFilterBuilderOpen(true)}
