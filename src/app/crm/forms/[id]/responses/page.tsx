@@ -335,7 +335,7 @@ export default function CRMSpreadsheetPage() {
 
             if (permRes.ok) {
                 const permJson = await permRes.json();
-                setColPermissions(permJson);
+                setColPermissions(permJson && Object.keys(permJson).length > 0 ? permJson : { roles: {}, users: {} });
             }
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
@@ -2121,16 +2121,19 @@ export default function CRMSpreadsheetPage() {
                                                     const currentPerm = colPermissions[targetType]?.[targetId]?.[col.id] || (col.isInternal ? "hide" : "read");
 
                                                     const setPerm = (p: string) => {
-                                                        setColPermissions(prev => ({
-                                                            ...prev,
-                                                            [targetType]: {
-                                                                ...prev[targetType],
-                                                                [targetId]: {
-                                                                    ...(prev[targetType][targetId] || {}),
-                                                                    [col.id]: p
+                                                        setColPermissions(prev => {
+                                                            const base = prev || { roles: {}, users: {} };
+                                                            return {
+                                                                ...base,
+                                                                [targetType]: {
+                                                                    ...(base[targetType] || {}),
+                                                                    [targetId]: {
+                                                                        ...(base[targetType]?.[targetId] || {}),
+                                                                        [col.id]: p
+                                                                    }
                                                                 }
-                                                            }
-                                                        }));
+                                                            };
+                                                        });
                                                     };
 
                                                     return (
