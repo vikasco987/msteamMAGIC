@@ -247,6 +247,8 @@ model DynamicForm {
   visibleToRoles  String[] @default([])
   visibleToUsers  String[] @default([])
   
+  columnPermissions Json? // { "roles": { "ADMIN": { "col1": "edit", ... } }, "users": { "clerkId": { "col1": "view", ... } } }
+  
   fields          FormField[]
   responses       FormResponse[]
   internalColumns InternalColumn[]

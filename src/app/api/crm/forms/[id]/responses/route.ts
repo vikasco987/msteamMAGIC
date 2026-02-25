@@ -60,6 +60,12 @@ export async function GET(
         const isFormOwner = form.createdBy === userId;
         const isMaster = userRole === "ADMIN" || userRole === "MASTER" || isFormOwner;
 
+        // Granular Access Control (GAC)
+        const gac: any = form.columnPermissions || { roles: {}, users: {} };
+        const rolePerms = gac.roles?.[userRole] || {};
+        const userPerms = gac.users?.[userId] || {};
+        const colAccess = { ...rolePerms, ...userPerms };
+
         // Form Level Access Control
         const hasFormAccess = isMaster ||
             form.visibleToRoles.includes(userRole) ||
@@ -93,19 +99,25 @@ export async function GET(
             orderBy: { order: "asc" }
         });
 
-        // Filter columns for non-masters
+        // Filter columns by GAC for non-masters
         if (!isMaster) {
+            // Filter internal columns
             internalColumns = internalColumns.filter(col => {
+                const perm = colAccess[col.id];
+                if (perm === "hide") return false;
+
+                // Legacy check as fallback
                 const roles = col.visibleToRoles || [];
                 const users = col.visibleToUsers || [];
                 if (roles.length === 0 && users.length === 0) return true;
                 return roles.includes(userRole) || users.includes(userId);
             });
 
-            // Filter form fields if any (though currently they don't have permission fields, it's good practice)
-            // if (form?.fields) {
-            //      ...
-            // }
+            // Filter form fields
+            (form as any).fields = (form.fields || []).filter(f => {
+                const perm = colAccess[f.id];
+                return perm !== "hide";
+            });
         }
 
         // And all internal values for these responses
@@ -129,7 +141,8 @@ export async function GET(
             internalValues,
             activities,
             userRole,
-            isMaster
+            isMaster,
+            clerkId: userId
         });
     } catch (error) {
         console.error("GET Responses Error:", error);
@@ -146,8 +159,29 @@ export async function PATCH(
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { responseId, columnId, value, isInternal } = await req.json();
+        const { responseId, columnId, value, isInternal, formId } = await req.json();
         const userName = `${user.firstName} ${user.lastName}`;
+
+        // Permissions Check
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: user.id } });
+        const userRole = dbUser?.role || "GUEST";
+
+        if (userRole !== "ADMIN" && userRole !== "MASTER") {
+            const form = await prisma.dynamicForm.findUnique({
+                where: { id: formId },
+                select: { columnPermissions: true, createdBy: true }
+            });
+            if (form && form.createdBy !== user.id) {
+                const gac: any = form.columnPermissions || { roles: {}, users: {} };
+                const rolePerm = gac.roles?.[userRole]?.[columnId];
+                const userPerm = gac.users?.[user.id]?.[columnId];
+                const finalPerm = userPerm || rolePerm;
+
+                if (finalPerm !== "edit") {
+                    return NextResponse.json({ error: "Forbidden: You do not have edit rights for this column" }, { status: 403 });
+                }
+            }
+        }
 
         let oldValue = "";
         let colName = "";

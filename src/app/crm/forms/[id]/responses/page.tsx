@@ -51,7 +51,9 @@ import {
     EyeOff,
     Check,
     GripVertical,
-    Lock
+    Lock,
+    ArrowUp,
+    ArrowDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams } from "next/navigation";
@@ -108,7 +110,12 @@ interface FormResponse {
 }
 
 interface MasterData {
-    form: { title: string; fields: FormField[] };
+    form: {
+        title: string;
+        fields: FormField[];
+        visibleToRoles?: string[];
+        visibleToUsers?: string[];
+    };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
     internalValues: { responseId: string; columnId: string; value: string; updatedByName?: string; updatedAt?: string }[];
@@ -197,6 +204,12 @@ export default function CRMSpreadsheetPage() {
     const [accessUserSearch, setAccessUserSearch] = useState("");
     const [accessUserResults, setAccessUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
+    // Granular Access Control (GAC)
+    const [accessTab, setAccessTab] = useState<"GLOBAL" | "COLUMNS">("GLOBAL");
+    const [colPermissions, setColPermissions] = useState<{ roles: any, users: any }>({ roles: {}, users: {} });
+    const [selectedRoleForGAC, setSelectedRoleForGAC] = useState<string>("ADMIN");
+    const [selectedUserForGAC, setSelectedUserForGAC] = useState<{ id: string, email: string } | null>(null);
+
     // Phase 2 — SaaS Level States
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
     const [isFilterBuilderOpen, setIsFilterBuilderOpen] = useState(false);
@@ -234,6 +247,23 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => {
         localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
     }, [hiddenColumns, params.id]);
+
+    const [columnOrder, setColumnOrder] = useState<string[]>([]);
+
+    // Column Order Persistence
+    useEffect(() => {
+        const saved = localStorage.getItem(`matrix_order_${params.id}`);
+        if (saved) {
+            try { setColumnOrder(JSON.parse(saved)); } catch (e) { console.error(e); }
+        }
+    }, [params.id]);
+
+    useEffect(() => {
+        if (columnOrder.length > 0) {
+            localStorage.setItem(`matrix_order_${params.id}`, JSON.stringify(columnOrder));
+        }
+    }, [columnOrder, params.id]);
+
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
     const [userRole, setUserRole] = useState<string>("GUEST");
@@ -251,27 +281,6 @@ export default function CRMSpreadsheetPage() {
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
-    const totalTableWidth = useMemo(() => {
-        if (!data) return 1400;
-        let w = (isMaster ? 50 : 0);
-        const profileW = columnWidths["__profile"] || 70;
-        const contribW = columnWidths["__contributor"] || 240;
-
-        if (!hiddenColumns.includes("__profile")) w += profileW;
-        if (!hiddenColumns.includes("__contributor")) w += contribW;
-
-        (data.form?.fields || []).forEach(f => {
-            if (!hiddenColumns.includes(f.id)) {
-                w += (columnWidths[f.id] || 180);
-            }
-        });
-        (data.internalColumns || []).forEach(ic => {
-            if (!hiddenColumns.includes(ic.id)) {
-                w += (columnWidths[ic.id] || 180);
-            }
-        });
-        return w;
-    }, [columnWidths, data, isMaster, hiddenColumns]);
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
         e.preventDefault();
@@ -308,9 +317,10 @@ export default function CRMSpreadsheetPage() {
 
     const fetchData = async () => {
         try {
-            const [dataRes, viewsRes] = await Promise.all([
+            const [dataRes, viewsRes, permRes] = await Promise.all([
                 fetch(`/api/crm/forms/${params.id}/responses`),
-                fetch(`/api/crm/forms/${params.id}/views`)
+                fetch(`/api/crm/forms/${params.id}/views`),
+                fetch(`/api/crm/forms/${params.id}/column-permissions`)
             ]);
 
             const json = await dataRes.json();
@@ -321,6 +331,11 @@ export default function CRMSpreadsheetPage() {
             if (viewsRes.ok) {
                 const viewsJson = await viewsRes.json();
                 setSavedViews(viewsJson);
+            }
+
+            if (permRes.ok) {
+                const permJson = await permRes.json();
+                setColPermissions(permJson);
             }
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
@@ -384,28 +399,106 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleSaveColumnPermissions = async () => {
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/column-permissions`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(colPermissions)
+            });
+            if (res.ok) {
+                toast.success("Column Access Matrix Synchronized");
+                setIsAccessModalOpen(false);
+                fetchData();
+            }
+        } catch (err) {
+            toast.error("Failed to sync column permissions");
+        }
+    };
+
     const getColumns = useMemo(() => {
         if (!data) return [];
-        const cols: any[] = [
+        const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
         ];
-        (data.form?.fields || []).forEach(f => cols.push({ ...f, isInternal: false }));
-        (data.internalColumns || []).forEach(ic => cols.push({ ...ic, isInternal: true }));
+        (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
+        (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
-        return cols.filter(c => !hiddenColumns.includes(c.id));
-    }, [data, hiddenColumns]);
+        const currentClerkId = (data as any).clerkId;
+        const gac = colPermissions || { roles: {}, users: {} };
+        const rolePerms = gac.roles?.[userRole] || {};
+        const userPerms = gac.users?.[currentClerkId] || {};
+        const colAccess = { ...rolePerms, ...userPerms };
+
+        let filtered = baseCols;
+        if (!isMaster) {
+            filtered = baseCols.filter(col => {
+                const perm = colAccess[col.id];
+                if (perm === "hide") return false;
+
+                // Legacy fallback for internal columns
+                if (col.isInternal) {
+                    const roles = col.visibleToRoles || [];
+                    const users = col.visibleToUsers || [];
+                    if (roles.length > 0 || users.length > 0) {
+                        return roles.includes(userRole) || users.includes(currentClerkId);
+                    }
+                }
+                return true;
+            });
+        }
+
+        let ordered = filtered;
+        if (columnOrder.length > 0) {
+            ordered = columnOrder.map(id => filtered.find(c => c.id === id)).filter(Boolean) as any[];
+            filtered.forEach(bc => {
+                if (!columnOrder.includes(bc.id)) ordered.push(bc);
+            });
+        }
+
+        return ordered.filter(c => !hiddenColumns.includes(c.id));
+    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster]);
 
     const allColumns = useMemo(() => {
         if (!data) return [];
-        const cols: any[] = [
+        const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
         ];
-        (data.form?.fields || []).forEach(f => cols.push({ ...f, isInternal: false }));
-        (data.internalColumns || []).forEach(ic => cols.push({ ...ic, isInternal: true }));
-        return cols;
-    }, [data]);
+        (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
+        (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
+
+        let ordered = baseCols;
+        if (columnOrder.length > 0) {
+            ordered = columnOrder.map(id => baseCols.find(c => c.id === id)).filter(Boolean) as any[];
+            baseCols.forEach(bc => {
+                if (!columnOrder.includes(bc.id)) ordered.push(bc);
+            });
+        }
+        return ordered;
+    }, [data, columnOrder]);
+
+    const moveColumn = (index: number, direction: 'up' | 'down') => {
+        const currentOrder = allColumns.map(c => c.id);
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= currentOrder.length) return;
+
+        const newOrder = [...currentOrder];
+        const temp = newOrder[index];
+        newOrder[index] = newOrder[targetIndex];
+        newOrder[targetIndex] = temp;
+        setColumnOrder(newOrder);
+    };
+
+    const totalTableWidth = useMemo(() => {
+        if (!data) return 1400;
+        let w = (isMaster ? 50 : 0);
+        getColumns.forEach(c => {
+            w += (columnWidths[c.id] || (c.id === "__profile" ? 70 : c.id === "__contributor" ? 220 : 180));
+        });
+        return w;
+    }, [columnWidths, data, isMaster, getColumns]);
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
         if (!data) return "";
@@ -678,7 +771,7 @@ export default function CRMSpreadsheetPage() {
             const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ responseId, columnId, value, isInternal })
+                body: JSON.stringify({ responseId, columnId, value, isInternal, formId: params.id })
             });
 
             if (!res.ok) {
@@ -1017,69 +1110,33 @@ export default function CRMSpreadsheetPage() {
                                                 </div>
                                             </th>
                                         )}
-                                        <th
-                                            style={{
-                                                width: columnWidths["__profile"] || 70,
-                                                left: isMaster ? 50 : 0
-                                            }}
-                                            className={`px-3 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-center sticky bg-[#F9FAFB] z-40 group/h`}
-                                        >
-                                            View
-                                            <div
-                                                onMouseDown={(e) => handleResizeStart(e, "__profile", columnWidths["__profile"] || 70)}
-                                                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
-                                            />
-                                        </th>
-                                        <th
-                                            style={{
-                                                width: columnWidths["__contributor"] || 240,
-                                                left: (isMaster ? 50 : 0) + (columnWidths["__profile"] || 70)
-                                            }}
-                                            className={`px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left sticky bg-[#F9FAFB] z-40 group/h`}
-                                        >
-                                            Submitter info
-                                            <div
-                                                onMouseDown={(e) => handleResizeStart(e, "__contributor", columnWidths["__contributor"] || 240)}
-                                                className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
-                                            />
-                                        </th>
-                                        {data?.form?.fields?.map(f => {
-                                            const width = columnWidths[f.id] || 180;
+                                        {getColumns.map((col, cIdx) => {
+                                            const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
+                                            const isSticky = cIdx < 2;
+
+                                            // Dynamic left offset
+                                            let leftOffset = isMaster ? 50 : 0;
+                                            if (isSticky && cIdx > 0) {
+                                                for (let i = 0; i < cIdx; i++) {
+                                                    const prevCol = getColumns[i];
+                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
+                                                }
+                                            }
+
+                                            const TypeIcon = col.type === 'static' ? (col.id === '__profile' ? Maximize2 : Users) : (COLUMN_TYPES.find(t => t.id === col.type)?.icon || Type);
+
                                             return (
                                                 <th
-                                                    key={f.id}
-                                                    style={{ width }}
-                                                    className="px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-[#475467] text-left bg-[#F9FAFB] relative group/h"
+                                                    key={col.id}
+                                                    style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                    className={`px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky bg-[#F9FAFB] z-40' : ''} ${col.isInternal ? 'text-indigo-600 bg-indigo-50/30' : 'text-[#475467]'}`}
                                                 >
                                                     <div className="flex items-center gap-2 truncate">
-                                                        <Type size={12} className="text-[#667085] shrink-0" /> {f.label}
+                                                        <TypeIcon size={10} className={col.isInternal ? "text-indigo-600" : "text-[#667085]"} />
+                                                        {col.id === "__profile" ? "View" : col.id === "__contributor" ? "Submitter info" : col.label}
                                                     </div>
                                                     <div
-                                                        onMouseDown={(e) => handleResizeStart(e, f.id, width)}
-                                                        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
-                                                    />
-                                                </th>
-                                            );
-                                        })}
-                                        {data?.internalColumns?.map(ic => {
-                                            const TypeIcon = COLUMN_TYPES.find(t => t.id === ic.type)?.icon || Database;
-                                            const width = columnWidths[ic.id] || 180;
-                                            return (
-                                                <th
-                                                    key={ic.id}
-                                                    style={{ width }}
-                                                    className="px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-indigo-600 text-left bg-indigo-50/30 relative group/h"
-                                                >
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div className="flex items-center gap-2 truncate">
-                                                            <TypeIcon size={12} className="text-indigo-600 shrink-0" /> {ic.label}
-                                                        </div>
-                                                        {((ic.visibleToRoles && ic.visibleToRoles.length > 0) || (ic.visibleToUsers && ic.visibleToUsers.length > 0)) && (
-                                                            <ShieldCheck size={12} className="text-indigo-400 shrink-0" />
-                                                        )}
-                                                    </div>
-                                                    <div
-                                                        onMouseDown={(e) => handleResizeStart(e, ic.id, width)}
+                                                        onMouseDown={(e) => handleResizeStart(e, col.id, width)}
                                                         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-indigo-400/50 transition-colors z-50"
                                                     />
                                                 </th>
@@ -1105,21 +1162,22 @@ export default function CRMSpreadsheetPage() {
                                                     ? ""
                                                     : getCellValue(res.id, col.id, col.isInternal);
 
-                                                const commonProps = {
-                                                    className: `px-4 py-2 border-b border-[#EAECF0] transition-colors relative select-none`
-                                                };
+                                                const isSticky = cIdx < 2;
+                                                let leftOffset = isMaster ? 50 : 0;
+                                                if (isSticky && cIdx > 0) {
+                                                    for (let i = 0; i < cIdx; i++) {
+                                                        const prevCol = getColumns[i];
+                                                        leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
+                                                    }
+                                                }
+                                                const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
 
                                                 if (col.id === "__profile") {
-                                                    const profileWidth = columnWidths["__profile"] || 70;
                                                     return (
                                                         <td
                                                             key={col.id}
-                                                            {...commonProps}
-                                                            style={{
-                                                                width: profileWidth,
-                                                                left: isMaster ? 50 : 0
-                                                            }}
-                                                            className={`${commonProps.className} text-center sticky bg-white group-hover:bg-[#F9FAFB] z-30`}
+                                                            style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                            className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
                                                         >
                                                             <button
                                                                 onClick={() => setSelectedResponse(res)}
@@ -1132,27 +1190,19 @@ export default function CRMSpreadsheetPage() {
                                                 }
 
                                                 if (col.id === "__contributor") {
-                                                    const contributorWidth = columnWidths["__contributor"] || 240;
-                                                    const profileWidth = columnWidths["__profile"] || 70;
                                                     return (
                                                         <td
                                                             key={col.id}
-                                                            {...commonProps}
-                                                            style={{
-                                                                width: contributorWidth,
-                                                                left: (isMaster ? 50 : 0) + profileWidth
-                                                            }}
-                                                            className={`${commonProps.className} sticky bg-white group-hover:bg-[#F9FAFB] z-30`}
+                                                            style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                            className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
                                                         >
-                                                            <div className="flex items-center gap-2 min-w-0">
-                                                                <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-black capitalize border border-slate-200 shrink-0">
-                                                                    {res.submittedByName ? res.submittedByName[0] : "?"}
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100">
+                                                                    {res.submittedByName ? res.submittedByName[0].toUpperCase() : 'U'}
                                                                 </div>
-                                                                <div className="flex flex-col min-w-0">
-                                                                    <p className="text-[13px] font-bold text-slate-900 truncate">{res.submittedByName || "Public User"}</p>
-                                                                    <p className="text-[9px] font-bold text-slate-400 flex items-center gap-1 mt-0.5 truncate">
-                                                                        <Clock size={8} /> {safeFormat(res.submittedAt, "MMM dd, HH:mm")}
-                                                                    </p>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tighter">{res.submittedByName || "Guest User"}</p>
+                                                                    <p className="text-[9px] text-slate-400 font-bold">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -1161,16 +1211,22 @@ export default function CRMSpreadsheetPage() {
 
                                                 const isInternal = col.isInternal;
                                                 const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
-                                                const isLocked = !!col.isLocked;
+                                                const currentClerkId = (data as any).clerkId;
+                                                const gac = colPermissions || { roles: {}, users: {} };
+                                                const rolePerm = gac.roles?.[userRole]?.[col.id];
+                                                const userPerm = gac.users?.[currentClerkId]?.[col.id];
+                                                const finalPerm = userPerm || rolePerm || (isInternal ? "hide" : "read");
+
+                                                const canEdit = isMaster || finalPerm === "edit";
+                                                const isLocked = !!col.isLocked || !canEdit;
                                                 const isSaving = savingCells.has(`${res.id}-${col.id}`);
 
                                                 return (
                                                     <td
                                                         key={col.id}
-                                                        {...commonProps}
-                                                        style={{ width: columnWidths[col.id] || 180 }}
+                                                        style={{ width, left: isSticky ? leftOffset : undefined }}
                                                         onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
-                                                        className={`${commonProps.className} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
+                                                        className={`px-4 py-2 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'}`}
                                                     >
                                                         {isEditing ? (
                                                             <div className="w-full">
@@ -1785,29 +1841,45 @@ export default function CRMSpreadsheetPage() {
                             </div>
                             <div className="p-4 max-h-[400px] overflow-y-auto custom-scrollbar">
                                 <div className="space-y-1">
-                                    {allColumns.map(col => {
+                                    {allColumns.map((col, idx) => {
                                         const isHidden = hiddenColumns.includes(col.id);
                                         return (
                                             <div
                                                 key={col.id}
-                                                onClick={() => {
-                                                    setHiddenColumns(prev =>
-                                                        isHidden ? prev.filter(id => id !== col.id) : [...prev, col.id]
-                                                    );
-                                                }}
-                                                className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 cursor-pointer transition-all group border border-transparent hover:border-slate-100"
+                                                className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-all group border border-transparent hover:border-slate-100"
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isHidden ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                    <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => moveColumn(idx, 'up')} className="p-1 hover:bg-white rounded border border-transparent hover:border-slate-200 active:scale-90"><ArrowUp size={10} /></button>
+                                                        <button onClick={() => moveColumn(idx, 'down')} className="p-1 hover:bg-white rounded border border-transparent hover:border-slate-200 active:scale-90"><ArrowDown size={10} /></button>
+                                                    </div>
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer ${isHidden ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`} onClick={() => {
+                                                        setHiddenColumns(prev =>
+                                                            isHidden ? prev.filter(id => id !== col.id) : [...prev, col.id]
+                                                        );
+                                                    }}>
                                                         {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
                                                     </div>
-                                                    <div>
-                                                        <p className={`text-xs font-bold ${isHidden ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{col.label}</p>
-                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">{col.isInternal ? 'Internal Matrix' : 'Form Field'}</p>
+                                                    <div className="cursor-pointer" onClick={() => {
+                                                        setHiddenColumns(prev =>
+                                                            isHidden ? prev.filter(id => id !== col.id) : [...prev, col.id]
+                                                        );
+                                                    }}>
+                                                        <p className={`text-xs font-bold ${isHidden ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{col.id === "__profile" ? "View Action" : col.id === "__contributor" ? "Submitter Info" : col.label}</p>
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">{col.isInternal ? 'Internal Matrix' : col.type === 'static' ? 'System' : 'Form Field'}</p>
                                                     </div>
                                                 </div>
-                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${isHidden ? 'border-slate-200 bg-white' : 'border-indigo-600 bg-indigo-600 shadow-lg shadow-indigo-100'}`}>
-                                                    {!isHidden && <Check size={10} className="text-white" />}
+                                                <div className="flex items-center gap-2">
+                                                    <div
+                                                        onClick={() => {
+                                                            setHiddenColumns(prev =>
+                                                                isHidden ? prev.filter(id => id !== col.id) : [...prev, col.id]
+                                                            );
+                                                        }}
+                                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${isHidden ? 'border-slate-200 bg-white' : 'border-indigo-600 bg-indigo-600 shadow-lg shadow-indigo-100'}`}
+                                                    >
+                                                        {!isHidden && <Check size={10} className="text-white" />}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -1861,97 +1933,235 @@ export default function CRMSpreadsheetPage() {
                                 </button>
                             </div>
 
-                            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                                {/* Role Selection */}
-                                <div>
-                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                                        <ShieldCheck size={12} /> Role Based Protocol
-                                    </h4>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
-                                            const isActive = permRoles.includes(role);
-                                            return (
-                                                <button
-                                                    key={role}
-                                                    onClick={() => setPermRoles(prev => isActive ? prev.filter(r => r !== role) : [...prev, role])}
-                                                    className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 hover:border-slate-200'}`}
-                                                >
-                                                    <span className="text-[11px] font-black uppercase tracking-widest">{role}</span>
-                                                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'bg-white border-white' : 'border-slate-200 bg-slate-50'}`}>
-                                                        {isActive && <Check size={10} className="text-slate-900" />}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                            <div className="flex border-b border-slate-100 bg-[#F9FAFB] p-2">
+                                <button
+                                    onClick={() => setAccessTab("GLOBAL")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "GLOBAL" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                                >
+                                    <ShieldCheck size={14} /> Global Protocol
+                                </button>
+                                <button
+                                    onClick={() => setAccessTab("COLUMNS")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "COLUMNS" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                                >
+                                    <Table size={14} /> Column Matrix
+                                </button>
+                            </div>
 
-                                <div className="h-[1px] bg-slate-100" />
-
-                                {/* User Selection */}
-                                <div>
-                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                                        <UserPlus size={12} /> Personalized Exceptions
-                                    </h4>
-
-                                    <div className="relative mb-4">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                        <input
-                                            value={accessUserSearch}
-                                            onChange={(e) => searchAccessUsers(e.target.value)}
-                                            placeholder="Search by name or email..."
-                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
-                                        />
-
-                                        <AnimatePresence>
-                                            {accessUserResults.length > 0 && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
-                                                >
-                                                    {accessUserResults.map(u => (
+                            <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                {accessTab === "GLOBAL" ? (
+                                    <>
+                                        {/* Role Selection */}
+                                        <div>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                                <ShieldCheck size={12} /> Role Based Protocol
+                                            </h4>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
+                                                    const isActive = permRoles.includes(role);
+                                                    return (
                                                         <button
-                                                            key={u.clerkId}
-                                                            onClick={() => {
-                                                                if (!permUsers.includes(u.clerkId)) {
-                                                                    setPermUsers(prev => [...prev, u.clerkId]);
-                                                                }
-                                                                setAccessUserSearch("");
-                                                                setAccessUserResults([]);
-                                                            }}
-                                                            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                            key={role}
+                                                            onClick={() => setPermRoles(prev => isActive ? prev.filter(r => r !== role) : [...prev, role])}
+                                                            className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 hover:border-slate-200'}`}
                                                         >
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
-                                                                <div className="text-left">
-                                                                    <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
-                                                                    <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
-                                                                </div>
+                                                            <span className="text-[11px] font-black uppercase tracking-widest">{role}</span>
+                                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'bg-white border-white' : 'border-slate-200 bg-slate-50'}`}>
+                                                                {isActive && <Check size={10} className="text-slate-900" />}
                                                             </div>
-                                                            <Plus size={14} className="text-slate-300" />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="h-[1px] bg-slate-100" />
+
+                                        {/* User Selection */}
+                                        <div>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                                <UserPlus size={12} /> Personalized Exceptions
+                                            </h4>
+
+                                            <div className="relative mb-4">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                <input
+                                                    value={accessUserSearch}
+                                                    onChange={(e) => searchAccessUsers(e.target.value)}
+                                                    placeholder="Search by name or email..."
+                                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                                />
+
+                                                <AnimatePresence>
+                                                    {accessUserResults.length > 0 && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                        >
+                                                            {accessUserResults.map(u => (
+                                                                <button
+                                                                    key={u.clerkId}
+                                                                    onClick={() => {
+                                                                        if (!permUsers.includes(u.clerkId)) {
+                                                                            setPermUsers(prev => [...prev, u.clerkId]);
+                                                                        }
+                                                                        setAccessUserSearch("");
+                                                                        setAccessUserResults([]);
+                                                                    }}
+                                                                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                        <div className="text-left">
+                                                                            <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
+                                                                            <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <Plus size={14} className="text-slate-300" />
+                                                                </button>
+                                                            ))}
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto">No unique users specified</p>}
+                                                {permUsers.map(uid => (
+                                                    <div key={uid} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm group">
+                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{uid.slice(0, 12)}...</span>
+                                                        <button
+                                                            onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
+                                                            className="p-1 hover:bg-rose-50 rounded-md transition-colors"
+                                                        >
+                                                            <X size={10} className="text-slate-400 group-hover:text-rose-500" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">Target Role Protocol</p>
+                                                <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                                    {["ADMIN", "MASTER", "STAFF", "GUEST"].map(role => (
+                                                        <button
+                                                            key={role}
+                                                            onClick={() => { setSelectedRoleForGAC(role); setSelectedUserForGAC(null); }}
+                                                            className={`flex-1 py-2 text-[9px] font-black rounded-lg transition-all ${selectedRoleForGAC === role && !selectedUserForGAC ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            {role}
                                                         </button>
                                                     ))}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
-
-                                    <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                        {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto">No unique users specified</p>}
-                                        {permUsers.map(uid => (
-                                            <div key={uid} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm group">
-                                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{uid.slice(0, 12)}...</span>
-                                                <button
-                                                    onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
-                                                    className="p-1 hover:bg-rose-50 rounded-md transition-colors"
-                                                >
-                                                    <X size={10} className="text-slate-400 group-hover:text-rose-500" />
-                                                </button>
+                                                </div>
                                             </div>
-                                        ))}
+
+                                            <div>
+                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">User Specific Override</p>
+                                                <div className="relative">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                    <input
+                                                        value={accessUserSearch}
+                                                        onChange={(e) => searchAccessUsers(e.target.value)}
+                                                        placeholder="Search user ID or email..."
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                                    />
+                                                    <AnimatePresence>
+                                                        {accessUserResults.length > 0 && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 10 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                            >
+                                                                {accessUserResults.map(u => (
+                                                                    <button
+                                                                        key={u.clerkId}
+                                                                        onClick={() => {
+                                                                            setSelectedUserForGAC({ id: u.clerkId, email: u.email });
+                                                                            setAccessUserSearch("");
+                                                                            setAccessUserResults([]);
+                                                                        }}
+                                                                        className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                            <p className="text-[10px] font-bold text-slate-900 truncate">{u.email}</p>
+                                                                        </div>
+                                                                        <Plus size={12} className="text-slate-300" />
+                                                                    </button>
+                                                                ))}
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </div>
+                                                {selectedUserForGAC && (
+                                                    <div className="mt-2 flex items-center justify-between px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                                            <p className="text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Active Override: {selectedUserForGAC.email}</p>
+                                                        </div>
+                                                        <button onClick={() => setSelectedUserForGAC(null)} className="text-indigo-400 hover:text-indigo-600 transition-colors">
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Column Access Rights</p>
+                                            <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-50 shadow-sm bg-slate-50/30">
+                                                {allColumns.map(col => {
+                                                    const targetType = selectedUserForGAC ? 'users' : 'roles';
+                                                    const targetId = selectedUserForGAC ? selectedUserForGAC.id : selectedRoleForGAC;
+                                                    const currentPerm = colPermissions[targetType]?.[targetId]?.[col.id] || (col.isInternal ? "hide" : "read");
+
+                                                    const setPerm = (p: string) => {
+                                                        setColPermissions(prev => ({
+                                                            ...prev,
+                                                            [targetType]: {
+                                                                ...prev[targetType],
+                                                                [targetId]: {
+                                                                    ...(prev[targetType][targetId] || {}),
+                                                                    [col.id]: p
+                                                                }
+                                                            }
+                                                        }));
+                                                    };
+
+                                                    return (
+                                                        <div key={col.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors group">
+                                                            <div>
+                                                                <p className="text-xs font-black text-slate-900 uppercase tracking-tighter">{col.label}</p>
+                                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{col.isInternal ? "Matrix Internal" : "Form Field"}</p>
+                                                            </div>
+                                                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                                                {[
+                                                                    { id: "hide", icon: EyeOff, label: "Hide" },
+                                                                    { id: "read", icon: Eye, label: "Read" },
+                                                                    { id: "edit", icon: ShieldCheck, label: "Full" }
+                                                                ].map(p => (
+                                                                    <button
+                                                                        key={p.id}
+                                                                        onClick={() => setPerm(p.id)}
+                                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-tighter transition-all ${currentPerm === p.id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                    >
+                                                                        <p.icon size={12} />
+                                                                        {p.label}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="p-6 bg-[#F9FAFB] border-t border-slate-100 flex justify-between items-center">
@@ -1964,7 +2174,7 @@ export default function CRMSpreadsheetPage() {
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={handleSavePermissions}
+                                        onClick={accessTab === "GLOBAL" ? handleSavePermissions : handleSaveColumnPermissions}
                                         className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center gap-2"
                                     >
                                         <ShieldCheck size={14} /> Commit Changes
@@ -1975,6 +2185,13 @@ export default function CRMSpreadsheetPage() {
                     </div>
                 )}
             </AnimatePresence>
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+            `}</style>
         </div>
     );
 }
