@@ -8,12 +8,12 @@ import {
   UserButton,
   useUser,
 } from '@clerk/nextjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Sidebar from '../app/components/Sidebar';
 import { Search, Bell, Command, Sun, Moon } from 'lucide-react';
 
-export default function ClientLayout({ children }: { children: React.ReactNode }) {
+function ClientLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isLoaded } = useUser();
   const searchParams = useSearchParams();
   const isFullView = searchParams.get('fullview') === 'true';
@@ -112,5 +112,13 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         </main>
       </div>
     </div>
+  );
+}
+
+export default function ClientLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="flex h-screen w-full items-center justify-center bg-slate-950 text-white">Initializing Engine...</div>}>
+      <ClientLayoutContent>{children}</ClientLayoutContent>
+    </Suspense>
   );
 }
