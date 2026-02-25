@@ -105,6 +105,25 @@ interface FormActivity {
     createdAt: string;
 }
 
+interface TeamMember {
+    clerkId: string;
+    email: string;
+    role?: string;
+    firstName?: string;
+    lastName?: string;
+}
+
+const safeFormat = (dateStr: string, formatStr: string) => {
+    try {
+        if (!dateStr) return "—";
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        return format(date, formatStr);
+    } catch (e) {
+        return dateStr;
+    }
+};
+
 interface SavedView {
     id: string;
     name: string;
@@ -299,7 +318,19 @@ export default function CRMSpreadsheetPage() {
     // Visibility & User Search
     const [userSearchQuery, setUserSearchQuery] = useState("");
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
+
+    useEffect(() => {
+        const fetchTeam = async () => {
+            try {
+                const res = await fetch('/api/crm/users?role=STAFF'); // Hypothetical role filter or just get all
+                const json = await res.json();
+                setTeamMembers(json);
+            } catch (err) { console.error("Team sync failure", err); }
+        };
+        fetchTeam();
+    }, []);
 
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
@@ -1456,6 +1487,17 @@ export default function CRMSpreadsheetPage() {
                                                                         <option value="">Select...</option>
                                                                         {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
                                                                     </select>
+                                                                ) : col.type === "user" ? (
+                                                                    <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                        <option value="">Assigned To...</option>
+                                                                        {teamMembers.map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
+                                                                    </select>
+                                                                ) : col.type === "date" ? (
+                                                                    <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                ) : col.type === "number" || col.type === "currency" ? (
+                                                                    <input type="number" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                ) : col.type === "long_text" ? (
+                                                                    <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                 ) : (
                                                                     <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                 )}
@@ -1464,20 +1506,38 @@ export default function CRMSpreadsheetPage() {
                                                             <div className="flex items-center justify-between min-h-[20px] min-w-0">
                                                                 <div className="flex items-center min-w-0 overflow-hidden">
                                                                     {col.type === "dropdown" && val ? (
-                                                                        <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border flex items-center gap-1 shrink-0 ${density === 'compact' ? 'text-[7px]' : 'text-[9px]'} ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                                val.toLowerCase().includes('refund') || val.toLowerCase().includes('cancel') ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-100'
-                                                                            }`}>
-                                                                            <div className={`rounded-full ${density === 'compact' ? 'w-0.5 h-0.5' : 'w-1 h-1'} ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-500' :
-                                                                                val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-500' :
-                                                                                    'bg-indigo-500'
-                                                                                }`} />
-                                                                            {val}
+                                                                        <div className="flex -space-x-1 group/badge shrink-0">
+                                                                            <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-100'}`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
+                                                                                {val}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : col.type === "user" && val ? (
+                                                                        <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
+                                                                            <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase">
+                                                                                {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
+                                                                            </div>
+                                                                            <span className="text-[10px] font-black text-slate-600 truncate max-w-[80px]">
+                                                                                {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : col.type === "date" && val ? (
+                                                                        <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-tighter bg-slate-100/50 px-2 py-1 rounded-md shrink-0">
+                                                                            <Calendar size={10} className="text-rose-400" />
+                                                                            {safeFormat(val, "MMM dd, yyyy")}
                                                                         </span>
-                                                                    ) : col.type === "currency" ? (
-                                                                        <span className={`font-bold text-slate-900 flex items-center gap-0.5 truncate ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
-                                                                            <span className="text-slate-400 font-bold">₹</span>{val || "0.00"}
+                                                                    ) : col.type === "checkbox" ? (
+                                                                        <div
+                                                                            onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
+                                                                            className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white border-slate-200'}`}
+                                                                        >
+                                                                            {val === "true" && <Check size={12} className="text-white" />}
+                                                                        </div>
+                                                                    ) : col.type === "currency" && val ? (
+                                                                        <span className="text-[11px] font-black text-slate-900 flex items-center gap-0.5 shrink-0">
+                                                                            <IndianRupee size={10} className="text-slate-400" />
+                                                                            {parseFloat(val).toLocaleString('en-IN')}
                                                                         </span>
                                                                     ) : (
                                                                         <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
@@ -1986,14 +2046,17 @@ export default function CRMSpreadsheetPage() {
                                                         ))}
                                                         <button onClick={() => setNewColOptions([...newColOptions, { label: "New Option", color: "#6366f1" }])} className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[24px] text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 transition-all">+ Add Lifecycle Node</button>
                                                     </div>
-                                                ) : newColType === 'formula' ? (
-                                                    <div className="p-8 bg-slate-900 rounded-[40px] border border-slate-800">
-                                                        <div className="flex items-center gap-3 text-indigo-400 mb-4">
-                                                            <FunctionSquare size={20} />
-                                                            <span className="text-[10px] font-black uppercase tracking-widest">Logic Engine</span>
-                                                        </div>
-                                                        <textarea placeholder="e.g. {Price} * {Quantity}" className="w-full bg-slate-800 border-none rounded-2xl p-4 text-white font-mono text-xs focus:ring-1 ring-indigo-500 min-h-[100px]" />
-                                                        <p className="text-[8px] text-slate-500 mt-3 font-bold uppercase tracking-tight">Use curly braces for column names</p>
+                                                ) : newColType === 'user' ? (
+                                                    <div className="p-8 bg-indigo-50 rounded-[40px] border border-indigo-100 flex flex-col items-center justify-center text-center">
+                                                        <Users size={32} className="text-indigo-500 mb-4 animate-bounce" />
+                                                        <h5 className="text-[11px] font-black uppercase tracking-widest text-indigo-600 mb-2">Team Allocation Active</h5>
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px]">This column will allow you to assign records to specific staff members</p>
+                                                    </div>
+                                                ) : newColType === 'date' ? (
+                                                    <div className="p-8 bg-rose-50 rounded-[40px] border border-rose-100 flex flex-col items-center justify-center text-center">
+                                                        <CalendarDays size={32} className="text-rose-500 mb-4" />
+                                                        <h5 className="text-[11px] font-black uppercase tracking-widest text-rose-600 mb-2">Timeline Matrix Mode</h5>
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest max-w-[200px]">Automated date pickers will be enabled for this dimension</p>
                                                     </div>
                                                 ) : (
                                                     <div className="p-10 bg-slate-50 border-2 border-dashed border-slate-200 rounded-[40px] flex flex-col items-center justify-center text-center opacity-40">
