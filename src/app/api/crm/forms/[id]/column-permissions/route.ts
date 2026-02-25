@@ -30,12 +30,19 @@ export async function PATCH(
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-        if (!user || (user.role !== "ADMIN" && user.role !== "MASTER")) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-
         const { id } = await params;
+        const form = await prisma.dynamicForm.findUnique({
+            where: { id },
+            select: { createdBy: true }
+        });
+
+        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const isMaster = user && (user.role === "ADMIN" || user.role === "MASTER");
+        const isOwner = form?.createdBy === userId;
+
+        if (!isMaster && !isOwner) {
+            return NextResponse.json({ error: "Forbidden: Only Admin or Matrix Owner can update security protocols" }, { status: 403 });
+        }
         const { roles, users } = await req.json();
 
         await prisma.dynamicForm.update({

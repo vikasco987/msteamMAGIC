@@ -393,9 +393,12 @@ export default function CRMSpreadsheetPage() {
                 toast.success("Security policies updated");
                 setIsAccessModalOpen(false);
                 fetchData();
+            } else {
+                const errorData = await res.json();
+                toast.error(errorData.error || "Policy breach: update failed");
             }
         } catch (err) {
-            toast.error("Policy breach: update failed");
+            toast.error("Network error during security sync");
         }
     };
 
@@ -410,6 +413,9 @@ export default function CRMSpreadsheetPage() {
                 toast.success("Column Access Matrix Synchronized");
                 setIsAccessModalOpen(false);
                 fetchData();
+            } else {
+                const errorData = await res.json();
+                toast.error(errorData.error || "Sync failed: access restricted");
             }
         } catch (err) {
             toast.error("Failed to sync column permissions");

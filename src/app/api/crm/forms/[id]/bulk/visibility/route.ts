@@ -10,10 +10,18 @@ export async function PATCH(
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        // Check if user is MASTER or ADMIN
         const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-        if (!user || (user.role !== "ADMIN" && user.role !== "MASTER")) {
-            return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+        const { id: formId } = await params;
+        const form = await prisma.dynamicForm.findUnique({
+            where: { id: formId },
+            select: { createdBy: true }
+        });
+
+        const isMaster = user && (user.role === "ADMIN" || user.role === "MASTER");
+        const isOwner = form?.createdBy === userId;
+
+        if (!isMaster && !isOwner) {
+            return NextResponse.json({ error: "Forbidden: Security protocols can only be updated by Admin or Matrix Owner" }, { status: 403 });
         }
 
         const { ids, type, visibleToRoles, visibleToUsers } = await req.json();
