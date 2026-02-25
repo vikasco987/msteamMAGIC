@@ -15,7 +15,11 @@ import {
     User,
     CheckCircle2,
     Copy,
-    Share2
+    Share2,
+    ShieldCheck,
+    Check,
+    X,
+    UserPlus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -32,6 +36,8 @@ interface FormSummary {
     createdAt: string;
     createdByName: string;
     _count: { responses: number };
+    visibleToRoles?: string[];
+    visibleToUsers?: string[];
 }
 
 export default function CRMFormsList() {
@@ -41,6 +47,16 @@ export default function CRMFormsList() {
     const [searchTerm, setSearchTerm] = useState("");
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
+    const [isPureMaster, setIsPureMaster] = useState(false);
+
+    // Access Control States
+    const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
+    const [selectedFormForAccess, setSelectedFormForAccess] = useState<FormSummary | null>(null);
+    const [permRoles, setPermRoles] = useState<string[]>([]);
+    const [permUsers, setPermUsers] = useState<string[]>([]);
+    const [accessUserSearch, setAccessUserSearch] = useState("");
+    const [accessUserResults, setAccessUserResults] = useState<any[]>([]);
+    const [isSavingAccess, setIsSavingAccess] = useState(false);
 
     // Sync isMaster check with Metadata (TeamBoard Logic)
     useEffect(() => {
@@ -50,6 +66,9 @@ export default function CRMFormsList() {
             if (role === "ADMIN" || role === "MASTER") {
                 setIsMaster(true);
             }
+            if (role === "MASTER") {
+                setIsPureMaster(true);
+            }
         }
     }, [isLoaded, user]);
 
@@ -58,15 +77,60 @@ export default function CRMFormsList() {
             const res = await fetch("/api/crm/forms");
             const data = await res.json();
             setForms(data.forms || []);
-            // Also update based on API response if slightly different
-            const apiRole = (data.userRole || "GUEST").toUpperCase();
-            if (apiRole === "ADMIN" || apiRole === "MASTER") {
-                setIsMaster(true);
-            }
+
+            // Sync role states from API
+            if (data.userRole) setUserRole(data.userRole);
+            if (data.isMaster) setIsMaster(true);
+            if (data.isPureMaster) setIsPureMaster(true);
         } catch (err) {
             toast.error("Failed to fetch forms");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleOpenAccessModal = (form: FormSummary) => {
+        setSelectedFormForAccess(form);
+        setPermRoles(form.visibleToRoles || []);
+        setPermUsers(form.visibleToUsers || []);
+        setIsAccessModalOpen(true);
+    };
+
+    const searchAccessUsers = async (q: string) => {
+        setAccessUserSearch(q);
+        if (q.length < 2) { setAccessUserResults([]); return; }
+        try {
+            const res = await fetch(`/api/crm/users?q=${q}`);
+            const json = await res.json();
+            setAccessUserResults(json);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleSavePermissions = async () => {
+        if (!selectedFormForAccess) return;
+        setIsSavingAccess(true);
+        try {
+            const res = await fetch(`/api/crm/forms/${selectedFormForAccess.id}/bulk/visibility`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "FORM",
+                    visibleToRoles: permRoles,
+                    visibleToUsers: permUsers
+                })
+            });
+            if (res.ok) {
+                toast.success("Form access rights updated");
+                setIsAccessModalOpen(false);
+                fetchForms();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || "Update failed");
+            }
+        } catch (err) {
+            toast.error("Security sync failed");
+        } finally {
+            setIsSavingAccess(false);
         }
     };
 
@@ -164,9 +228,18 @@ export default function CRMFormsList() {
                                                     </span>
                                                 )}
                                                 {isMaster && (
-                                                    <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                                        <Trash2 size={16} />
-                                                    </button>
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleOpenAccessModal(form)}
+                                                            className="p-3 text-slate-200 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                                            title="Access Control"
+                                                        >
+                                                            <ShieldCheck size={16} />
+                                                        </button>
+                                                        <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
@@ -245,6 +318,167 @@ export default function CRMFormsList() {
                     </div>
                 )}
             </div>
+
+            {/* Access Control Modal */}
+            <AnimatePresence>
+                {isAccessModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAccessModalOpen(false)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden border border-white"
+                        >
+                            <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-white">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                                        <ShieldCheck size={20} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Access Control</h2>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[200px]">{selectedFormForAccess?.title}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsAccessModalOpen(false)} className="p-4 hover:bg-slate-50 rounded-[20px] text-slate-400 transition-all">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                {/* Roles Section */}
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                        <Database size={12} /> Institutional Roles
+                                    </h4>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {["ADMIN", "STAFF", "GUEST"].map(role => {
+                                            const isSelected = permRoles.includes(role);
+                                            return (
+                                                <button
+                                                    key={role}
+                                                    onClick={() => setPermRoles(prev => isSelected ? prev.filter(r => r !== role) : [...prev, role])}
+                                                    className={`px-4 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest flex items-center justify-between border-2 transition-all ${isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-200' : 'bg-white text-slate-400 border-slate-50 hover:border-slate-100 hover:bg-slate-50'}`}
+                                                >
+                                                    {role}
+                                                    {isSelected ? <Check size={14} className="text-indigo-400" /> : <Plus size={14} className="opacity-20" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="mt-4 text-[9px] text-slate-300 font-bold uppercase leading-relaxed italic">MASTER role always retains absolute administrative visibility over all repositories.</p>
+                                </div>
+
+                                {/* Personalized Exceptions */}
+                                <div>
+                                    <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                        <UserPlus size={12} /> Personalized Exceptions
+                                    </h4>
+                                    <div className="relative mb-4">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            value={accessUserSearch}
+                                            onChange={(e) => searchAccessUsers(e.target.value)}
+                                            placeholder="Search by name or email..."
+                                            className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-50 rounded-2xl text-[11px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                        />
+                                        <AnimatePresence>
+                                            {accessUserResults.length > 0 && (
+                                                <motion.div
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-[30px] shadow-2xl z-50 overflow-hidden"
+                                                >
+                                                    {accessUserResults.map(u => (
+                                                        <button
+                                                            key={u.clerkId}
+                                                            onClick={() => {
+                                                                if (!permUsers.includes(u.clerkId)) {
+                                                                    setPermUsers(prev => [...prev, u.clerkId]);
+                                                                }
+                                                                setAccessUserSearch("");
+                                                                setAccessUserResults([]);
+                                                            }}
+                                                            className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                        >
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                <div className="text-left">
+                                                                    <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
+                                                                    <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
+                                                                </div>
+                                                            </div>
+                                                            <Plus size={14} className="text-slate-300" />
+                                                        </button>
+                                                    ))}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-[30px] border border-dashed border-slate-200 min-h-[60px]">
+                                        {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto uppercase tracking-widest">No individual overrides</p>}
+                                        {permUsers.map(uid => (
+                                            <div key={uid} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl shadow-sm group">
+                                                <span className="text-[10px] font-black text-slate-600 uppercase tracking-tighter shrink-0">{uid.slice(0, 12)}...</span>
+                                                <button
+                                                    onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
+                                                    className="p-1 hover:bg-rose-50 rounded-lg transition-colors"
+                                                >
+                                                    <X size={12} className="text-slate-400 hover:text-rose-500" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-8 bg-slate-50 flex items-center gap-4">
+                                <button
+                                    onClick={() => setIsAccessModalOpen(false)}
+                                    className="flex-1 py-4 bg-white text-slate-400 border-2 border-slate-200/50 rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:text-slate-900 hover:border-slate-300 transition-all"
+                                >
+                                    Revoke
+                                </button>
+                                <button
+                                    onClick={handleSavePermissions}
+                                    disabled={isSavingAccess}
+                                    className="flex-[2] py-4 bg-slate-900 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-2"
+                                >
+                                    {isSavingAccess ? (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <ShieldCheck size={16} className="text-indigo-400" /> Commit Protocol
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #e2e8f0;
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #cbd5e1;
+                }
+            `}</style>
         </div>
     );
 }

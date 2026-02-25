@@ -15,15 +15,22 @@ export async function GET() {
             where: { clerkId: userId }
         });
 
-        // Combine both sources, prioritize Admin/Master status
+        // Resolve precise roles
         const dbRole = (dbUser?.role || "GUEST").toUpperCase();
         const userRole = (metaRole || dbRole).toUpperCase();
 
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER" ||
-            dbRole === "ADMIN" || dbRole === "MASTER";
+        // Master sees EVERYTHING
+        const isMasterOfAll = userRole === "MASTER" || dbRole === "MASTER";
+
+        // Admin is authorized to build but only sees what's shared or created by them
+        const isAdminBuilder = userRole === "ADMIN" || dbRole === "ADMIN";
 
         let whereClause = {};
-        if (!isMaster) {
+        if (!isMasterOfAll) {
+            // Non-Master users see:
+            // 1. Forms where their role is in visibleToRoles
+            // 2. Forms where their ID is in visibleToUsers
+            // 3. Forms they created
             whereClause = {
                 OR: [
                     { visibleToRoles: { has: userRole } },
@@ -36,15 +43,19 @@ export async function GET() {
 
         const forms = await prisma.dynamicForm.findMany({
             where: whereClause,
-            include: { _count: { select: { responses: true } } },
+            include: {
+                _count: { select: { responses: true } }
+            },
             orderBy: { createdAt: "desc" }
         });
 
         return NextResponse.json({
             forms,
             userRole,
-            isMaster
+            isMaster: isMasterOfAll || isAdminBuilder, // This is for frontend to show "Build New" button
+            isPureMaster: isMasterOfAll
         });
+
     } catch (error) {
         console.error("GET Forms Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
