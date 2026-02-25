@@ -171,8 +171,10 @@ export async function PATCH(
         const userName = `${user.firstName} ${user.lastName}`;
 
         // Permissions Check
+        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
         const dbUser = await prisma.user.findUnique({ where: { clerkId: user.id } });
-        const userRole = (dbUser?.role || "GUEST").toUpperCase();
+        const dbRole = (dbUser?.role || "").toUpperCase();
+        const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
         const isMaster = userRole === "ADMIN" || userRole === "MASTER";
 
@@ -186,24 +188,28 @@ export async function PATCH(
                 select: { visibleToUsers: true, visibleToRoles: true, submittedBy: true }
             });
 
-            const isOwner = form?.createdBy === user.id;
-            const isSubmitter = response?.submittedBy === user.id;
-            const isAssigned = response?.visibleToUsers?.includes(user.id) ||
-                response?.visibleToRoles?.includes(userRole);
-
-            if (!isOwner && !isSubmitter && !isAssigned) {
-                return NextResponse.json({ error: "Forbidden: You do not have access to this record" }, { status: 403 });
-            }
-
-            // Column Level check
+            // Column Level check first
             const gac: any = form?.columnPermissions || { roles: {}, users: {} };
             const rolePerm = gac.roles?.[userRole]?.[columnId];
             const userPerm = gac.users?.[user.id]?.[columnId];
             const finalPerm = userPerm || rolePerm;
 
-            // NEW: Default to 'edit' if assigned, unless explicitly set to 'hide' or 'read'
-            if (finalPerm === "hide" || finalPerm === "read") {
-                return NextResponse.json({ error: "Forbidden: Manual column restrictions active" }, { status: 403 });
+            const isOwner = form?.createdBy === user.id;
+            const isSubmitter = response?.submittedBy === user.id;
+            const isAssigned = response?.visibleToUsers?.includes(user.id) ||
+                response?.visibleToRoles?.includes(userRole);
+
+            // Access Logic:
+            // 1. If GAC explicitly says 'edit' -> ALLOW
+            // 2. If Owner, Submitter, or Assigned -> ALLOW (unless GAC says hide/read)
+            if (finalPerm === "edit") {
+                // Allowed by GAC
+            } else if (isOwner || isSubmitter || isAssigned) {
+                if (finalPerm === "hide" || finalPerm === "read") {
+                    return NextResponse.json({ error: "Forbidden: Manual column restrictions active" }, { status: 403 });
+                }
+            } else {
+                return NextResponse.json({ error: "Forbidden: You do not have access to this record" }, { status: 403 });
             }
         }
 
@@ -296,6 +302,12 @@ export async function PUT(
         const { updates } = await req.json(); // Array of { responseId, columnId, value, isInternal }
         if (!Array.isArray(updates)) return NextResponse.json({ error: "Invalid updates format" }, { status: 400 });
 
+        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: user.id } });
+        const dbRole = (dbUser?.role || "").toUpperCase();
+        const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
+
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
         const userName = `${user.firstName} ${user.lastName}`;
 
         // Process updates in a transaction or loop (Prisma transaction is safer)
