@@ -58,6 +58,18 @@ export default function CRMFormsList() {
     const [accessUserResults, setAccessUserResults] = useState<any[]>([]);
     const [isSavingAccess, setIsSavingAccess] = useState(false);
 
+    // Form Access Info Modal State
+    const [viewingForm, setViewingForm] = useState<FormSummary | null>(null);
+
+    const getAccessInfo = (form: FormSummary) => {
+        const roles = form.visibleToRoles || [];
+        const users = form.visibleToUsers || [];
+        if (roles.length === 0 && users.length === 0) return { type: "Public", icon: "🌍", color: "bg-emerald-50 text-emerald-700 border-emerald-100", desc: "Open to everyone" };
+        if (roles.length > 0 && users.length === 0) return { type: "Team Access", icon: "👥", color: "bg-blue-50 text-blue-700 border-blue-100", desc: "Accessible to specific teams/roles" };
+        if (users.length > 0) return { type: "Shared Users", icon: "👤+", color: "bg-purple-50 text-purple-700 border-purple-100", desc: "Accessible to specifically selected individuals" };
+        return { type: "Private", icon: "🔒", color: "bg-rose-50 text-rose-700 border-rose-100", desc: "Private access only" };
+    };
+
     // Sync isMaster check with Metadata (TeamBoard Logic)
     useEffect(() => {
         if (isLoaded && user) {
@@ -221,14 +233,28 @@ export default function CRMFormsList() {
                                             <div className="p-4 bg-slate-50 text-slate-400 rounded-2xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
                                                 <FileText size={24} />
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                {form.isPublished && (
-                                                    <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-100 rounded-full flex items-center gap-1.5">
-                                                        <CheckCircle2 size={10} /> Live
-                                                    </span>
-                                                )}
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex flex-col items-end gap-2">
+                                                    {form.isPublished && (
+                                                        <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-100 rounded-full flex items-center gap-1.5 self-start shadow-sm">
+                                                            <CheckCircle2 size={10} /> Live
+                                                        </span>
+                                                    )}
+                                                    {(() => {
+                                                        const accessInfo = getAccessInfo(form);
+                                                        return (
+                                                            <button
+                                                                onClick={() => setViewingForm(form)}
+                                                                className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest border rounded-full flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm bg-white ${accessInfo.color}`}
+                                                                title={accessInfo.desc}
+                                                            >
+                                                                <span className="text-[12px] leading-none mb-0.5">{accessInfo.icon}</span> {accessInfo.type}
+                                                            </button>
+                                                        );
+                                                    })()}
+                                                </div>
                                                 {isMaster && (
-                                                    <div className="flex items-center gap-1">
+                                                    <div className="flex items-center gap-1 self-start">
                                                         <button
                                                             onClick={() => handleOpenAccessModal(form)}
                                                             className="p-3 text-slate-200 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
@@ -464,6 +490,105 @@ export default function CRMFormsList() {
                 )}
             </AnimatePresence>
 
+            {/* View Access Details Dashboard Modal */}
+            <AnimatePresence>
+                {viewingForm && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setViewingForm(null)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="relative w-full max-w-[400px] bg-white rounded-[32px] shadow-2xl p-8 border border-white"
+                        >
+                            <div className="flex justify-between items-start mb-8">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-[20px] shadow-sm">
+                                        <ShieldCheck size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">Access Details</h3>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1 truncate max-w-[150px]">{viewingForm.title}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setViewingForm(null)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="p-5 bg-slate-50 rounded-[24px] flex items-center justify-between border border-slate-100 shadow-sm">
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Owner / Creator</p>
+                                        <p className="font-bold text-slate-900">{viewingForm.createdByName || "Unknown"}</p>
+                                    </div>
+                                    <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-black">
+                                        {(viewingForm.createdByName || "U")[0].toUpperCase()}
+                                    </div>
+                                </div>
+
+                                <div className="p-5 bg-slate-50 rounded-[24px] flex items-center justify-between border border-slate-100 shadow-sm">
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Access Protocol</p>
+                                        <p className={`font-black uppercase tracking-widest text-[11px] flex items-center gap-2 ${getAccessInfo(viewingForm!).color.replace('bg-', 'text-').split(' ')[1]}`}>
+                                            <span className="text-base">{getAccessInfo(viewingForm!).icon}</span> {getAccessInfo(viewingForm!).type}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {(viewingForm.visibleToRoles && viewingForm.visibleToRoles.length > 0) && (
+                                    <div className="p-5 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <Database size={12} /> Authorized Teams
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {viewingForm.visibleToRoles.map(r => (
+                                                <span key={r} className="px-4 py-2 bg-white border border-slate-200 text-indigo-700 text-[10px] font-black rounded-xl uppercase tracking-widest shadow-sm">{r}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(viewingForm.visibleToUsers && viewingForm.visibleToUsers.length > 0) && (
+                                    <div className="p-5 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                            <UserPlus size={12} /> Isolated Users
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {viewingForm.visibleToUsers.map(u => (
+                                                <span key={u} className="px-4 py-2 bg-white border border-slate-200 text-purple-700 text-[10px] font-black rounded-xl uppercase tracking-widest shadow-sm block max-w-full truncate">{u}</span>
+                                            ))}
+                                            <p className="text-[9px] text-slate-400 font-bold block w-full mt-2 uppercase tracking-tighter">* Database ID overrides mapped.</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {(!viewingForm.visibleToRoles?.length && !viewingForm.visibleToUsers?.length) && (
+                                    <div className="p-8 bg-emerald-50 rounded-[24px] border border-emerald-100 text-center shadow-sm">
+                                        <span className="text-4xl mb-3 block animate-bounce">🌍</span>
+                                        <p className="text-[12px] font-black text-emerald-700 uppercase tracking-widest">Public Domain</p>
+                                        <p className="text-[10px] text-emerald-600/80 font-bold max-w-[200px] mx-auto mt-2 leading-relaxed">This matrix is accessible to anyone with the appropriate routing link.</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <button
+                                onClick={() => setViewingForm(null)}
+                                className="w-full mt-8 py-5 bg-slate-900 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl active:scale-95"
+                            >
+                                Acknowledge & Close
+                            </button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar {
                     width: 4px;
@@ -479,6 +604,6 @@ export default function CRMFormsList() {
                     background: #cbd5e1;
                 }
             `}</style>
-        </div>
+        </div >
     );
 }
