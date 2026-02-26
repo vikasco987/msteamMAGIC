@@ -46,7 +46,7 @@ INSTRUCTIONS:
    - Highlight outliers or interesting trends if any.
    - Keep it professional, highly visual, and analytical.`;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -55,7 +55,8 @@ INSTRUCTIONS:
         });
 
         if (!response.ok) {
-            console.error("Gemini API Error:", await response.text());
+            const errorText = await response.text();
+            console.error("Gemini API Error:", errorText);
             return NextResponse.json({ error: "Failed to communicate with AI provider" }, { status: 500 });
         }
 

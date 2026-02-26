@@ -51,7 +51,7 @@ Return ONLY valid JSON. Do NOT wrap in markdown \`\`\`json. Just the raw JSON ob
 
 User Query: "${query}"`;
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
