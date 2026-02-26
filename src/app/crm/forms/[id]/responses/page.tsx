@@ -241,6 +241,8 @@ export default function CRMSpreadsheetPage() {
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const processedToolCallsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         setIsMounted(true);
@@ -255,10 +257,17 @@ export default function CRMSpreadsheetPage() {
 
     const formId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
-    const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading: isAIFetching } = useChat({
+    const { messages, input, handleInputChange, handleSubmit: baseHandleSubmit, setMessages, isLoading: isAIFetching } = useChat({
         api: formId ? `/api/crm/forms/${formId}/chat` : undefined as any,
         body: chatBody
     });
+
+    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        if (!(input || "").trim()) return;
+        console.log("Submit Clicked, input length:", input.length);
+        toast.loading("Analyzing request...", { id: "ai-chat-submit", duration: 1000 });
+        baseHandleSubmit(e);
+    };
 
     // Auto-apply filters when tool is called and returns
     useEffect(() => {
@@ -267,23 +276,36 @@ export default function CRMSpreadsheetPage() {
             const toolCals = lastMessage.toolInvocations;
             if (toolCals) {
                 toolCals.forEach(invocation => {
-                    if (invocation.toolName === 'applyFilter' && invocation.state === 'result') {
-                        const result = invocation.result;
-                        if (result?.filtersApplied && Array.isArray(result.filtersApplied)) {
-                            setConditions(result.filtersApplied.map((f: any) => ({
-                                colId: f.columnId || f.colId,
-                                op: f.operator || f.op,
-                                val: String(f.value || f.val || "")
-                            })));
+                    if (invocation.state === 'result' && !processedToolCallsRef.current.has(invocation.toolCallId)) {
+                        processedToolCallsRef.current.add(invocation.toolCallId);
+
+                        if (invocation.toolName === 'applyFilter') {
+                            const result = invocation.result;
+                            if (result?.filtersApplied && Array.isArray(result.filtersApplied)) {
+                                console.log("Applying AI filters:", result.filtersApplied);
+                                setConditions(result.filtersApplied.map((f: any) => ({
+                                    colId: f.columnId || f.colId,
+                                    op: f.operator || f.op,
+                                    val: String(f.value || f.val || "")
+                                })));
+                            }
                         }
-                    }
-                    if (invocation.toolName === 'generateReport' && invocation.state === 'result') {
-                        handleGenerateReport();
+
+                        if (invocation.toolName === 'generateReport') {
+                            console.log("Triggering AI report from tool call");
+                            handleGenerateReport();
+                        }
                     }
                 });
             }
         }
     }, [messages]);
+
+    useEffect(() => {
+        if (isAIFilterOpen) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [messages, isAIFilterOpen]);
 
     const [isAIReportOpen, setIsAIReportOpen] = useState(false);
     const [aiReportHtml, setAiReportHtml] = useState<string | null>(null);
@@ -2989,6 +3011,7 @@ export default function CRMSpreadsheetPage() {
                                     </div>
                                 </motion.div>
                             )}
+                            <div ref={messagesEndRef} />
                         </div>
 
                         <div className="p-4 bg-white border-t border-slate-100">

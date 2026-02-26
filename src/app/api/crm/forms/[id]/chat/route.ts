@@ -1,11 +1,16 @@
 import { streamText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
+
+const google = createGoogleGenerativeAI({
+    apiKey: process.env.GEMINI_API_KEY,
+});
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
     try {
         const { messages, dataContext } = await req.json();
+        console.log("Chat Request received for form:", (await context.params).id);
 
         const systemPrompt = `You are a helpful and intelligent Vercel AI Chatbot integrated directly into a CRM data matrix.
     
@@ -17,9 +22,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     Keep your answers concise, professional, and helpful.`;
 
         const result = streamText({
-            model: google('models/gemini-1.5-flash'),
+            model: google('gemini-flash-latest'),
             system: systemPrompt,
             messages,
+            maxRetries: 0,
             tools: {
                 applyFilter: {
                     description: 'Apply a structured filter to the CRM table based on the user request. Call this if the user says "show me pending tasks" or similar.',
