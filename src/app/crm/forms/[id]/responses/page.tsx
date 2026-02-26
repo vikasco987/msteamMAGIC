@@ -256,7 +256,7 @@ export default function CRMSpreadsheetPage() {
     const formId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
     const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading: isAIFetching } = useChat({
-        api: formId ? `/api/crm/forms/${formId}/chat` : '',
+        api: formId ? `/api/crm/forms/${formId}/chat` : undefined as any,
         body: chatBody
     });
 
@@ -269,8 +269,12 @@ export default function CRMSpreadsheetPage() {
                 toolCals.forEach(invocation => {
                     if (invocation.toolName === 'applyFilter' && invocation.state === 'result') {
                         const result = invocation.result;
-                        if (result?.filtersApplied) {
-                            setConditions(result.filtersApplied);
+                        if (result?.filtersApplied && Array.isArray(result.filtersApplied)) {
+                            setConditions(result.filtersApplied.map((f: any) => ({
+                                colId: f.columnId || f.colId,
+                                op: f.operator || f.op,
+                                val: String(f.value || f.val || "")
+                            })));
                         }
                     }
                     if (invocation.toolName === 'generateReport' && invocation.state === 'result') {
@@ -736,7 +740,7 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleGenerateReport = async () => {
-        if (!data) return;
+        if (!data || !data.form) return;
         setIsGeneratingReport(true);
         try {
             const allColumns = [
@@ -818,8 +822,8 @@ export default function CRMSpreadsheetPage() {
                             }
                             case "starts_with": return val.startsWith(targetVal);
                             case "ends_with": return val.endsWith(targetVal);
-                            case "is_empty": return val.trim().length === 0;
-                            case "is_not_empty": return val.trim().length > 0;
+                            case "is_empty": return (val || "").trim().length === 0;
+                            case "is_not_empty": return (val || "").trim().length > 0;
 
                             case "eq": return parseFloat(val) === parseFloat(targetVal);
                             case "gt": return parseFloat(val) > parseFloat(targetVal);
@@ -947,7 +951,7 @@ export default function CRMSpreadsheetPage() {
     const handlePaste = async (text: string) => {
         if (!selection.start) return;
 
-        const rows = text.split("\n").filter(r => r.trim()).map(r => r.split("\t"));
+        const rows = text.split("\n").filter(r => (r || "").trim()).map(r => r.split("\t"));
         const updates: any[] = [];
         const warnings: string[] = [];
         const startR = selection.start.row;
@@ -962,7 +966,7 @@ export default function CRMSpreadsheetPage() {
                     const col = getColumns[targetC];
                     const res = filteredResponses[targetR];
                     if (col && res && col.type !== "static") {
-                        const trimmedVal = val.trim();
+                        const trimmedVal = (val || "").trim();
 
                         // Basic Validation
                         let isValid = true;
@@ -2121,7 +2125,7 @@ export default function CRMSpreadsheetPage() {
                                                                         {c.op === "one_of" ? (
                                                                             <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
                                                                                 {Array.isArray(col?.options) && col?.options.map((opt: any) => {
-                                                                                    const currentVals = (c.val || "").split(",").map(v => v.trim()).filter(Boolean);
+                                                                                    const currentVals = String(c.val || "").split(",").map(v => v.trim()).filter(Boolean);
                                                                                     const isSelected = currentVals.includes(opt.label);
                                                                                     return (
                                                                                         <button
@@ -2949,11 +2953,11 @@ export default function CRMSpreadsheetPage() {
                                         : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
                                         }`}>
                                         <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
-                                            {typeof (m as any).content === 'string' ? (m as any).content : ((m as any).ui || JSON.stringify((m as any).content || ''))}
+                                            {typeof (m as any).content === 'string' ? (m as any).content : (String((m as any).ui || JSON.stringify((m as any).content || '')))}
                                         </div>
 
                                         {/* Render Tool Invocations nicely */}
-                                        {m.toolInvocations?.map((toolInvocation: any) => {
+                                        {Array.isArray(m.toolInvocations) && m.toolInvocations.map((toolInvocation: any) => {
                                             if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
                                                 return (
                                                     <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
@@ -2961,10 +2965,10 @@ export default function CRMSpreadsheetPage() {
                                                             <Filter size={12} className="text-indigo-400" /> Filters Applied
                                                         </p>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {Array.isArray(toolInvocation.result?.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
+                                                            {toolInvocation.result?.filtersApplied && Array.isArray(toolInvocation.result.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
                                                                 <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
-                                                                    <span className="text-indigo-400">{f.operator}</span>
-                                                                    <span>{f.value}</span>
+                                                                    <span className="text-indigo-400">{String(f.operator || f.op)}</span>
+                                                                    <span>{String(f.value || f.val)}</span>
                                                                 </span>
                                                             ))}
                                                         </div>
@@ -2998,7 +3002,7 @@ export default function CRMSpreadsheetPage() {
                                 />
                                 <button
                                     type="submit"
-                                    disabled={!input.trim() || isAIFetching}
+                                    disabled={!(input || "").trim() || isAIFetching}
                                     className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
                                 >
                                     <ArrowUp size={16} />

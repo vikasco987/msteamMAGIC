@@ -94,7 +94,7 @@ export default function Sidebar() {
   if (!mounted) return <div className="w-20 lg:w-64 h-screen bg-[#0f172a]" />;
 
   const roleFromMetadata = user?.publicMetadata?.role as string;
-  const userRole = (isLoaded ? (roleFromMetadata || 'user') : 'user').toLowerCase().trim();
+  const userRole = String(isLoaded ? (roleFromMetadata || 'user') : 'user').toLowerCase().trim();
 
   return (
     <>
