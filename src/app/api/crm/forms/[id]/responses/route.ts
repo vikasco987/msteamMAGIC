@@ -24,10 +24,13 @@ export async function POST(
                         value: String(value)
                     }))
                 }
+            },
+            include: {
+                values: true
             }
         });
 
-        return NextResponse.json({ success: true, responseId: response.id });
+        return NextResponse.json({ success: true, responseId: response.id, response });
     } catch (error) {
         console.error("Submit Response Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

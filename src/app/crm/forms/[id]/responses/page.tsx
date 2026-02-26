@@ -1495,7 +1495,10 @@ export default function CRMSpreadsheetPage() {
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
                                                                                 if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
-                                                                                    availableValues = col.options.map((o: any) => ({ label: o.label, value: o.label }));
+                                                                                    availableValues = col.options.map((o: any) => {
+                                                                                        const label = typeof o === 'string' ? o : o.label;
+                                                                                        return { label, value: label };
+                                                                                    });
                                                                                 } else {
                                                                                     const vals = new Set<string>();
                                                                                     (data?.responses || []).forEach(res => {
@@ -1688,7 +1691,10 @@ export default function CRMSpreadsheetPage() {
                                                                     {col.type === "dropdown" ? (
                                                                         <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
-                                                                            {Array.isArray(col.options) && col.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                            {Array.isArray(col.options) && col.options.map((opt: any) => {
+                                                                                const label = typeof opt === 'string' ? opt : opt.label;
+                                                                                return <option key={label} value={label}>{label}</option>;
+                                                                            })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
                                                                         <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
