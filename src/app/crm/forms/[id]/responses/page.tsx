@@ -62,6 +62,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
+import { useChat } from "ai/react";
 
 const getExcelLabel = (index: number): string => {
     let label = "";
@@ -237,10 +238,36 @@ export default function CRMSpreadsheetPage() {
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
 
-    // AI Filter & Report States
+    // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
-    const [aiQuery, setAiQuery] = useState("");
-    const [isAIFetching, setIsAIFetching] = useState(false);
+
+    // Vercel AI Setup
+    const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+        api: `/api/crm/forms/${params.id}/chat`,
+        body: {
+            dataContext: {
+                columns: data?.form?.fields || []
+            }
+        }
+    });
+
+    // Auto-apply filters when tool is called and returns
+    useEffect(() => {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+            const toolCals = lastMessage.toolInvocations;
+            if (toolCals) {
+                toolCals.forEach(invocation => {
+                    if (invocation.toolName === 'applyFilter' && invocation.state === 'result') {
+                        const result = invocation.result;
+                        if (result?.filtersApplied) {
+                            setConditions(result.filtersApplied);
+                        }
+                    }
+                });
+            }
+        }
+    }, [messages]);
 
     const [isAIReportOpen, setIsAIReportOpen] = useState(false);
     const [aiReportHtml, setAiReportHtml] = useState<string | null>(null);
@@ -596,48 +623,66 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    const handleAskAI = async () => {
-        if (!aiQuery.trim() || !data) return;
-        setIsAIFetching(true);
-        try {
-            const allColumns = [
-                ...data.form.fields.map(f => ({ id: f.id, label: f.label, type: f.type })),
-                ...data.internalColumns.map(c => ({ id: c.id, label: c.label, type: c.type }))
-            ];
-
-            const res = await fetch(`/api/crm/forms/${params.id}/ai-filter`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: aiQuery, columns: allColumns })
-            });
-
-            if (res.ok) {
-                const result = await res.json();
-
-                // If AI provides filters, apply them
-                if (result.filters && result.filters.length > 0) {
-                    setConditions(result.filters);
-                    toast.success(result.message || "AI Filters Applied!");
-                    setIsAIFilterOpen(false);
-                    setAiQuery("");
-                } else {
-                    // AI responded conversationally but couldn't make filters
-                    toast.success(result.message || "I couldn't create filters for that request.", { icon: "🤖" });
-                }
+    const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading: isAIFetching } = useChat({
+        api: `/api/crm/forms/${params.id}/ai-filter`,
+        onResponse: (response) => {
+            if (response.status === 401) {
+                toast.error(response.statusText);
+            }
+        },
+        onError: (error) => {
+            if (error.message.includes("GEMINI_API_KEY")) {
+                toast.error("Gemini API key is not set. Check environment variables.");
             } else {
-                const errorData = await res.json();
-                if (errorData.error && errorData.error.includes("GEMINI_API_KEY")) {
-                    toast.error("Gemini API key is not set. Check environment variables.");
+                toast.error("Failed to connect to AI Engine");
+            }
+        },
+        experimental_onToolCall: async ({ call, appendToolCallMessage }) => {
+            if (call.functionName === 'applyFilter') {
+                const { filters } = call.args;
+                if (filters && filters.length > 0) {
+                    setConditions(filters);
+                    toast.success("AI Filters Applied!");
+                    setIsAIFilterOpen(false); // Close sidebar after applying filters
+                    appendToolCallMessage(call); // Acknowledge the tool call
                 } else {
-                    toast.error(errorData.error || "Failed to process AI query");
+                    toast.error("AI couldn't create filters for that request.");
                 }
             }
-        } catch (error) {
-            toast.error("Failed to connect to AI Engine");
-        } finally {
-            setIsAIFetching(false);
-        }
-    };
+        },
+        tools: [
+            {
+                type: "function",
+                function: {
+                    name: "applyFilter",
+                    description: "Applies filters to the data table based on user's request. Filters are applied as an AND condition between different columns, and OR condition for multiple values within the same column.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            filters: {
+                                type: "array",
+                                items: {
+                                    type: "object",
+                                    properties: {
+                                        colId: { type: "string", description: "The ID of the column to filter." },
+                                        op: {
+                                            type: "string",
+                                            enum: ["equals", "not_equals", "contains", "one_of", "starts_with", "ends_with", "is_empty", "is_not_empty", "eq", "gt", "lt", "gte", "lte", "between", "is_true", "is_false", "today"],
+                                            description: "The operation to apply."
+                                        },
+                                        val: { type: "string", description: "The value to filter by. For 'one_of', provide a comma-separated string of values." },
+                                        val2: { type: "string", description: "The second value for 'between' operations." }
+                                    },
+                                    required: ["colId", "op"]
+                                }
+                            }
+                        },
+                        required: ["filters"]
+                    }
+                }
+            }
+        ]
+    });
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -2897,59 +2942,116 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
-            {/* AI Filter Modal */}
             <AnimatePresence>
                 {isAIFilterOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAIFilterOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-lg bg-white rounded-[32px] shadow-2xl p-8 border border-white">
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600 rounded-[24px]">
-                                        <Bot size={32} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">AI Table Assistant</h3>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Natural Language Query Engine</p>
-                                    </div>
+                    <motion.div
+                        initial={{ opacity: 0, x: 300, scale: 0.95 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 300, scale: 0.95 }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                        className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
+                    >
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
+                                    <Sparkles size={18} />
                                 </div>
-                                <button onClick={() => setIsAIFilterOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
-                                    <X size={16} />
-                                </button>
+                                <div className="flex flex-col">
+                                    <h3 className="text-sm font-black text-slate-900 tracking-tighter">AI Assistant</h3>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
+                                </div>
                             </div>
-                            <div className="mb-6 bg-slate-50 p-6 rounded-[24px] border border-slate-100 relative">
-                                <textarea
-                                    value={aiQuery}
-                                    onChange={(e) => setAiQuery(e.target.value)}
-                                    placeholder="Ask me anything... e.g. 'Show me pending tasks assigned to Vikash'"
-                                    className="w-full bg-transparent border-none outline-none font-bold text-slate-700 placeholder-slate-400 resize-none min-h-[100px]"
+                            <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
+                            {messages.length === 0 && (
+                                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50 my-10">
+                                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
+                                        <Bot size={32} className="text-slate-300" />
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-400 max-w-[200px]">How can I help you analyze this data today?</p>
+                                </div>
+                            )}
+                            {messages.map(m => (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    key={m.id}
+                                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                                >
+                                    <div className={`max-w-[85%] p-4 rounded-[20px] ${m.role === 'user'
+                                        ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
+                                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
+                                        }`}>
+                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">{m.content}</div>
+
+                                        {/* Render Tool Invocations nicely */}
+                                        {m.toolInvocations?.map((toolInvocation: any) => {
+                                            if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
+                                                return (
+                                                    <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
+                                                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                            <Filter size={12} className="text-indigo-400" /> Filters Applied
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {toolInvocation.result.filtersApplied?.map((f: any, i: number) => (
+                                                                <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
+                                                                    <span className="text-indigo-400">{f.operator}</span>
+                                                                    <span>{f.value}</span>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })}
+                                    </div>
+                                </motion.div>
+                            ))}
+                            {isLoading && (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                                    <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
+                                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
+                                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+                                        <div className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+                                    </div>
+                                </motion.div>
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-white border-t border-slate-100">
+                            <form onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
+                                <input
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    placeholder="Message AI..."
+                                    className="w-full pl-5 pr-14 py-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all placeholder:text-slate-400"
                                     autoFocus
                                 />
-                                <div className="absolute bottom-4 right-4 text-[9px] font-black uppercase tracking-widest text-slate-300">
-                                    Powered by Google Gemini
-                                </div>
-                            </div>
-                            <div className="flex gap-4">
                                 <button
-                                    onClick={handleAskAI}
-                                    disabled={isAIFetching || !aiQuery.trim()}
-                                    className="flex-1 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-indigo-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    type="submit"
+                                    disabled={!input.trim() || isLoading}
+                                    className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
                                 >
-                                    {isAIFetching ? "Generating..." : "Execute AI Filter"}
-                                    <Sparkles size={14} className={isAIFetching ? "animate-spin" : ""} />
+                                    <ArrowUp size={16} />
                                 </button>
-
+                            </form>
+                            <div className="mt-3 flex justify-between items-center px-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1"><Sparkles size={10} /> AI SDK V3</p>
                                 <button
-                                    onClick={handleGenerateReport}
+                                    onClick={(e) => { e.preventDefault(); handleGenerateReport(); }}
                                     disabled={isGeneratingReport}
-                                    className="flex-1 py-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-teal-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="text-[9px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
                                 >
-                                    {isGeneratingReport ? "Analyzing..." : "Generate AI Report"}
-                                    <Activity size={14} className={isGeneratingReport ? "animate-pulse" : ""} />
+                                    {isGeneratingReport ? "Analyzing..." : "Generate Full Report"} <ArrowUpRight size={10} />
                                 </button>
                             </div>
-                        </motion.div>
-                    </div>
+                        </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 
