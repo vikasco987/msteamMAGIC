@@ -256,6 +256,8 @@ export default function CRMSpreadsheetPage() {
     const [autoApply, setAutoApply] = useState(true);
     const [activeViewId, setActiveViewId] = useState<string | null>(null);
 
+    const [activeColumnFilter, setActiveColumnFilter] = useState<string | null>(null);
+
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
     // Load initial width from localStorage
@@ -1445,6 +1447,59 @@ export default function CRMSpreadsheetPage() {
                                                     <div className="flex items-center gap-2 truncate">
                                                         <TypeIcon size={10} className={col.isInternal ? "text-indigo-600" : "text-[#667085]"} />
                                                         {col.id === "__profile" ? "View" : col.id === "__contributor" ? "Submitter info" : col.label}
+                                                        {col.type === "dropdown" && (
+                                                            <div className="relative isolate ml-auto">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
+                                                                    }}
+                                                                    className={`p-1 hover:bg-slate-200 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600' : 'text-slate-400'}`}
+                                                                >
+                                                                    <Filter size={10} />
+                                                                </button>
+                                                                {activeColumnFilter === col.id && (
+                                                                    <div
+                                                                        className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-1 min-w-[120px] max-w-[200px] z-[100] max-h-48 overflow-y-auto"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    >
+                                                                        {Array.isArray(col.options) && col.options.map((opt: any) => {
+                                                                            const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.label);
+                                                                            return (
+                                                                                <button
+                                                                                    key={opt.label}
+                                                                                    onClick={() => {
+                                                                                        if (isSelected) {
+                                                                                            setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.label)));
+                                                                                        } else {
+                                                                                            setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'equals', val: opt.label }]);
+                                                                                        }
+                                                                                        setActiveColumnFilter(null);
+                                                                                    }}
+                                                                                    className="w-full text-left px-3 py-1.5 text-[10px] font-bold hover:bg-slate-50 flex items-center gap-2"
+                                                                                >
+                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
+                                                                                        {isSelected && <Check size={8} className="text-white" />}
+                                                                                    </div>
+                                                                                    <span className="truncate">{opt.label}</span>
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                        <div className="border-t border-slate-100 mt-1 pt-1">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setConditions(prev => prev.filter(c => c.colId !== col.id));
+                                                                                    setActiveColumnFilter(null);
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-50"
+                                                                            >
+                                                                                Clear Filter
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div
                                                         onMouseDown={(e) => handleResizeStart(e, col.id, width)}
