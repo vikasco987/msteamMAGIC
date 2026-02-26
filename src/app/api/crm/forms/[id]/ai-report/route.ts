@@ -101,6 +101,27 @@ function renderReportTemplate(data: any) {
     `;
 }
 
+export async function GET(
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id: formId } = await context.params;
+        const { userId } = await auth();
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const reports = await prisma.aIAnalysis.findMany({
+            where: { formId },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, query: true, createdAt: true, htmlReport: true }
+        });
+
+        return NextResponse.json(reports);
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
 export async function POST(
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -128,20 +149,23 @@ export async function POST(
 
         // 2. Perform Exhaustive AI Analysis
         const prompt = `You are a Tier-1 Data Scientist and Business Consultant. 
-        Perform a DEEP exhaustive analysis of this CRM data. 
+        Perform an analysis of this CRM data based exactly on the requested specific query.
         
         Available Columns Metadata: ${JSON.stringify(columns)}
         Data Snapshot for Analysis: ${JSON.stringify(rowData.slice(0, 200))}
         Specific Request: ${query || "Deep dive analysis of patterns, anomalies, and performance"}
 
-        You must identify:
-        1. Behavioral trends & patterns
-        2. Hidden correlations between fields
-        3. Quantifiable performance metrics (Revenue, volume, conversion, etc.)
-        4. Risks and high-priority anomalies
-        5. Actionable strategic next steps
+        If the 'Specific Request' asks for a simple, basic, or quick summary, provide a lightweight, easy-to-read overview without overly complex jargon. 
+        If it asks for a deep analysis, audit, or dive, provide an exhaustive, multi-dimensional business analysis.
 
-        RETURN ONLY A VALID JSON OBJECT IN THIS STRUCTURE:
+        You must try to identify (scale depth up/down based on the specific request):
+        1. General behavioral trends & patterns
+        2. Correlations or groupings
+        3. Quantifiable performance metrics (Revenue, volume, conversion, etc. if available)
+        4. Any risks, empty fields, or anomalies
+        5. Actionable next steps
+
+        RETURN ONLY A VALID JSON OBJECT IN THIS EXACT STRUCTURE:
         {
           "summary": "Deep executive summary of finding (2-3 paragraphs)",
           "keyMetrics": [

@@ -293,8 +293,8 @@ export default function CRMSpreadsheetPage() {
                         }
 
                         if (invocation.toolName === 'generateReport') {
-                            console.log("Triggering AI report from tool call");
-                            handleGenerateReport();
+                            console.log("Triggering AI report from tool call with query:", invocation.args?.query);
+                            handleGenerateReport(false, invocation.args?.query);
                         }
                     }
                 });
@@ -311,6 +311,16 @@ export default function CRMSpreadsheetPage() {
     const [isAIReportOpen, setIsAIReportOpen] = useState(false);
     const [aiReportHtml, setAiReportHtml] = useState<string | null>(null);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+    const [pastReports, setPastReports] = useState<any[]>([]);
+
+    const reportSuggestions = [
+        { title: "Standard Summary", query: "Generate a simple, easy-to-read summary of the key data points without complex deep analysis." },
+        { title: "Strategic Audit (Deep)", query: "Generate a full Strategic Audit and Deep Intelligence report." },
+        { title: "Quick Status Update", query: "Provide a brief status update highlighting the most common trends and numbers." },
+        { title: "Risk Assessment (Deep)", query: "Deep dive risk assessment, identifying data anomalies and outliers." },
+        { title: "Performance ROI", query: "Exhaustive analysis of revenue, volume, and performance metrics." },
+        { title: "Basic Data Overview", query: "Give a simple overview of what this data contains and any obvious patterns." }
+    ];
 
     // Permission Buffer
     const [permRoles, setPermRoles] = useState<string[]>([]);
@@ -471,6 +481,11 @@ export default function CRMSpreadsheetPage() {
                 const permJson = await permRes.json();
                 setColPermissions(permJson && Object.keys(permJson).length > 0 ? permJson : { roles: {}, users: {} });
             }
+
+            fetch(`/api/crm/forms/${params.id}/ai-report`)
+                .then(r => r.json())
+                .then(setPastReports)
+                .catch(e => console.error("Report sync error", e));
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
             if (!groupByColId) {
@@ -763,9 +778,14 @@ export default function CRMSpreadsheetPage() {
     };
 
     const [isReportCached, setIsReportCached] = useState(false);
+    const [activeReportQuery, setActiveReportQuery] = useState("Generate a comprehensive analysis summary of this tabular data.");
 
-    const handleGenerateReport = async (force: boolean = false) => {
+    const handleGenerateReport = async (force: boolean = false, customQuery?: string) => {
         if (!data || !data.form) return;
+
+        const queryToUse = customQuery || (force ? activeReportQuery : "Generate a comprehensive analysis summary of this tabular data.");
+        if (customQuery) setActiveReportQuery(customQuery);
+
         setIsGeneratingReport(true);
         try {
             const allColumns = [
@@ -787,7 +807,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    query: "Generate a comprehensive analysis summary of this tabular data.",
+                    query: queryToUse,
                     columns: allColumns,
                     rowData,
                     forceRefresh: force
@@ -2963,13 +2983,59 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </div>
 
+                        {/* Report Quick Archive Row */}
+                        {pastReports.length > 0 && (
+                            <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0 mr-2">Archive:</span>
+                                {pastReports.map((report, idx) => (
+                                    <button
+                                        key={report.id}
+                                        onClick={() => {
+                                            setAiReportHtml(report.htmlReport);
+                                            setIsReportCached(true);
+                                            setIsAIReportOpen(true);
+                                        }}
+                                        title={report.query}
+                                        className="h-7 px-3 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-600 hover:border-indigo-500 hover:text-indigo-600 hover:shadow-sm transition-all whitespace-nowrap"
+                                    >
+                                        R${idx + 1}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
                             {messages.length === 0 && (
-                                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50 my-10">
-                                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
-                                        <Bot size={32} className="text-slate-300" />
+                                <div className="space-y-8 py-4">
+                                    <div className="flex flex-col items-center justify-center text-center space-y-3 opacity-80">
+                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
+                                            <Bot size={24} className="text-indigo-400" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Intelligence Center</h4>
+                                            <p className="text-[10px] font-bold text-slate-400 mt-1">Select a deep analysis strategy to begin</p>
+                                        </div>
                                     </div>
-                                    <p className="text-xs font-bold text-slate-400 max-w-[200px]">How can I help you analyze this data today?</p>
+
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {reportSuggestions.map((s, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => {
+                                                    const fakeEvent = { preventDefault: () => { } } as any;
+                                                    handleInputChange({ target: { value: s.query } } as any);
+                                                    setTimeout(() => handleSubmit(fakeEvent), 50);
+                                                }}
+                                                className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">{s.title}</span>
+                                                    <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                                                </div>
+                                                <p className="text-[10px] font-bold text-slate-400 mt-2 line-clamp-1 group-hover:text-slate-500 transition-colors">{s.query}</p>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                             {messages.map(m => (

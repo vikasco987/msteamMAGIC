@@ -45,12 +45,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
                     }
                 },
                 generateReport: {
-                    description: 'Generate a comprehensive AI report analyzing all tabular data. Call this if the user asks for a "report", "summary", or "full analysis".',
-                    inputSchema: z.object({}),
-                    execute: async () => {
+                    description: 'Generate a comprehensive AI report analyzing all tabular data. Call this if the user asks for a "report", "summary", or "full analysis". Pass their specific request as the query if they have one.',
+                    inputSchema: z.object({
+                        query: z.string().optional().describe("The specific analysis query requested by the user, if any. E.g., 'Risk & Anomalies analysis'")
+                    }),
+                    execute: async ({ query }: { query?: string }) => {
                         return {
                             success: true,
-                            message: "Generating a comprehensive report... Please wait."
+                            query,
+                            message: "Generating a deep intelligence report... Please wait."
                         };
                     }
                 }
