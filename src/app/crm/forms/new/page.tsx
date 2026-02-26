@@ -87,7 +87,7 @@ export default function FormBuilderPage() {
 
     const addField = (type: FieldType) => {
         const newField: FormField = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             label: `New ${type.charAt(0).toUpperCase() + type.slice(1)} Field`,
             type,
             placeholder: "",

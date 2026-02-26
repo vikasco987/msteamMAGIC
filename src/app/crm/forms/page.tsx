@@ -38,6 +38,7 @@ interface FormSummary {
     _count: { responses: number };
     visibleToRoles?: string[];
     visibleToUsers?: string[];
+    visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
 }
 
 export default function CRMFormsList() {
@@ -555,16 +556,28 @@ export default function CRMFormsList() {
                                     </div>
                                 )}
 
-                                {(viewingForm.visibleToUsers && viewingForm.visibleToUsers.length > 0) && (
+                                {(viewingForm.visibleToUsersData && viewingForm.visibleToUsersData.length > 0) && (
                                     <div className="p-5 bg-slate-50 rounded-[24px] border border-slate-100 shadow-sm">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                             <UserPlus size={12} /> Isolated Users
                                         </p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {viewingForm.visibleToUsers.map(u => (
-                                                <span key={u} className="px-4 py-2 bg-white border border-slate-200 text-purple-700 text-[10px] font-black rounded-xl uppercase tracking-widest shadow-sm block max-w-full truncate">{u}</span>
+                                        <div className="flex flex-col gap-3">
+                                            {viewingForm.visibleToUsersData.map(u => (
+                                                <div key={u.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-[16px] shadow-sm">
+                                                    {u.imageUrl ? (
+                                                        <img src={u.imageUrl} alt={u.name} className="w-8 h-8 rounded-full shadow-sm object-cover" />
+                                                    ) : (
+                                                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-[10px] shadow-sm">
+                                                            {(u.name && u.name !== "Unknown User") ? u.name[0].toUpperCase() : u.email[0].toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex flex-col overflow-hidden">
+                                                        <span className="text-[11px] font-black text-slate-900 truncate">{u.name}</span>
+                                                        <span className="text-[9px] font-bold text-slate-400 truncate">{u.email}</span>
+                                                    </div>
+                                                </div>
                                             ))}
-                                            <p className="text-[9px] text-slate-400 font-bold block w-full mt-2 uppercase tracking-tighter">* Database ID overrides mapped.</p>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-tighter">* Database ID overrides mapped.</p>
                                         </div>
                                     </div>
                                 )}

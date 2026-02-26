@@ -54,7 +54,9 @@ import {
     Lock,
     ArrowUp,
     ArrowDown,
-    Minimize2
+    Minimize2,
+    Sparkles,
+    Bot
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
@@ -235,6 +237,11 @@ export default function CRMSpreadsheetPage() {
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
 
+    // AI Filter States
+    const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
+    const [aiQuery, setAiQuery] = useState("");
+    const [isAIFetching, setIsAIFetching] = useState(false);
+
     // Permission Buffer
     const [permRoles, setPermRoles] = useState<string[]>([]);
     const [permUsers, setPermUsers] = useState<string[]>([]);
@@ -409,7 +416,7 @@ export default function CRMSpreadsheetPage() {
 
     const handleAddRow = async () => {
         if (!data) return;
-        const tempId = `temp-${Date.now()}`;
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const previousData = { ...data };
 
         // Optimistic Update
@@ -582,6 +589,46 @@ export default function CRMSpreadsheetPage() {
             }
         } catch (err) {
             toast.error("Network failure during bulk purge", { id: loadingToast });
+        }
+    };
+
+    const handleAskAI = async () => {
+        if (!aiQuery.trim() || !data) return;
+        setIsAIFetching(true);
+        try {
+            const allColumns = [
+                ...data.form.fields.map(f => ({ id: f.id, label: f.label, type: f.type })),
+                ...data.internalColumns.map(c => ({ id: c.id, label: c.label, type: c.type }))
+            ];
+
+            const res = await fetch(`/api/crm/forms/${params.id}/ai-filter`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: aiQuery, columns: allColumns })
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                if (result.filters && result.filters.length > 0) {
+                    setConditions(result.filters);
+                    setIsAIFilterOpen(false);
+                    setAiQuery("");
+                    toast.success("AI Filters Applied Successfully!");
+                } else {
+                    toast.error("AI couldn't find matching filters for your query.");
+                }
+            } else {
+                const errorData = await res.json();
+                if (errorData.error && errorData.error.includes("GEMINI_API_KEY")) {
+                    toast.error("Gemini API key is not set. Check environment variables.");
+                } else {
+                    toast.error(errorData.error || "Failed to process AI query");
+                }
+            }
+        } catch (error) {
+            toast.error("Failed to connect to AI Engine");
+        } finally {
+            setIsAIFetching(false);
         }
     };
 
@@ -1033,7 +1080,7 @@ export default function CRMSpreadsheetPage() {
 
     const handleAddColumn = async () => {
         if (!newColLabel || !data) return;
-        const tempId = `temp-col-${Date.now()}`;
+        const tempId = `temp-col-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const previousData = { ...data };
 
         // Optimistic Column
@@ -1292,6 +1339,14 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <Maximize2 size={12} />
                                 Full View
+                            </button>
+
+                            <button
+                                onClick={() => setIsAIFilterOpen(true)}
+                                className="px-4 py-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg hover:shadow-xl hover:scale-105"
+                            >
+                                <Sparkles size={12} className="animate-pulse" />
+                                Ask AI
                             </button>
 
                             <button
@@ -1706,7 +1761,7 @@ export default function CRMSpreadsheetPage() {
                                                                     ) : col.type === "date" ? (
                                                                         <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "number" || col.type === "currency" ? (
-                                                                        <input type="number" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "long_text" ? (
                                                                         <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : (
@@ -2789,6 +2844,51 @@ export default function CRMSpreadsheetPage() {
                                     </button>
                                 </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* AI Filter Modal */}
+            <AnimatePresence>
+                {isAIFilterOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAIFilterOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-lg bg-white rounded-[32px] shadow-2xl p-8 border border-white">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-600 rounded-[24px]">
+                                        <Bot size={32} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">AI Table Assistant</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Natural Language Query Engine</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsAIFilterOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            <div className="mb-6 bg-slate-50 p-6 rounded-[24px] border border-slate-100 relative">
+                                <textarea
+                                    value={aiQuery}
+                                    onChange={(e) => setAiQuery(e.target.value)}
+                                    placeholder="Ask me anything... e.g. 'Show me pending tasks assigned to Vikash'"
+                                    className="w-full bg-transparent border-none outline-none font-bold text-slate-700 placeholder-slate-400 resize-none min-h-[100px]"
+                                    autoFocus
+                                />
+                                <div className="absolute bottom-4 right-4 text-[9px] font-black uppercase tracking-widest text-slate-300">
+                                    Powered by Google Gemini
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleAskAI}
+                                disabled={isAIFetching || !aiQuery.trim()}
+                                className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-indigo-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >
+                                {isAIFetching ? "Generating Queries..." : "Execute AI Filter"}
+                                <Sparkles size={14} className={isAIFetching ? "animate-spin" : ""} />
+                            </button>
                         </motion.div>
                     </div>
                 )}

@@ -201,10 +201,17 @@ export default function PublicFormPage() {
                                     />
                                 ) : (
                                     <input
-                                        type={field.type}
+                                        type={field.type === "number" || field.type === "phone" ? "text" : field.type}
+                                        inputMode={field.type === "number" || field.type === "phone" ? "numeric" : undefined}
                                         placeholder={field.placeholder}
                                         value={values[field.id] || ""}
-                                        onChange={(e) => setValues({ ...values, [field.id]: e.target.value })}
+                                        onChange={(e) => {
+                                            let val = e.target.value;
+                                            if (field.type === "number" || field.type === "phone") {
+                                                val = val.replace(/[^0-9+-.]/g, ''); // Keep only numbers and basic characters
+                                            }
+                                            setValues({ ...values, [field.id]: val });
+                                        }}
                                         className={`w-full p-6 bg-slate-50 border-2 rounded-[30px] font-bold text-slate-700 outline-none transition-all
                                             ${errors[field.id] ? 'border-rose-100 bg-rose-50' : 'border-transparent focus:border-indigo-600 focus:bg-white'}`}
                                     />
