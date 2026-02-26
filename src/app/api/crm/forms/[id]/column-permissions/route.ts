@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 export async function GET(
     req: NextRequest,
@@ -28,6 +28,7 @@ export async function PATCH(
 ) {
     try {
         const { userId } = await auth();
+        const user = await currentUser();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { id } = await params;
@@ -36,12 +37,21 @@ export async function PATCH(
             select: { createdBy: true }
         });
 
-        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-        const isMaster = user && (user.role === "ADMIN" || user.role === "MASTER");
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+
+        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
+        const dbRole = (dbUser?.role as string || "").toUpperCase();
+
+        const isMaster = metaRole === "ADMIN" || metaRole === "MASTER" ||
+            dbRole === "ADMIN" || dbRole === "MASTER";
         const isOwner = form?.createdBy === userId;
 
         if (!isMaster && !isOwner) {
-            return NextResponse.json({ error: "Forbidden: Only Admin or Matrix Owner can update security protocols" }, { status: 403 });
+            console.warn(`🚫 Forbidden access attempt: User=${userId}, metaRole=${metaRole}, dbRole=${dbRole}`);
+            return NextResponse.json({
+                error: "Forbidden: Only Admin or Matrix Owner can update security protocols",
+                debug: { metaRole, dbRole, isOwner }
+            }, { status: 403 });
         }
         const { roles, users } = await req.json();
 
