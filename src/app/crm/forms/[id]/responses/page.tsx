@@ -609,13 +609,16 @@ export default function CRMSpreadsheetPage() {
 
             if (res.ok) {
                 const result = await res.json();
+
+                // If AI provides filters, apply them
                 if (result.filters && result.filters.length > 0) {
                     setConditions(result.filters);
+                    toast.success(result.message || "AI Filters Applied!");
                     setIsAIFilterOpen(false);
                     setAiQuery("");
-                    toast.success("AI Filters Applied Successfully!");
                 } else {
-                    toast.error("AI couldn't find matching filters for your query.");
+                    // AI responded conversationally but couldn't make filters
+                    toast.success(result.message || "I couldn't create filters for that request.", { icon: "🤖" });
                 }
             } else {
                 const errorData = await res.json();

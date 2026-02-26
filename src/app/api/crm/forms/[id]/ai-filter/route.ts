@@ -15,30 +15,38 @@ export async function POST(
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        const apiKey = process.env.GEMINI_API_KEY;
+        const apiKey = process.env.GEMINI_API_KEY || "AIzaSyCXro2IyzxnET3LFbdWobBR5MLyM41q3wI"; // Fallback to provided key
         if (!apiKey) {
             return NextResponse.json({
                 error: "GEMINI_API_KEY is not configured in environment variables. Please add it to your .env file."
             }, { status: 500 });
         }
 
-        const systemPrompt = `You are an AI assistant integrated into a Next.js/React datagrid CRM. 
-Your goal is to convert natural language queries into a JSON array of filters.
+        const systemPrompt = `You are a helpful AI data analyst integrated into a Next.js/React datagrid CRM. 
+Your goal is to convert natural language queries into a JSON object containing a friendly conversational response and an array of filters.
 
 Here are the available columns in the datagrid:
 ${JSON.stringify(columns, null, 2)}
 
-You must return a valid JSON array of objects, where each object represents a filter condition.
-If no filters can be determined or the query doesn't make sense, return an empty array: []
-
-Return ONLY valid JSON. Do NOT wrap in markdown \`\`\`json. Just the raw array.
-
-Filter Object Format (Match exactly):
+You must return a valid JSON object matching this schema exactly:
 {
-  "columnId": "string (the id of the matched column)",
-  "operator": "string (must be one of: contains, equals, starts_with, ends_with, not_equals, is_empty, is_not_empty, eq, gt, lt, gte, lte, between, today, yesterday, before, after, tomorrow, this_week)",
-  "value": "string (the value to filter by)"
+  "message": "A friendly, short, natural language response confirming what you understood and did (like: 'Sure, I've filtered the table to show pending tasks assigned to Vikash.')",
+  "filters": [
+    {
+      "columnId": "string (the id of the matched column)",
+      "operator": "string (must be one of: contains, equals, starts_with, ends_with, not_equals, is_empty, is_not_empty, eq, gt, lt, gte, lte, between, today, yesterday, before, after, tomorrow, this_week)",
+      "value": "string (the value to filter by. For partial text matching, use contains. For numbers, use eq, gt, lt, etc.)"
+    }
+  ]
 }
+
+If no filters can be determined or the query doesn't make sense, return:
+{
+  "message": "I'm sorry, I couldn't understand which columns or data you're trying to filter. Could you clarify?",
+  "filters": []
+}
+
+Return ONLY valid JSON. Do NOT wrap in markdown \`\`\`json. Just the raw JSON object.
 
 User Query: "${query}"`;
 
@@ -60,20 +68,23 @@ User Query: "${query}"`;
         }
 
         const data = await response.json();
-        let aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+        let aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "{\"message\": \"Error processing input\", \"filters\": []}";
 
         // Clean up potential markdown formatting from AI response
-        aiResponse = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+        aiResponse = aiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-        let filters = [];
+        let parsed = { message: "I couldn't process this request.", filters: [] };
         try {
-            filters = JSON.parse(aiResponse);
+            parsed = JSON.parse(aiResponse);
         } catch (e) {
             console.error("Failed to parse AI response:", aiResponse);
-            return NextResponse.json({ error: "AI returned invalid filter format" }, { status: 500 });
+            return NextResponse.json({ error: "AI returned invalid filter format", raw: aiResponse }, { status: 500 });
         }
 
-        return NextResponse.json({ filters });
+        return NextResponse.json({
+            message: parsed.message || "Filters applied!",
+            filters: Array.isArray(parsed.filters) ? parsed.filters : []
+        });
     } catch (error) {
         console.error("AI Filter Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
