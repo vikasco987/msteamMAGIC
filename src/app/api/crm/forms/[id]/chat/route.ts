@@ -1,4 +1,4 @@
-import { streamText, tool } from 'ai';
+import { streamText } from 'ai';
 import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
@@ -17,31 +17,41 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     Keep your answers concise, professional, and helpful.`;
 
         const result = streamText({
-            model: google('gemini-2.5-flash'),
+            model: google('models/gemini-1.5-flash'),
             system: systemPrompt,
             messages,
             tools: {
-                applyFilter: tool({
+                applyFilter: {
                     description: 'Apply a structured filter to the CRM table based on the user request. Call this if the user says "show me pending tasks" or similar.',
-                    parameters: z.object({
+                    inputSchema: z.object({
                         filters: z.array(z.object({
                             columnId: z.string().describe("The exact ID of the column to filter on"),
                             operator: z.enum(['contains', 'equals', 'starts_with', 'ends_with', 'not_equals', 'is_empty', 'is_not_empty', 'eq', 'gt', 'lt', 'gte', 'lte', 'between', 'today', 'yesterday', 'before', 'after', 'tomorrow', 'this_week']),
                             value: z.string().describe("The value to filter")
                         }))
                     }),
-                    execute: async ({ filters }) => {
+                    execute: async ({ filters }: { filters: any[] }) => {
                         return {
                             success: true,
                             filtersApplied: filters,
                             message: "Filters have been applied to the table. Please look at the table to see the result."
                         };
                     }
-                }),
+                },
+                generateReport: {
+                    description: 'Generate a comprehensive AI report analyzing all tabular data. Call this if the user asks for a "report", "summary", or "full analysis".',
+                    inputSchema: z.object({}),
+                    execute: async () => {
+                        return {
+                            success: true,
+                            message: "Generating a comprehensive report... Please wait."
+                        };
+                    }
+                }
             }
         });
 
-        return result.toDataStreamResponse();
+        return result.toTextStreamResponse();
     } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message }), { status: 500 });
     }

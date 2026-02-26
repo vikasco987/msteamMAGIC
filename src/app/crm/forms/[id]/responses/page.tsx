@@ -242,7 +242,7 @@ export default function CRMSpreadsheetPage() {
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
 
     // Vercel AI Setup
-    const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading: isAIFetching } = useChat({
         api: `/api/crm/forms/${params.id}/chat`,
         body: {
             dataContext: {
@@ -263,6 +263,9 @@ export default function CRMSpreadsheetPage() {
                         if (result?.filtersApplied) {
                             setConditions(result.filtersApplied);
                         }
+                    }
+                    if (invocation.toolName === 'generateReport' && invocation.state === 'result') {
+                        handleGenerateReport();
                     }
                 });
             }
@@ -623,66 +626,8 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    const { messages, input, handleInputChange, handleSubmit, setMessages, append, isLoading: isAIFetching } = useChat({
-        api: `/api/crm/forms/${params.id}/ai-filter`,
-        onResponse: (response) => {
-            if (response.status === 401) {
-                toast.error(response.statusText);
-            }
-        },
-        onError: (error) => {
-            if (error.message.includes("GEMINI_API_KEY")) {
-                toast.error("Gemini API key is not set. Check environment variables.");
-            } else {
-                toast.error("Failed to connect to AI Engine");
-            }
-        },
-        experimental_onToolCall: async ({ call, appendToolCallMessage }) => {
-            if (call.functionName === 'applyFilter') {
-                const { filters } = call.args;
-                if (filters && filters.length > 0) {
-                    setConditions(filters);
-                    toast.success("AI Filters Applied!");
-                    setIsAIFilterOpen(false); // Close sidebar after applying filters
-                    appendToolCallMessage(call); // Acknowledge the tool call
-                } else {
-                    toast.error("AI couldn't create filters for that request.");
-                }
-            }
-        },
-        tools: [
-            {
-                type: "function",
-                function: {
-                    name: "applyFilter",
-                    description: "Applies filters to the data table based on user's request. Filters are applied as an AND condition between different columns, and OR condition for multiple values within the same column.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            filters: {
-                                type: "array",
-                                items: {
-                                    type: "object",
-                                    properties: {
-                                        colId: { type: "string", description: "The ID of the column to filter." },
-                                        op: {
-                                            type: "string",
-                                            enum: ["equals", "not_equals", "contains", "one_of", "starts_with", "ends_with", "is_empty", "is_not_empty", "eq", "gt", "lt", "gte", "lte", "between", "is_true", "is_false", "today"],
-                                            description: "The operation to apply."
-                                        },
-                                        val: { type: "string", description: "The value to filter by. For 'one_of', provide a comma-separated string of values." },
-                                        val2: { type: "string", description: "The second value for 'between' operations." }
-                                    },
-                                    required: ["colId", "op"]
-                                }
-                            }
-                        },
-                        required: ["filters"]
-                    }
-                }
-            }
-        ]
-    });
+    // AI chatbot and filters are now handled by useChat at the top level.
+
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -803,7 +748,7 @@ export default function CRMSpreadsheetPage() {
             const res = await fetch(`/api/crm/forms/${params.id}/ai-report`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: aiQuery || "Generate a comprehensive analysis summary of this tabular data.", columns: allColumns, rowData })
+                body: JSON.stringify({ query: "Generate a comprehensive analysis summary of this tabular data.", columns: allColumns, rowData })
             });
 
             if (res.ok) {
@@ -2961,9 +2906,17 @@ export default function CRMSpreadsheetPage() {
                                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                <X size={16} />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setMessages([])}
+                                    className="p-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                                >
+                                    Clear
+                                </button>
+                                <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
@@ -3012,7 +2965,7 @@ export default function CRMSpreadsheetPage() {
                                     </div>
                                 </motion.div>
                             ))}
-                            {isLoading && (
+                            {isAIFetching && (
                                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
                                     <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
                                         <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
@@ -3034,7 +2987,7 @@ export default function CRMSpreadsheetPage() {
                                 />
                                 <button
                                     type="submit"
-                                    disabled={!input.trim() || isLoading}
+                                    disabled={!input.trim() || isAIFetching}
                                     className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
                                 >
                                     <ArrowUp size={16} />
