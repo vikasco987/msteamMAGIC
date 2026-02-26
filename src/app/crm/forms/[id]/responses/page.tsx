@@ -56,7 +56,8 @@ import {
     ArrowDown,
     Minimize2,
     Sparkles,
-    Bot
+    Bot,
+    RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
