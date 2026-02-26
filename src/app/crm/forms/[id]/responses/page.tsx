@@ -240,15 +240,24 @@ export default function CRMSpreadsheetPage() {
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // Vercel AI Setup
-    const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading: isAIFetching } = useChat({
-        api: `/api/crm/forms/${params.id}/chat`,
-        body: {
-            dataContext: {
-                columns: data?.form?.fields || []
-            }
+    const chatBody = useMemo(() => ({
+        dataContext: {
+            columns: data?.form?.fields || []
         }
+    }), [data?.form?.fields]);
+
+    const formId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
+
+    const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading: isAIFetching } = useChat({
+        api: formId ? `/api/crm/forms/${formId}/chat` : '',
+        body: chatBody
     });
 
     // Auto-apply filters when tool is called and returns
@@ -2888,7 +2897,7 @@ export default function CRMSpreadsheetPage() {
             </AnimatePresence>
 
             <AnimatePresence>
-                {isAIFilterOpen && (
+                {isMounted && isAIFilterOpen && (
                     <motion.div
                         initial={{ opacity: 0, x: 300, scale: 0.95 }}
                         animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -2939,7 +2948,9 @@ export default function CRMSpreadsheetPage() {
                                         ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
                                         : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
                                         }`}>
-                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
+                                            {typeof (m as any).content === 'string' ? (m as any).content : ((m as any).ui || JSON.stringify((m as any).content || ''))}
+                                        </div>
 
                                         {/* Render Tool Invocations nicely */}
                                         {m.toolInvocations?.map((toolInvocation: any) => {
@@ -2950,7 +2961,7 @@ export default function CRMSpreadsheetPage() {
                                                             <Filter size={12} className="text-indigo-400" /> Filters Applied
                                                         </p>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {toolInvocation.result.filtersApplied?.map((f: any, i: number) => (
+                                                            {Array.isArray(toolInvocation.result?.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
                                                                 <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
                                                                     <span className="text-indigo-400">{f.operator}</span>
                                                                     <span>{f.value}</span>
