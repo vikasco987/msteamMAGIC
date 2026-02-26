@@ -237,10 +237,14 @@ export default function CRMSpreadsheetPage() {
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
 
-    // AI Filter States
+    // AI Filter & Report States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
     const [aiQuery, setAiQuery] = useState("");
     const [isAIFetching, setIsAIFetching] = useState(false);
+
+    const [isAIReportOpen, setIsAIReportOpen] = useState(false);
+    const [aiReportHtml, setAiReportHtml] = useState<string | null>(null);
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
     // Permission Buffer
     const [permRoles, setPermRoles] = useState<string[]>([]);
@@ -730,6 +734,47 @@ export default function CRMSpreadsheetPage() {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
         }
         return resp.values?.find(v => v.fieldId === colId)?.value || "";
+    };
+
+    const handleGenerateReport = async () => {
+        if (!data) return;
+        setIsGeneratingReport(true);
+        try {
+            const allColumns = [
+                ...data.form.fields.map((f: any) => ({ id: f.id, label: f.label, type: f.type })),
+                ...data.internalColumns.map((c: any) => ({ id: c.id, label: c.label, type: c.type }))
+            ];
+
+            const rowData = (data.responses || []).map((r: any) => {
+                let row: any = {};
+                row["Contributor"] = r.submittedByName || "Guest";
+                allColumns.forEach(c => {
+                    const isInternal = data.internalColumns.some((ic: any) => ic.id === c.id);
+                    row[c.label] = getCellValue(r.id, c.id, isInternal) || "";
+                });
+                return row;
+            });
+
+            const res = await fetch(`/api/crm/forms/${params.id}/ai-report`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: aiQuery || "Generate a comprehensive analysis summary of this tabular data.", columns: allColumns, rowData })
+            });
+
+            if (res.ok) {
+                const result = await res.json();
+                setAiReportHtml(result.html);
+                setIsAIReportOpen(true);
+                setIsAIFilterOpen(false); // Switch context to report view
+                toast.success("AI Insight Report Generated!");
+            } else {
+                toast.error("Failed to generate AI report.");
+            }
+        } catch (error) {
+            toast.error("Failed to connect to AI Analysis Engine.");
+        } finally {
+            setIsGeneratingReport(false);
+        }
     };
 
     const filteredResponses = useMemo(() => {
@@ -2884,14 +2929,58 @@ export default function CRMSpreadsheetPage() {
                                     Powered by Google Gemini
                                 </div>
                             </div>
-                            <button
-                                onClick={handleAskAI}
-                                disabled={isAIFetching || !aiQuery.trim()}
-                                className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-indigo-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {isAIFetching ? "Generating Queries..." : "Execute AI Filter"}
-                                <Sparkles size={14} className={isAIFetching ? "animate-spin" : ""} />
-                            </button>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={handleAskAI}
+                                    disabled={isAIFetching || !aiQuery.trim()}
+                                    className="flex-1 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-indigo-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isAIFetching ? "Generating..." : "Execute AI Filter"}
+                                    <Sparkles size={14} className={isAIFetching ? "animate-spin" : ""} />
+                                </button>
+
+                                <button
+                                    onClick={handleGenerateReport}
+                                    disabled={isGeneratingReport}
+                                    className="flex-1 py-5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-[24px] text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-teal-200 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isGeneratingReport ? "Analyzing..." : "Generate AI Report"}
+                                    <Activity size={14} className={isGeneratingReport ? "animate-pulse" : ""} />
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* AI Report Viewer Modal */}
+            <AnimatePresence>
+                {isAIReportOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAIReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-[32px] shadow-2xl p-8 border border-white custom-scrollbar">
+                            <div className="flex justify-between items-start mb-6 sticky top-0 bg-white/80 backdrop-blur-md pt-2 pb-4 z-10 border-b border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-600 rounded-[24px]">
+                                        <Activity size={32} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">AI Insight Report</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Generated by Google Gemini</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsAIReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 text-slate-800 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: aiReportHtml || "No report content generated." }}></div>
+
+                            <div className="mt-8 flex justify-end">
+                                <button onClick={() => setIsAIReportOpen(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
+                                    Dismiss Report
+                                </button>
+                            </div>
                         </motion.div>
                     </div>
                 )}
