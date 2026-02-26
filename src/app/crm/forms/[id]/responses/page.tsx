@@ -671,11 +671,15 @@ export default function CRMSpreadsheetPage() {
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
         if (!data) return "";
+        const resp = data.responses?.find(r => r.id === responseId);
+        if (!resp) return "";
+
+        if (colId === "__contributor") return resp.submittedByName || "";
+
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
         }
-        const resp = data.responses?.find(r => r.id === responseId);
-        return resp?.values?.find(v => v.fieldId === colId)?.value || "";
+        return resp.values?.find(v => v.fieldId === colId)?.value || "";
     };
 
     const filteredResponses = useMemo(() => {
@@ -692,57 +696,72 @@ export default function CRMSpreadsheetPage() {
 
         if (conditions.length > 0) {
             results = results.filter(r => {
-                const matches = conditions.map(cond => {
-                    const col = getColumns.find(c => c.id === cond.colId);
+                // Group conditions by column ID so multiple selections on the same column work as OR
+                const groupedConditions = conditions.reduce((acc, cond) => {
+                    if (!acc[cond.colId]) acc[cond.colId] = [];
+                    acc[cond.colId].push(cond);
+                    return acc;
+                }, {} as Record<string, typeof conditions>);
+
+                const groupMatches = Object.entries(groupedConditions).map(([colId, conds]) => {
+                    const col = getColumns.find(c => c.id === colId);
                     const isInternal = col?.isInternal;
-                    const cellVal = getCellValue(r.id, cond.colId, isInternal);
+                    const cellVal = getCellValue(r.id, colId, isInternal);
                     const val = (cellVal || "").toString().toLowerCase();
-                    const targetVal = (cond.val || "").toString().toLowerCase();
-                    const targetVal2 = (cond.val2 || "").toString().toLowerCase();
 
-                    switch (cond.op) {
-                        case "equals": return val === targetVal;
-                        case "not_equals": return val !== targetVal;
-                        case "contains": return val.includes(targetVal);
-                        case "one_of": {
-                            const targets = (cond.val || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
-                            return targets.includes(val);
+                    // Within the same column, multiple conditions act as OR (e.g., selecting 'Option 1' AND 'Option 2')
+                    const conditionMatches = conds.map(cond => {
+                        const targetVal = (cond.val || "").toString().toLowerCase();
+                        const targetVal2 = (cond.val2 || "").toString().toLowerCase();
+
+                        switch (cond.op) {
+                            case "equals": return val === targetVal;
+                            case "not_equals": return val !== targetVal;
+                            case "contains": return val.includes(targetVal);
+                            case "one_of": {
+                                const targets = (cond.val || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+                                return targets.includes(val);
+                            }
+                            case "starts_with": return val.startsWith(targetVal);
+                            case "ends_with": return val.endsWith(targetVal);
+                            case "is_empty": return val.trim().length === 0;
+                            case "is_not_empty": return val.trim().length > 0;
+
+                            case "eq": return parseFloat(val) === parseFloat(targetVal);
+                            case "gt": return parseFloat(val) > parseFloat(targetVal);
+                            case "lt": return parseFloat(val) < parseFloat(targetVal);
+                            case "gte": return parseFloat(val) >= parseFloat(targetVal);
+                            case "lte": return parseFloat(val) <= parseFloat(targetVal);
+                            case "between": return parseFloat(val) >= parseFloat(targetVal) && parseFloat(val) <= parseFloat(targetVal2);
+
+                            case "is_true": return val === "true";
+                            case "is_false": return val === "false" || val === "";
+
+                            case "today": {
+                                const d = new Date(cellVal);
+                                const now = new Date();
+                                return d.toDateString() === now.toDateString();
+                            }
+                            case "this_week": {
+                                const d = new Date(cellVal);
+                                const now = new Date();
+                                const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                                return d >= startOfWeek;
+                            }
+                            case "before": return new Date(cellVal) < new Date(cond.val);
+                            case "after": return new Date(cellVal) > new Date(cond.val);
+
+                            default: return true;
                         }
-                        case "starts_with": return val.startsWith(targetVal);
-                        case "ends_with": return val.endsWith(targetVal);
-                        case "is_empty": return val.trim().length === 0;
-                        case "is_not_empty": return val.trim().length > 0;
+                    });
 
-                        case "eq": return parseFloat(val) === parseFloat(targetVal);
-                        case "gt": return parseFloat(val) > parseFloat(targetVal);
-                        case "lt": return parseFloat(val) < parseFloat(targetVal);
-                        case "gte": return parseFloat(val) >= parseFloat(targetVal);
-                        case "lte": return parseFloat(val) <= parseFloat(targetVal);
-                        case "between": return parseFloat(val) >= parseFloat(targetVal) && parseFloat(val) <= parseFloat(targetVal2);
-
-                        case "is_true": return val === "true";
-                        case "is_false": return val === "false" || val === "";
-
-                        case "today": {
-                            const d = new Date(cellVal);
-                            const now = new Date();
-                            return d.toDateString() === now.toDateString();
-                        }
-                        case "this_week": {
-                            const d = new Date(cellVal);
-                            const now = new Date();
-                            const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-                            return d >= startOfWeek;
-                        }
-                        case "before": return new Date(cellVal) < new Date(cond.val);
-                        case "after": return new Date(cellVal) > new Date(cond.val);
-
-                        default: return true;
-                    }
+                    // Inside a column group, we OR them together
+                    // So if you pick 'Option A' and 'Option B', it returns true if either matches
+                    return conditionMatches.some(m => m);
                 });
 
-                if (filterConjunction === "AND") return matches.every(m => m);
-                return matches.some(m => m);
+                if (filterConjunction === "AND") return groupMatches.every(m => m);
+                return groupMatches.some(m => m);
             });
         }
         return results;
