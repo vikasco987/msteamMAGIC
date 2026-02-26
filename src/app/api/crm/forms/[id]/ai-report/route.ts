@@ -164,6 +164,7 @@ export async function POST(
         3. Quantifiable performance metrics (Revenue, volume, conversion, etc. if available)
         4. Any risks, empty fields, or anomalies
         5. Actionable next steps
+        * CRITICAL: If a basic overview is requested, accurately COUNT baseline numbers from the data (e.g. Total entries, entries today, number of remarks, number of calls/tasks, empty fields, etc.) and highlight them.
 
         RETURN ONLY A VALID JSON OBJECT IN THIS EXACT STRUCTURE:
         {

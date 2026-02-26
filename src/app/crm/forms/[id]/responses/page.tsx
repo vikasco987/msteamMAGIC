@@ -3022,9 +3022,11 @@ export default function CRMSpreadsheetPage() {
                                             <button
                                                 key={i}
                                                 onClick={() => {
-                                                    const fakeEvent = { preventDefault: () => { } } as any;
                                                     handleInputChange({ target: { value: s.query } } as any);
-                                                    setTimeout(() => handleSubmit(fakeEvent), 50);
+                                                    setTimeout(() => {
+                                                        const form = document.getElementById("ai-chat-form") as HTMLFormElement;
+                                                        if (form) form.requestSubmit();
+                                                    }, 50);
                                                 }}
                                                 className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
                                             >
@@ -3090,7 +3092,7 @@ export default function CRMSpreadsheetPage() {
                         </div>
 
                         <div className="p-4 bg-white border-t border-slate-100">
-                            <form onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
+                            <form id="ai-chat-form" onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
                                 <input
                                     value={input}
                                     onChange={handleInputChange}
