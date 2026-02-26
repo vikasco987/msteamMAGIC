@@ -62,7 +62,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 
 const getExcelLabel = (index: number): string => {
     let label = "";
