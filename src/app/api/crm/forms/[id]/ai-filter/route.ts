@@ -3,9 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await context.params;
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -85,8 +86,8 @@ User Query: "${query}"`;
             message: parsed.message || "Filters applied!",
             filters: Array.isArray(parsed.filters) ? parsed.filters : []
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error("AI Filter Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: error?.message || "Internal Server Error" }, { status: 500 });
     }
 }

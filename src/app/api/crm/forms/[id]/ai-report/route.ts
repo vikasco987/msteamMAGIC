@@ -3,9 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await context.params;
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -65,8 +66,8 @@ INSTRUCTIONS:
         aiResponse = aiResponse.replace(/```html/gi, '').replace(/```/g, '').trim();
 
         return NextResponse.json({ html: aiResponse });
-    } catch (error) {
+    } catch (error: any) {
         console.error("AI Report Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: error?.message || "Internal Server Error" }, { status: 500 });
     }
 }
