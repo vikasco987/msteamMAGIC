@@ -1444,58 +1444,102 @@ export default function CRMSpreadsheetPage() {
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
                                                     className={`px-4 py-3 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky bg-[#F9FAFB] z-40' : ''} ${col.isInternal ? 'text-indigo-600 bg-indigo-50/30' : 'text-[#475467]'}`}
                                                 >
-                                                    <div className="flex items-center gap-2 truncate">
-                                                        <TypeIcon size={10} className={col.isInternal ? "text-indigo-600" : "text-[#667085]"} />
-                                                        {col.id === "__profile" ? "View" : col.id === "__contributor" ? "Submitter info" : col.label}
-                                                        {col.type === "dropdown" && (
-                                                            <div className="relative isolate ml-auto">
+                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
+                                                        <div className="flex items-center gap-2 truncate shrink">
+                                                            <TypeIcon size={10} className={col.isInternal ? "text-indigo-600 shrink-0" : "text-[#667085] shrink-0"} />
+                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.id === "__contributor" ? "Submitter info" : col.label}</span>
+                                                        </div>
+
+                                                        {col.id !== "__profile" && (
+                                                            <div className="relative isolate shrink-0">
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
                                                                     }}
-                                                                    className={`p-1 hover:bg-slate-200 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600' : 'text-slate-400'}`}
+                                                                    className={`p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
                                                                 >
                                                                     <Filter size={10} />
                                                                 </button>
                                                                 {activeColumnFilter === col.id && (
                                                                     <div
-                                                                        className="absolute top-full left-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-1 min-w-[120px] max-w-[200px] z-[100] max-h-48 overflow-y-auto"
+                                                                        className="absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
                                                                         onClick={(e) => e.stopPropagation()}
                                                                     >
-                                                                        {Array.isArray(col.options) && col.options.map((opt: any) => {
-                                                                            const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.label);
-                                                                            return (
-                                                                                <button
-                                                                                    key={opt.label}
-                                                                                    onClick={() => {
-                                                                                        if (isSelected) {
-                                                                                            setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.label)));
-                                                                                        } else {
-                                                                                            setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'equals', val: opt.label }]);
-                                                                                        }
-                                                                                        setActiveColumnFilter(null);
-                                                                                    }}
-                                                                                    className="w-full text-left px-3 py-1.5 text-[10px] font-bold hover:bg-slate-50 flex items-center gap-2"
-                                                                                >
-                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>
-                                                                                        {isSelected && <Check size={8} className="text-white" />}
-                                                                                    </div>
-                                                                                    <span className="truncate">{opt.label}</span>
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                        <div className="border-t border-slate-100 mt-1 pt-1">
-                                                                            <button
-                                                                                onClick={() => {
-                                                                                    setConditions(prev => prev.filter(c => c.colId !== col.id));
-                                                                                    setActiveColumnFilter(null);
-                                                                                }}
-                                                                                className="w-full text-left px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-50"
-                                                                            >
-                                                                                Clear Filter
+                                                                        <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+                                                                            <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest">{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
+                                                                            <button onClick={() => setActiveColumnFilter(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors">
+                                                                                <X size={10} />
                                                                             </button>
                                                                         </div>
+                                                                        <div className="overflow-y-auto custom-scrollbar flex-1 py-1">
+                                                                            {(() => {
+                                                                                let availableValues: { label: string, value: string }[] = [];
+                                                                                if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
+                                                                                    availableValues = col.options.map((o: any) => ({ label: o.label, value: o.label }));
+                                                                                } else {
+                                                                                    const vals = new Set<string>();
+                                                                                    (data?.responses || []).forEach(res => {
+                                                                                        if (col.id === "__contributor") {
+                                                                                            if (res.submittedByName) vals.add(res.submittedByName);
+                                                                                        } else {
+                                                                                            const v = getCellValue(res.id, col.id, col.isInternal);
+                                                                                            if (v) vals.add(v.toString());
+                                                                                        }
+                                                                                    });
+                                                                                    availableValues = Array.from(vals)
+                                                                                        .filter(Boolean)
+                                                                                        .sort()
+                                                                                        .map(v => {
+                                                                                            let label = v;
+                                                                                            if (col.type === "date") {
+                                                                                                label = safeFormat(v, "dd MMM yyyy");
+                                                                                            }
+                                                                                            return { label, value: v };
+                                                                                        });
+                                                                                }
+
+                                                                                if (availableValues.length === 0) {
+                                                                                    return <div className="px-3 py-4 text-center text-xs text-slate-400">No data found</div>;
+                                                                                }
+
+                                                                                return availableValues.map(opt => {
+                                                                                    const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={opt.value}
+                                                                                            onClick={() => {
+                                                                                                if (isSelected) {
+                                                                                                    setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
+                                                                                                } else {
+                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: 'equals', val: opt.value }]);
+                                                                                                }
+                                                                                            }}
+                                                                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 group/btn"
+                                                                                        >
+                                                                                            <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-100 border-slate-300 group-hover/btn:border-indigo-400'}`}>
+                                                                                                {isSelected && <Check size={8} className="text-white relative top-[0.5px]" strokeWidth={3} />}
+                                                                                            </div>
+                                                                                            <span className={`text-[11px] truncate tracking-normal normal-case transition-colors ${isSelected ? 'font-black text-slate-900' : 'font-bold text-slate-600'}`} title={opt.label}>
+                                                                                                {opt.label}
+                                                                                            </span>
+                                                                                        </button>
+                                                                                    );
+                                                                                });
+                                                                            })()}
+                                                                        </div>
+                                                                        {conditions.some(c => c.colId === col.id) && (
+                                                                            <div className="p-2 border-t border-slate-100 bg-slate-50 shrink-0">
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        setConditions(prev => prev.filter(c => c.colId !== col.id));
+                                                                                    }}
+                                                                                    className="w-full text-center py-1 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 rounded text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                                                                >
+                                                                                    Clear Filter
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
