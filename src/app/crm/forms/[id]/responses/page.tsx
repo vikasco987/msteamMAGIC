@@ -1738,7 +1738,7 @@ export default function CRMSpreadsheetPage() {
                                                                                     <div>
                                                                                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Specific Date</span>
                                                                                         <div className="flex gap-2">
-                                                                                            <input 
+                                                                                            <input
                                                                                                 type="date"
                                                                                                 className="flex-1 text-[10px] font-bold text-slate-600 p-1.5 bg-white border border-slate-200 rounded outline-none focus:border-indigo-500"
                                                                                                 onChange={(e) => {
@@ -1754,20 +1754,20 @@ export default function CRMSpreadsheetPage() {
                                                                                     </div>
                                                                                     <div className="grid grid-cols-2 gap-2">
                                                                                         <div>
-                                                                                           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">After</span>
-                                                                                           <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">After</span>
+                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'after'), { colId: col.id, op: 'after', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'after')));
-                                                                                           }} />
+                                                                                            }} />
                                                                                         </div>
                                                                                         <div>
-                                                                                           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Before</span>
-                                                                                           <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Before</span>
+                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'before'), { colId: col.id, op: 'before', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'before')));
-                                                                                           }} />
+                                                                                            }} />
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
@@ -2030,6 +2030,17 @@ export default function CRMSpreadsheetPage() {
                                                                                 <IndianRupee size={10} className="text-slate-400" />
                                                                                 {parseFloat(val).toLocaleString('en-IN')}
                                                                             </span>
+                                                                        ) : col.type === "file" && val ? (
+                                                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                                                <a href={val} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors shrink-0">
+                                                                                    <ExternalLink size={10} />
+                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">View</span>
+                                                                                </a>
+                                                                                <a href={val.replace('/upload/', '/upload/fl_attachment/')} download className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 hover:bg-emerald-100 transition-colors shrink-0">
+                                                                                    <Download size={10} />
+                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">Save</span>
+                                                                                </a>
+                                                                            </div>
                                                                         ) : (
                                                                             <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
                                                                         )}

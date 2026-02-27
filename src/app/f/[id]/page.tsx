@@ -11,7 +11,8 @@ import {
     Globe,
     ShieldCheck,
     Maximize2,
-    Edit3
+    Edit3,
+    UploadCloud
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -48,6 +49,35 @@ export default function PublicFormPage() {
     const [submitted, setSubmitted] = useState(false);
     const [values, setValues] = useState<Record<string, string>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [uploadingFields, setUploadingFields] = useState<Record<string, boolean>>({});
+
+    const handleFileUpload = async (fieldId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setUploadingFields(prev => ({ ...prev, [fieldId]: true }));
+        const loadingToast = toast.loading("Uploading file to secure cloud...");
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) throw new Error("Upload failed");
+
+            const data = await res.json();
+            setValues(prev => ({ ...prev, [fieldId]: data.url }));
+            toast.success("File uploaded successfully", { id: loadingToast });
+        } catch (err) {
+            toast.error("File upload failed", { id: loadingToast });
+        } finally {
+            setUploadingFields(prev => ({ ...prev, [fieldId]: false }));
+        }
+    };
 
     useEffect(() => {
         if (searchParams.get("fullview") === "true") {
@@ -241,6 +271,39 @@ export default function PublicFormPage() {
                                         className={`w-full p-8 bg-slate-50 border-2 rounded-[40px] font-bold text-slate-700 outline-none transition-all min-h-[160px] resize-none
                                             ${errors[field.id] ? 'border-rose-100 bg-rose-50' : 'border-transparent focus:border-indigo-600 focus:bg-white'}`}
                                     />
+                                ) : field.type === "file" ? (
+                                    <div className={`relative flex flex-col items-center justify-center w-full p-8 bg-slate-50 border-2 border-dashed rounded-[30px] transition-all
+                                        ${errors[field.id] ? 'border-rose-300 bg-rose-50' : 'border-slate-300 hover:border-indigo-500 hover:bg-white'}`}>
+
+                                        {uploadingFields[field.id] ? (
+                                            <div className="flex flex-col items-center">
+                                                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-3" />
+                                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Uploading to Cloud...</span>
+                                            </div>
+                                        ) : values[field.id] ? (
+                                            <div className="flex flex-col items-center w-full shrink-0">
+                                                <CheckCircle2 className="w-10 h-10 text-emerald-500 mb-2" />
+                                                <span className="text-sm font-bold text-slate-700 truncate max-w-full px-4">Document Ready</span>
+                                                <a href={values[field.id]} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase text-indigo-600 tracking-widest mt-2 hover:underline">
+                                                    Preview Upload
+                                                </a>
+                                                <button type="button" onClick={() => setValues(prev => ({ ...prev, [field.id]: "" }))} className="text-[10px] font-black uppercase text-rose-500 tracking-widest mt-4">
+                                                    Remove & Retake
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <UploadCloud className="w-10 h-10 text-slate-400 mb-3" />
+                                                <span className="text-sm font-bold text-slate-600 truncate mb-1">Upload {field.label}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Click to browse file</span>
+                                                <input
+                                                    type="file"
+                                                    onChange={(e) => handleFileUpload(field.id, e)}
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                />
+                                            </>
+                                        )}
+                                    </div>
                                 ) : (
                                     <input
                                         type={field.type === "number" || field.type === "phone" ? "text" : field.type}

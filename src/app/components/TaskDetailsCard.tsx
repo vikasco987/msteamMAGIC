@@ -329,14 +329,20 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
           <div className="flex justify-between items-end">
             <div className="space-y-1">
               {displayAssignerName !== "—" && (
-                <p className="text-[10px] font-medium text-slate-400">
-                  By <span className="text-slate-600 font-bold">{displayAssignerName}</span>
-                </p>
+                <div className="flex flex-col">
+                  <p className="text-[10px] font-medium text-slate-400">
+                    By <span className="text-slate-600 font-bold">{displayAssignerName}</span>
+                  </p>
+                  {displayAssignerEmail && <p className="text-[9px] text-slate-400 lowercase">{displayAssignerEmail}</p>}
+                </div>
               )}
               {displayAssigneeName !== "—" && (
-                <p className="text-[10px] font-medium text-slate-400">
-                  To <span className="text-indigo-600 font-bold">{displayAssigneeName}</span>
-                </p>
+                <div className="flex flex-col mt-1">
+                  <p className="text-[10px] font-medium text-slate-400">
+                    To <span className="text-indigo-600 font-bold">{displayAssigneeName}</span>
+                  </p>
+                  {displayAssigneeEmail && <p className="text-[9px] text-indigo-400 lowercase">{displayAssigneeEmail}</p>}
+                </div>
               )}
             </div>
             <p className="text-[9px] font-bold text-slate-300 uppercase">
