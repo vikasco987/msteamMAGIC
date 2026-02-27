@@ -1465,63 +1465,6 @@ export default function CRMSpreadsheetPage() {
                                         <span className="text-[9px] font-black text-white uppercase tracking-widest">Master Auth</span>
                                     </div>
                                 )}
-                                {(() => {
-                                    const visibleUsers = data?.form?.visibleToUsers || [];
-                                    const visibleRoles = data?.form?.visibleToRoles || [];
-
-                                    const allWithAccess = teamMembers.filter(m =>
-                                        visibleUsers.includes(m.clerkId) ||
-                                        (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
-                                        m.role === 'ADMIN' || m.role === 'MASTER' ||
-                                        (visibleUsers.length === 0 && visibleRoles.length === 0)
-                                    );
-
-                                    if (allWithAccess.length === 0) return null;
-
-                                    return (
-                                        <div className="flex -space-x-1.5 overflow-visible group/team relative cursor-pointer ml-3">
-                                            {allWithAccess.slice(0, 5).map((m) => {
-                                                const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
-                                                return (
-                                                    <div key={m.clerkId} className="inline-flex h-6 w-6 rounded-full ring-2 ring-white bg-slate-50 items-center justify-center text-[9px] font-black text-slate-700 shadow-sm border border-slate-200 shrink-0">
-                                                        {initial}
-                                                    </div>
-                                                );
-                                            })}
-                                            {allWithAccess.length > 5 && (
-                                                <div className="inline-flex h-6 w-6 rounded-full ring-2 ring-white bg-slate-100 items-center justify-center text-[8px] font-black text-slate-500 shadow-sm border border-slate-200 shrink-0">
-                                                    +{allWithAccess.length - 5}
-                                                </div>
-                                            )}
-                                            <div className="absolute top-8 left-0 z-[100] w-[260px] bg-slate-900 border border-slate-700 shadow-xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible transition-all">
-                                                <div className="flex items-center gap-2 mb-2 border-b border-slate-700 pb-2">
-                                                    <Users size={12} className="text-slate-400" />
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Who Has Access ({allWithAccess.length})</span>
-                                                </div>
-                                                <div className="space-y-1 mt-2 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                                    {allWithAccess.map(m => {
-                                                        const isExplicit = visibleUsers.includes(m.clerkId);
-                                                        const byRole = m.role && visibleRoles.includes(m.role.toUpperCase());
-                                                        return (
-                                                            <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 transition-colors">
-                                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0">
-                                                                    {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
-                                                                </div>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="flex items-center justify-between gap-2">
-                                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
-                                                                        {m.role && <span className="text-[7px] px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block">{m.role}</span>}
-                                                                    </div>
-                                                                    <p className="text-[8px] text-slate-400 truncate mt-0.5 leading-none">{m?.email || 'No email'}</p>
-                                                                </div>
-                                                            </div>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
                             </div>
 
                             {/* Fast View Switchers */}
@@ -1689,6 +1632,69 @@ export default function CRMSpreadsheetPage() {
 
             {/* Matrix Console */}
             <main className="flex-1 overflow-hidden bg-slate-50 relative">
+
+                {/* FLOATING ACCESS DOCK (Mac OS / Premium SaaS Style) */}
+                {(() => {
+                    const visibleUsers = data?.form?.visibleToUsers || [];
+                    const visibleRoles = data?.form?.visibleToRoles || [];
+
+                    const allWithAccess = teamMembers.filter(m =>
+                        visibleUsers.includes(m.clerkId) ||
+                        (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
+                        m.role === 'ADMIN' || m.role === 'MASTER' ||
+                        (visibleUsers.length === 0 && visibleRoles.length === 0)
+                    );
+
+                    if (allWithAccess.length === 0) return null;
+
+                    return (
+                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-4 py-2 bg-slate-900/95 backdrop-blur shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] rounded-full border border-slate-700/50 group/team cursor-pointer hover:bg-slate-900 transition-all hover:scale-[1.02]">
+                            <div className="flex items-center gap-2 border-r border-slate-700/50 pr-4">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Shared With</span>
+                            </div>
+                            <div className="flex -space-x-1.5 overflow-visible pl-1">
+                                {allWithAccess.slice(0, 5).map((m) => {
+                                    const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
+                                    return (
+                                        <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200">
+                                            {initial}
+                                        </div>
+                                    );
+                                })}
+                                {allWithAccess.length > 5 && (
+                                    <div className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-indigo-600 items-center justify-center text-[9px] font-black text-white shadow-sm border border-indigo-500 shrink-0 transition-transform group-hover/team:-translate-y-1">
+                                        +{allWithAccess.length - 5}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Center-Bottom Tooltip */}
+                            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom pointer-events-none">
+                                <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                    {allWithAccess.map(m => {
+                                        return (
+                                            <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
+                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900">
+                                                    {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
+                                                        {m.role && <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block border border-indigo-500/30 font-black tracking-widest">{m.role}</span>}
+                                                    </div>
+                                                    <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m?.email || 'No email'}</p>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                                {/* Triangle arrow indicating down */}
+                                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 border-b border-r border-slate-700 rotate-45" />
+                            </div>
+                        </div>
+                    );
+                })()}
                 <AnimatePresence mode="wait">
                     {currentView === "table" ? (
                         <motion.div
