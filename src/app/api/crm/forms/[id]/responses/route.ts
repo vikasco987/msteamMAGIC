@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, currentUser } from "@clerk/nextjs/server";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Submit a response (Public or Internal)
 export async function POST(
     req: NextRequest,
@@ -426,7 +429,7 @@ export async function DELETE(
             });
             return NextResponse.json({ success: true, deleted: ids.length });
         } else if (responseId) {
-            await prisma.formResponse.delete({
+            await prisma.formResponse.deleteMany({
                 where: {
                     id: responseId,
                     formId: formId

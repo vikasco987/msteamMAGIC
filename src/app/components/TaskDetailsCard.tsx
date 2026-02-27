@@ -269,6 +269,7 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
           <FieldWithCopy label="🏪 Shop" value={cf.shopName} />
           <FieldWithCopy label="🏷️ Outlet" value={cf.outletName} />
           <FieldWithCopy label="📞 Phone" value={cf.phone} />
+          <FieldWithCopy label="📧 Email" value={cf.email} />
           <FieldWithCopy label="👤 Customer" value={cf.customerName} />
           <FieldWithCopy label="💰 Package" value={cf.packageAmount} />
 
@@ -306,7 +307,7 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
         {/* Attachments Section */}
         {task.attachments && task.attachments.length > 0 && (
           <div className="mt-3 pt-3 border-t border-slate-100">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Attachments</p>
+            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Attachments</p>
             <div className="grid grid-cols-1 gap-1.5">
               {task.attachments.map((url, i) => {
                 const label = getLabelFromUrl(url);
@@ -330,22 +331,22 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
             <div className="space-y-1">
               {displayAssignerName !== "—" && (
                 <div className="flex flex-col">
-                  <p className="text-[10px] font-medium text-slate-400">
-                    By <span className="text-slate-600 font-bold">{displayAssignerName}</span>
+                  <p className="text-[10px] font-medium text-slate-600">
+                    By <span className="text-slate-800 font-bold">{displayAssignerName}</span>
                   </p>
-                  {displayAssignerEmail && <p className="text-[9px] text-slate-400 lowercase">{displayAssignerEmail}</p>}
+                  {displayAssignerEmail && <p className="text-[9px] text-slate-600 lowercase">{displayAssignerEmail}</p>}
                 </div>
               )}
               {displayAssigneeName !== "—" && (
                 <div className="flex flex-col mt-1">
-                  <p className="text-[10px] font-medium text-slate-400">
+                  <p className="text-[10px] font-medium text-slate-600">
                     To <span className="text-indigo-600 font-bold">{displayAssigneeName}</span>
                   </p>
-                  {displayAssigneeEmail && <p className="text-[9px] text-indigo-400 lowercase">{displayAssigneeEmail}</p>}
+                  {displayAssigneeEmail && <p className="text-[9px] text-indigo-500 lowercase">{displayAssigneeEmail}</p>}
                 </div>
               )}
             </div>
-            <p className="text-[9px] font-bold text-slate-300 uppercase">
+            <p className="text-[9px] font-bold text-slate-500 uppercase">
               {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : ""}
             </p>
           </div>

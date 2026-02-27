@@ -710,6 +710,9 @@ import { users } from "@clerk/clerk-sdk-node";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Define an interface for the metadata that contains the role
 interface UserPublicMetadata {
   role?: string; // Role can be a string or undefined
