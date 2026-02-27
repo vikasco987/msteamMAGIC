@@ -888,16 +888,21 @@ export default function CRMSpreadsheetPage() {
                             case "today": {
                                 const d = new Date(cellVal);
                                 const now = new Date();
-                                return d.toDateString() === now.toDateString();
+                                return !isNaN(d.getTime()) && d.toDateString() === now.toDateString();
                             }
                             case "this_week": {
                                 const d = new Date(cellVal);
                                 const now = new Date();
                                 const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-                                return d >= startOfWeek;
+                                return !isNaN(d.getTime()) && d >= startOfWeek;
                             }
-                            case "before": return new Date(cellVal) < new Date(cond.val);
-                            case "after": return new Date(cellVal) > new Date(cond.val);
+                            case "before": return !isNaN(new Date(cellVal).getTime()) && new Date(cellVal) < new Date(cond.val);
+                            case "after": return !isNaN(new Date(cellVal).getTime()) && new Date(cellVal) > new Date(cond.val);
+                            case "exact_date": {
+                                const d = new Date(cellVal);
+                                const target = new Date(cond.val);
+                                return !isNaN(d.getTime()) && !isNaN(target.getTime()) && d.toDateString() === target.toDateString();
+                            }
 
                             default: return true;
                         }
@@ -1714,6 +1719,59 @@ export default function CRMSpreadsheetPage() {
                                                                             </button>
                                                                         </div>
                                                                         <div className="overflow-y-auto custom-scrollbar flex-1 py-1">
+                                                                            {col.type === "date" && (
+                                                                                <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-3 shrink-0">
+                                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                                        <button
+                                                                                            onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'today', val: '' }])}
+                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'today') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                                                        >
+                                                                                            Today
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'this_week', val: '' }])}
+                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'this_week') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                                                        >
+                                                                                            This Week
+                                                                                        </button>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Specific Date</span>
+                                                                                        <div className="flex gap-2">
+                                                                                            <input 
+                                                                                                type="date"
+                                                                                                className="flex-1 text-[10px] font-bold text-slate-600 p-1.5 bg-white border border-slate-200 rounded outline-none focus:border-indigo-500"
+                                                                                                onChange={(e) => {
+                                                                                                    const val = e.target.value;
+                                                                                                    if (val) {
+                                                                                                        setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'exact_date'), { colId: col.id, op: 'exact_date', val }]);
+                                                                                                    } else {
+                                                                                                        setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'exact_date')));
+                                                                                                    }
+                                                                                                }}
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div className="grid grid-cols-2 gap-2">
+                                                                                        <div>
+                                                                                           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">After</span>
+                                                                                           <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                                const val = e.target.value;
+                                                                                                if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'after'), { colId: col.id, op: 'after', val }]);
+                                                                                                else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'after')));
+                                                                                           }} />
+                                                                                        </div>
+                                                                                        <div>
+                                                                                           <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Before</span>
+                                                                                           <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                                const val = e.target.value;
+                                                                                                if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'before'), { colId: col.id, op: 'before', val }]);
+                                                                                                else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'before')));
+                                                                                           }} />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
                                                                                 if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
