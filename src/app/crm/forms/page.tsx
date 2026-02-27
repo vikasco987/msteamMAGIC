@@ -19,7 +19,8 @@ import {
     ShieldCheck,
     Check,
     X,
-    UserPlus
+    UserPlus,
+    Edit3
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -295,6 +296,15 @@ export default function CRMFormsList() {
                                             >
                                                 <Database size={14} className="text-indigo-400" /> View Data
                                             </Link>
+                                            {isMaster && (
+                                                <Link
+                                                    href={`/crm/forms/new?edit=${form.id}`}
+                                                    className="p-4 bg-indigo-50 text-indigo-600 rounded-[20px] hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                                                    title="Edit Form"
+                                                >
+                                                    <Edit3 size={16} />
+                                                </Link>
+                                            )}
                                             <button
                                                 onClick={() => copyToClipboard(form.id)}
                                                 className="p-4 bg-slate-100 text-slate-500 rounded-[20px] hover:bg-indigo-600 hover:text-white transition-all shadow-lg shadow-slate-200"
