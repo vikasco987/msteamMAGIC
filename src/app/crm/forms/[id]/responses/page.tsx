@@ -1465,6 +1465,63 @@ export default function CRMSpreadsheetPage() {
                                         <span className="text-[9px] font-black text-white uppercase tracking-widest">Master Auth</span>
                                     </div>
                                 )}
+                                {(() => {
+                                    const visibleUsers = data?.form?.visibleToUsers || [];
+                                    const visibleRoles = data?.form?.visibleToRoles || [];
+
+                                    const allWithAccess = teamMembers.filter(m =>
+                                        visibleUsers.includes(m.clerkId) ||
+                                        (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
+                                        m.role === 'ADMIN' || m.role === 'MASTER' ||
+                                        (visibleUsers.length === 0 && visibleRoles.length === 0)
+                                    );
+
+                                    if (allWithAccess.length === 0) return null;
+
+                                    return (
+                                        <div className="flex -space-x-1.5 overflow-visible group/team relative cursor-pointer ml-3">
+                                            {allWithAccess.slice(0, 5).map((m) => {
+                                                const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
+                                                return (
+                                                    <div key={m.clerkId} className="inline-flex h-6 w-6 rounded-full ring-2 ring-white bg-slate-50 items-center justify-center text-[9px] font-black text-slate-700 shadow-sm border border-slate-200 shrink-0">
+                                                        {initial}
+                                                    </div>
+                                                );
+                                            })}
+                                            {allWithAccess.length > 5 && (
+                                                <div className="inline-flex h-6 w-6 rounded-full ring-2 ring-white bg-slate-100 items-center justify-center text-[8px] font-black text-slate-500 shadow-sm border border-slate-200 shrink-0">
+                                                    +{allWithAccess.length - 5}
+                                                </div>
+                                            )}
+                                            <div className="absolute top-8 left-0 z-[100] w-[260px] bg-slate-900 border border-slate-700 shadow-xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible transition-all">
+                                                <div className="flex items-center gap-2 mb-2 border-b border-slate-700 pb-2">
+                                                    <Users size={12} className="text-slate-400" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">Who Has Access ({allWithAccess.length})</span>
+                                                </div>
+                                                <div className="space-y-1 mt-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                                    {allWithAccess.map(m => {
+                                                        const isExplicit = visibleUsers.includes(m.clerkId);
+                                                        const byRole = m.role && visibleRoles.includes(m.role.toUpperCase());
+                                                        return (
+                                                            <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 transition-colors">
+                                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0">
+                                                                    {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
+                                                                        {m.role && <span className="text-[7px] px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block">{m.role}</span>}
+                                                                    </div>
+                                                                    <p className="text-[8px] text-slate-400 truncate mt-0.5 leading-none">{m?.email || 'No email'}</p>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Fast View Switchers */}
