@@ -681,8 +681,9 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
+            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
         ];
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
@@ -726,9 +727,9 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
+            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" },
-            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
         ];
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
@@ -1956,9 +1957,9 @@ export default function CRMSpreadsheetPage() {
                                                                 className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
                                                             >
                                                                 {assignedUsers.length === 0 ? (
-                                                                    <div className="text-[10px] font-bold text-slate-400">Unassigned</div>
+                                                                    <div className="text-[10px] font-bold text-slate-400 mt-1">Unassigned</div>
                                                                 ) : (
-                                                                    <div className="flex -space-x-2 overflow-hidden">
+                                                                    <div className="flex -space-x-2 overflow-visible group/team relative cursor-pointer py-1">
                                                                         {assignedUsers.map((uid) => {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
                                                                             const initial = m ? m.email[0].toUpperCase() : '?';
@@ -1969,6 +1970,25 @@ export default function CRMSpreadsheetPage() {
                                                                                 </div>
                                                                             );
                                                                         })}
+                                                                        <div className="absolute top-10 left-0 z-[100] w-[220px] bg-slate-900 border border-slate-700 shadow-xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible transition-all">
+                                                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 block border-b border-slate-700 pb-2">Assigned Protocols ({assignedUsers.length})</span>
+                                                                            <div className="space-y-1 mt-2">
+                                                                                {assignedUsers.map(uid => {
+                                                                                    const m = teamMembers.find(t => t.clerkId === uid);
+                                                                                    return (
+                                                                                        <div key={`details-${uid}`} className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 transition-colors">
+                                                                                            <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0">
+                                                                                                {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
+                                                                                            </div>
+                                                                                            <div className="min-w-0 flex-1">
+                                                                                                <p className="text-[10px] font-black text-white truncate uppercase tracking-widest">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
+                                                                                                <p className="text-[8px] text-slate-400 truncate">{m?.email || 'No email'}</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                             </td>
