@@ -2814,6 +2814,9 @@ export default function CRMSpreadsheetPage() {
                                                             }}
                                                             className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${isHidden ? 'border-slate-200 bg-white' : 'border-indigo-600 bg-indigo-600 shadow-lg shadow-indigo-100'}`}
                                                         >
+                                                            {!isHidden && <Check size={10} className="text-white" />}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
@@ -2828,585 +2831,585 @@ export default function CRMSpreadsheetPage() {
                                     </button>
                                 </div>
                             </motion.div>
-                                </div>
+                        </div>
                     )}
-                            </AnimatePresence>
+            </AnimatePresence>
 
-                            <style jsx global>{`
+            <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             `}</style>
 
-                            {/* Access Control Modal */}
-                            <AnimatePresence>
-                                {isAccessModalOpen && (
-                                    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
-                                        <motion.div
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            onClick={() => setIsAccessModalOpen(false)}
-                                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
-                                        />
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                                            className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden relative"
-                                        >
-                                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
-                                                <div>
-                                                    <h3 className="text-sm font-black uppercase tracking-[0.2em]">Security Matrix Panel</h3>
-                                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Define visibility and access permissions</p>
-                                                </div>
-                                                <button onClick={() => setIsAccessModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-                                                    <X size={16} className="text-slate-400" />
-                                                </button>
-                                            </div>
+            {/* Access Control Modal */}
+            <AnimatePresence>
+                {isAccessModalOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAccessModalOpen(false)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden relative"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-[0.2em]">Security Matrix Panel</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Define visibility and access permissions</p>
+                                </div>
+                                <button onClick={() => setIsAccessModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+                                    <X size={16} className="text-slate-400" />
+                                </button>
+                            </div>
 
-                                            <div className="flex border-b border-slate-100 bg-[#F9FAFB] p-2">
-                                                <button
-                                                    onClick={() => setAccessTab("GLOBAL")}
-                                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "GLOBAL" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
-                                                >
-                                                    <ShieldCheck size={14} /> Global Protocol
-                                                </button>
-                                                <button
-                                                    onClick={() => setAccessTab("COLUMNS")}
-                                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "COLUMNS" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
-                                                >
-                                                    <Table size={14} /> Column Matrix
-                                                </button>
-                                            </div>
+                            <div className="flex border-b border-slate-100 bg-[#F9FAFB] p-2">
+                                <button
+                                    onClick={() => setAccessTab("GLOBAL")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "GLOBAL" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                                >
+                                    <ShieldCheck size={14} /> Global Protocol
+                                </button>
+                                <button
+                                    onClick={() => setAccessTab("COLUMNS")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${accessTab === "COLUMNS" ? "bg-white text-slate-900 shadow-sm border border-slate-200" : "text-slate-400 hover:text-slate-600"}`}
+                                >
+                                    <Table size={14} /> Column Matrix
+                                </button>
+                            </div>
 
-                                            <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                                                {accessTab === "GLOBAL" ? (
-                                                    <>
-                                                        {/* Role Selection */}
-                                                        <div>
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                                                                <ShieldCheck size={12} /> Role Based Protocol
-                                                            </h4>
-                                                            <div className="grid grid-cols-2 gap-3">
-                                                                {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
-                                                                    const isActive = permRoles.includes(role);
-                                                                    return (
-                                                                        <button
-                                                                            key={role}
-                                                                            onClick={() => setPermRoles(prev => isActive ? prev.filter(r => r !== role) : [...prev, role])}
-                                                                            className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 hover:border-slate-200'}`}
-                                                                        >
-                                                                            <span className="text-[11px] font-black uppercase tracking-widest">{role}</span>
-                                                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'bg-white border-white' : 'border-slate-200 bg-slate-50'}`}>
-                                                                                {isActive && <Check size={10} className="text-slate-900" />}
-                                                                            </div>
-                                                                        </button>
-                                                                    );
-                                                                })}
+                            <div className="p-8 space-y-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                {accessTab === "GLOBAL" ? (
+                                    <>
+                                        {/* Role Selection */}
+                                        <div>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                                <ShieldCheck size={12} /> Role Based Protocol
+                                            </h4>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
+                                                    const isActive = permRoles.includes(role);
+                                                    return (
+                                                        <button
+                                                            key={role}
+                                                            onClick={() => setPermRoles(prev => isActive ? prev.filter(r => r !== role) : [...prev, role])}
+                                                            className={`p-4 rounded-xl border-2 transition-all flex items-center justify-between group ${isActive ? 'border-slate-900 bg-slate-900 text-white shadow-xl' : 'border-slate-100 hover:border-slate-200'}`}
+                                                        >
+                                                            <span className="text-[11px] font-black uppercase tracking-widest">{role}</span>
+                                                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isActive ? 'bg-white border-white' : 'border-slate-200 bg-slate-50'}`}>
+                                                                {isActive && <Check size={10} className="text-slate-900" />}
                                                             </div>
-                                                        </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
 
-                                                        <div className="h-[1px] bg-slate-100" />
+                                        <div className="h-[1px] bg-slate-100" />
 
-                                                        {/* User Selection */}
-                                                        <div>
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                                                                <UserPlus size={12} /> Personalized Exceptions
-                                                            </h4>
+                                        {/* User Selection */}
+                                        <div>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                                                <UserPlus size={12} /> Personalized Exceptions
+                                            </h4>
 
-                                                            <div className="relative mb-4">
-                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                                                <input
-                                                                    value={accessUserSearch}
-                                                                    onChange={(e) => searchAccessUsers(e.target.value)}
-                                                                    placeholder="Search by name or email..."
-                                                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
-                                                                />
+                                            <div className="relative mb-4">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                <input
+                                                    value={accessUserSearch}
+                                                    onChange={(e) => searchAccessUsers(e.target.value)}
+                                                    placeholder="Search by name or email..."
+                                                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                                />
 
-                                                                <AnimatePresence>
-                                                                    {accessUserResults.length > 0 && (
-                                                                        <motion.div
-                                                                            initial={{ opacity: 0, y: 10 }}
-                                                                            animate={{ opacity: 1, y: 0 }}
-                                                                            className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
-                                                                        >
-                                                                            {accessUserResults.map(u => (
-                                                                                <button
-                                                                                    key={u.clerkId}
-                                                                                    onClick={() => {
-                                                                                        if (!permUsers.includes(u.clerkId)) {
-                                                                                            setPermUsers(prev => [...prev, u.clerkId]);
-                                                                                        }
-                                                                                        setAccessUserSearch("");
-                                                                                        setAccessUserResults([]);
-                                                                                    }}
-                                                                                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
-                                                                                >
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
-                                                                                        <div className="text-left">
-                                                                                            <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
-                                                                                            <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <Plus size={14} className="text-slate-300" />
-                                                                                </button>
-                                                                            ))}
-                                                                        </motion.div>
-                                                                    )}
-                                                                </AnimatePresence>
-                                                            </div>
-
-                                                            <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                                                {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto">No unique users specified</p>}
-                                                                {permUsers.map(uid => (
-                                                                    <div key={uid} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm group">
-                                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{uid.slice(0, 12)}...</span>
-                                                                        <button
-                                                                            onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
-                                                                            className="p-1 hover:bg-rose-50 rounded-md transition-colors"
-                                                                        >
-                                                                            <X size={10} className="text-slate-400 group-hover:text-rose-500" />
-                                                                        </button>
+                                                <AnimatePresence>
+                                                    {accessUserResults.length > 0 && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                        >
+                                                            {accessUserResults.map(u => (
+                                                                <button
+                                                                    key={u.clerkId}
+                                                                    onClick={() => {
+                                                                        if (!permUsers.includes(u.clerkId)) {
+                                                                            setPermUsers(prev => [...prev, u.clerkId]);
+                                                                        }
+                                                                        setAccessUserSearch("");
+                                                                        setAccessUserResults([]);
+                                                                    }}
+                                                                    className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                        <div className="text-left">
+                                                                            <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
+                                                                            <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
+                                                                        </div>
                                                                     </div>
+                                                                    <Plus size={14} className="text-slate-300" />
+                                                                </button>
+                                                            ))}
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                {permUsers.length === 0 && <p className="text-[10px] text-slate-400 font-bold m-auto">No unique users specified</p>}
+                                                {permUsers.map(uid => (
+                                                    <div key={uid} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm group">
+                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{uid.slice(0, 12)}...</span>
+                                                        <button
+                                                            onClick={() => setPermUsers(prev => prev.filter(id => id !== uid))}
+                                                            className="p-1 hover:bg-rose-50 rounded-md transition-colors"
+                                                        >
+                                                            <X size={10} className="text-slate-400 group-hover:text-rose-500" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">Target Role Protocol</p>
+                                                <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                                    {["ADMIN", "MASTER", "STAFF", "GUEST"].map(role => (
+                                                        <button
+                                                            key={role}
+                                                            onClick={() => { setSelectedRoleForGAC(role); setSelectedUserForGAC(null); }}
+                                                            className={`flex-1 py-2 text-[9px] font-black rounded-lg transition-all ${selectedRoleForGAC === role && !selectedUserForGAC ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                        >
+                                                            {role}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">User Specific Override</p>
+                                                <div className="relative">
+                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                                    <input
+                                                        value={accessUserSearch}
+                                                        onChange={(e) => searchAccessUsers(e.target.value)}
+                                                        placeholder="Search user ID or email..."
+                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
+                                                    />
+                                                    <AnimatePresence>
+                                                        {accessUserResults.length > 0 && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 10 }}
+                                                                animate={{ opacity: 1, y: 0 }}
+                                                                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                            >
+                                                                {accessUserResults.map(u => (
+                                                                    <button
+                                                                        key={u.clerkId}
+                                                                        onClick={() => {
+                                                                            setSelectedUserForGAC({ id: u.clerkId, email: u.email });
+                                                                            setAccessUserSearch("");
+                                                                            setAccessUserResults([]);
+                                                                        }}
+                                                                        className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
+                                                                    >
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                            <p className="text-[10px] font-bold text-slate-900 truncate">{u.email}</p>
+                                                                        </div>
+                                                                        <Plus size={12} className="text-slate-300" />
+                                                                    </button>
+                                                                ))}
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </div>
+                                                {selectedUserForGAC && (
+                                                    <div className="mt-2 flex items-center justify-between px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                                            <p className="text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Active Override: {selectedUserForGAC.email}</p>
+                                                        </div>
+                                                        <button onClick={() => setSelectedUserForGAC(null)} className="text-indigo-400 hover:text-indigo-600 transition-colors">
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Column Access Rights</p>
+                                            <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-50 shadow-sm bg-slate-50/30">
+                                                {allColumns.map(col => {
+                                                    const targetType = selectedUserForGAC ? 'users' : 'roles';
+                                                    const targetId = selectedUserForGAC ? selectedUserForGAC.id : selectedRoleForGAC;
+                                                    const currentPerm = colPermissions[targetType]?.[targetId]?.[col.id] || (col.isInternal ? "hide" : "read");
+
+                                                    const setPerm = (p: string) => {
+                                                        setColPermissions(prev => {
+                                                            const base = prev || { roles: {}, users: {} };
+                                                            return {
+                                                                ...base,
+                                                                [targetType]: {
+                                                                    ...(base[targetType] || {}),
+                                                                    [targetId]: {
+                                                                        ...(base[targetType]?.[targetId] || {}),
+                                                                        [col.id]: p
+                                                                    }
+                                                                }
+                                                            };
+                                                        });
+                                                    };
+
+                                                    return (
+                                                        <div key={col.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors group">
+                                                            <div>
+                                                                <p className="text-xs font-black text-slate-900 uppercase tracking-tighter">{col.label}</p>
+                                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{col.isInternal ? "Matrix Internal" : "Form Field"}</p>
+                                                            </div>
+                                                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                                                {[
+                                                                    { id: "hide", icon: EyeOff, label: "Hide" },
+                                                                    { id: "read", icon: Eye, label: "Read" },
+                                                                    { id: "edit", icon: ShieldCheck, label: "Full" }
+                                                                ].map(p => (
+                                                                    <button
+                                                                        key={p.id}
+                                                                        onClick={() => setPerm(p.id)}
+                                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-tighter transition-all ${currentPerm === p.id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+                                                                    >
+                                                                        <p.icon size={12} />
+                                                                        {p.label}
+                                                                    </button>
                                                                 ))}
                                                             </div>
                                                         </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="space-y-6">
-                                                        <div className="space-y-4">
-                                                            <div>
-                                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">Target Role Protocol</p>
-                                                                <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                                                    {["ADMIN", "MASTER", "STAFF", "GUEST"].map(role => (
-                                                                        <button
-                                                                            key={role}
-                                                                            onClick={() => { setSelectedRoleForGAC(role); setSelectedUserForGAC(null); }}
-                                                                            className={`flex-1 py-2 text-[9px] font-black rounded-lg transition-all ${selectedRoleForGAC === role && !selectedUserForGAC ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
-                                                                        >
-                                                                            {role}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-
-                                                            <div>
-                                                                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">User Specific Override</p>
-                                                                <div className="relative">
-                                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                                                    <input
-                                                                        value={accessUserSearch}
-                                                                        onChange={(e) => searchAccessUsers(e.target.value)}
-                                                                        placeholder="Search user ID or email..."
-                                                                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
-                                                                    />
-                                                                    <AnimatePresence>
-                                                                        {accessUserResults.length > 0 && (
-                                                                            <motion.div
-                                                                                initial={{ opacity: 0, y: 10 }}
-                                                                                animate={{ opacity: 1, y: 0 }}
-                                                                                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
-                                                                            >
-                                                                                {accessUserResults.map(u => (
-                                                                                    <button
-                                                                                        key={u.clerkId}
-                                                                                        onClick={() => {
-                                                                                            setSelectedUserForGAC({ id: u.clerkId, email: u.email });
-                                                                                            setAccessUserSearch("");
-                                                                                            setAccessUserResults([]);
-                                                                                        }}
-                                                                                        className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
-                                                                                    >
-                                                                                        <div className="flex items-center gap-3">
-                                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black">{u.email[0].toUpperCase()}</div>
-                                                                                            <p className="text-[10px] font-bold text-slate-900 truncate">{u.email}</p>
-                                                                                        </div>
-                                                                                        <Plus size={12} className="text-slate-300" />
-                                                                                    </button>
-                                                                                ))}
-                                                                            </motion.div>
-                                                                        )}
-                                                                    </AnimatePresence>
-                                                                </div>
-                                                                {selectedUserForGAC && (
-                                                                    <div className="mt-2 flex items-center justify-between px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                                                                            <p className="text-[9px] font-black text-indigo-700 uppercase tracking-tighter">Active Override: {selectedUserForGAC.email}</p>
-                                                                        </div>
-                                                                        <button onClick={() => setSelectedUserForGAC(null)} className="text-indigo-400 hover:text-indigo-600 transition-colors">
-                                                                            <X size={12} />
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-3">
-                                                            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Column Access Rights</p>
-                                                            <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-50 shadow-sm bg-slate-50/30">
-                                                                {allColumns.map(col => {
-                                                                    const targetType = selectedUserForGAC ? 'users' : 'roles';
-                                                                    const targetId = selectedUserForGAC ? selectedUserForGAC.id : selectedRoleForGAC;
-                                                                    const currentPerm = colPermissions[targetType]?.[targetId]?.[col.id] || (col.isInternal ? "hide" : "read");
-
-                                                                    const setPerm = (p: string) => {
-                                                                        setColPermissions(prev => {
-                                                                            const base = prev || { roles: {}, users: {} };
-                                                                            return {
-                                                                                ...base,
-                                                                                [targetType]: {
-                                                                                    ...(base[targetType] || {}),
-                                                                                    [targetId]: {
-                                                                                        ...(base[targetType]?.[targetId] || {}),
-                                                                                        [col.id]: p
-                                                                                    }
-                                                                                }
-                                                                            };
-                                                                        });
-                                                                    };
-
-                                                                    return (
-                                                                        <div key={col.id} className="p-4 flex items-center justify-between hover:bg-white transition-colors group">
-                                                                            <div>
-                                                                                <p className="text-xs font-black text-slate-900 uppercase tracking-tighter">{col.label}</p>
-                                                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{col.isInternal ? "Matrix Internal" : "Form Field"}</p>
-                                                                            </div>
-                                                                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-100">
-                                                                                {[
-                                                                                    { id: "hide", icon: EyeOff, label: "Hide" },
-                                                                                    { id: "read", icon: Eye, label: "Read" },
-                                                                                    { id: "edit", icon: ShieldCheck, label: "Full" }
-                                                                                ].map(p => (
-                                                                                    <button
-                                                                                        key={p.id}
-                                                                                        onClick={() => setPerm(p.id)}
-                                                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-tighter transition-all ${currentPerm === p.id ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
-                                                                                    >
-                                                                                        <p.icon size={12} />
-                                                                                        {p.label}
-                                                                                    </button>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                    );
+                                                })}
                                             </div>
-
-                                            <div className="p-6 bg-[#F9FAFB] border-t border-slate-100 flex justify-between items-center">
-                                                <p className="text-[10px] text-slate-400 font-bold max-w-[200px]">Changes will restrict or grant access to the entire matrix workspace.</p>
-                                                <div className="flex gap-3">
-                                                    <button
-                                                        onClick={() => setIsAccessModalOpen(false)}
-                                                        className="px-6 py-2.5 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:text-slate-900 transition-all"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button
-                                                        onClick={accessTab === "GLOBAL" ? handleSavePermissions : handleSaveColumnPermissions}
-                                                        className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center gap-2"
-                                                    >
-                                                        <ShieldCheck size={14} /> Commit Changes
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </motion.div>
+                                        </div>
                                     </div>
                                 )}
-                            </AnimatePresence>
+                            </div>
 
-                            <AnimatePresence>
-                                {isMounted && isAIFilterOpen && (
-                                    <motion.div
-                                        initial={{ opacity: 0, x: 300, scale: 0.95 }}
-                                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                                        exit={{ opacity: 0, x: 300, scale: 0.95 }}
-                                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                                        className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
+                            <div className="p-6 bg-[#F9FAFB] border-t border-slate-100 flex justify-between items-center">
+                                <p className="text-[10px] text-slate-400 font-bold max-w-[200px]">Changes will restrict or grant access to the entire matrix workspace.</p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setIsAccessModalOpen(false)}
+                                        className="px-6 py-2.5 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:text-slate-900 transition-all"
                                     >
-                                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
-                                                    <Sparkles size={18} />
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <h3 className="text-sm font-black text-slate-900 tracking-tighter">AI Assistant</h3>
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => setMessages([])}
-                                                    className="p-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
-                                                >
-                                                    Clear
-                                                </button>
-                                                <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                                    <X size={16} />
-                                                </button>
-                                            </div>
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={accessTab === "GLOBAL" ? handleSavePermissions : handleSaveColumnPermissions}
+                                        className="px-8 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 active:scale-95 flex items-center gap-2"
+                                    >
+                                        <ShieldCheck size={14} /> Commit Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isMounted && isAIFilterOpen && (
+                    <motion.div
+                        initial={{ opacity: 0, x: 300, scale: 0.95 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 300, scale: 0.95 }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                        className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
+                    >
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
+                                    <Sparkles size={18} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h3 className="text-sm font-black text-slate-900 tracking-tighter">AI Assistant</h3>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setMessages([])}
+                                    className="p-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                                >
+                                    Clear
+                                </button>
+                                <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
+                            {messages.length === 0 && (
+                                <div className="space-y-8 py-4">
+                                    <div className="flex flex-col items-center justify-center text-center space-y-3 opacity-80">
+                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
+                                            <Bot size={24} className="text-indigo-400" />
                                         </div>
-
-                                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
-                                            {messages.length === 0 && (
-                                                <div className="space-y-8 py-4">
-                                                    <div className="flex flex-col items-center justify-center text-center space-y-3 opacity-80">
-                                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
-                                                            <Bot size={24} className="text-indigo-400" />
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Intelligence Center</h4>
-                                                            <p className="text-[10px] font-bold text-slate-400 mt-1">Select a deep analysis strategy to begin</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-1 gap-3">
-                                                        {reportSuggestions.map((s, i) => (
-                                                            <button
-                                                                key={i}
-                                                                onClick={() => {
-                                                                    handleInputChange({ target: { value: s.query } } as any);
-                                                                    setTimeout(() => {
-                                                                        const form = document.getElementById("ai-chat-form") as HTMLFormElement;
-                                                                        if (form) form.requestSubmit();
-                                                                    }, 50);
-                                                                }}
-                                                                className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
-                                                            >
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">{s.title}</span>
-                                                                    <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                                                                </div>
-                                                                <p className="text-[10px] font-bold text-slate-400 mt-2 line-clamp-1 group-hover:text-slate-500 transition-colors">{s.query}</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {messages.map(m => (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: 10 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    key={m.id}
-                                                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-                                                >
-                                                    <div className={`max-w-[85%] p-4 rounded-[20px] ${m.role === 'user'
-                                                        ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
-                                                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
-                                                        }`}>
-                                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
-                                                            {typeof (m as any).content === 'string' ? (m as any).content : (String((m as any).ui || JSON.stringify((m as any).content || '')))}
-                                                        </div>
-
-                                                        {/* Render Tool Invocations nicely */}
-                                                        {Array.isArray(m.toolInvocations) && m.toolInvocations.map((toolInvocation: any) => {
-                                                            if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
-                                                                return (
-                                                                    <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
-                                                                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2 mb-2">
-                                                                            <Filter size={12} className="text-indigo-400" /> Filters Applied
-                                                                        </p>
-                                                                        <div className="flex flex-wrap gap-2">
-                                                                            {toolInvocation.result?.filtersApplied && Array.isArray(toolInvocation.result.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
-                                                                                <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
-                                                                                    <span className="text-indigo-400">{String(f.operator || f.op)}</span>
-                                                                                    <span>{String(f.value || f.val)}</span>
-                                                                                </span>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })}
-                                                    </div>
-                                                </motion.div>
-                                            ))}
-                                            {isAIFetching && (
-                                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                                                    <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
-                                                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
-                                                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
-                                                        <div className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                            <div ref={messagesEndRef} />
+                                        <div>
+                                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Intelligence Center</h4>
+                                            <p className="text-[10px] font-bold text-slate-400 mt-1">Select a deep analysis strategy to begin</p>
                                         </div>
-
-                                        <div className="p-4 bg-white border-t border-slate-100">
-                                            <form id="ai-chat-form" onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
-                                                <input
-                                                    value={input}
-                                                    onChange={handleInputChange}
-                                                    placeholder="Message AI..."
-                                                    className="w-full pl-5 pr-14 py-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all placeholder:text-slate-400"
-                                                    autoFocus
-                                                />
-                                                <button
-                                                    type="submit"
-                                                    disabled={!(input || "").trim() || isAIFetching}
-                                                    className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
-                                                >
-                                                    <ArrowUp size={16} />
-                                                </button>
-                                            </form>
-                                            <div className="mt-3 flex justify-between items-center px-2">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1"><Sparkles size={10} /> AI SDK V3</p>
-                                                <button
-                                                    onClick={(e) => { e.preventDefault(); handleGenerateReport(); }}
-                                                    disabled={isGeneratingReport}
-                                                    className="text-[9px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                                                >
-                                                    {isGeneratingReport ? "Analyzing..." : "Generate Full Report"} <ArrowUpRight size={10} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
-                            {/* AI Report Viewer Modal */}
-                            <AnimatePresence>
-                                {isAIReportOpen && (
-                                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAIReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-[32px] shadow-2xl p-8 border border-white custom-scrollbar">
-                                            <div className="flex justify-between items-start mb-6 sticky top-0 bg-white/80 backdrop-blur-md pt-2 pb-4 z-10 border-b border-slate-100">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-600 rounded-[24px]">
-                                                        <Activity size={32} />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <h3 className="text-xl font-black text-slate-900 tracking-tighter">AI Insight Report</h3>
-                                                            {isReportCached && (
-                                                                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-bold uppercase rounded-full border border-slate-200">Archived Analysis</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-3 mt-1">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Generated by Google Gemini</p>
-                                                            <button
-                                                                onClick={() => handleGenerateReport(true)}
-                                                                disabled={isGeneratingReport}
-                                                                className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 flex items-center gap-1 disabled:opacity-50"
-                                                            >
-                                                                <RefreshCw size={10} className={isGeneratingReport ? "animate-spin" : ""} />
-                                                                {isGeneratingReport ? "Analyzing..." : "Refresh"}
-                                                            </button>
-                                                            <div className="w-1 h-1 bg-slate-300 rounded-full mx-1" />
-                                                            <button
-                                                                onClick={() => handleDownloadPDF(aiReportHtml || "", "AI Insight Report")}
-                                                                className="text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-                                                            >
-                                                                <Download size={10} /> PDF
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <button onClick={() => setIsAIReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
-                                                    <X size={16} />
-                                                </button>
-                                            </div>
-
-                                            <div className="mt-4 text-slate-800 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: aiReportHtml || "No report content generated." }}></div>
-
-                                            <div className="mt-8 flex justify-end">
-                                                <button onClick={() => setIsAIReportOpen(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
-                                                    Dismiss Report
-                                                </button>
-                                            </div>
-                                        </motion.div>
                                     </div>
-                                )}
-                            </AnimatePresence>
 
-                            {/* Dynamic Report Modal (Simple Stats) */}
-                            <AnimatePresence>
-                                {isDynamicReportOpen && dynamicStats && (
-                                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsDynamicReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-2xl bg-white rounded-[32px] shadow-2xl p-8 border border-white">
-                                            <div className="flex justify-between items-start mb-6">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-600 rounded-[24px]">
-                                                        <BarChart3 size={32} />
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">Live Dynamic Report</h3>
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Real-time Data Matrix Aggregation</p>
-                                                    </div>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {reportSuggestions.map((s, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => {
+                                                    handleInputChange({ target: { value: s.query } } as any);
+                                                    setTimeout(() => {
+                                                        const form = document.getElementById("ai-chat-form") as HTMLFormElement;
+                                                        if (form) form.requestSubmit();
+                                                    }, 50);
+                                                }}
+                                                className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">{s.title}</span>
+                                                    <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={() => {
-                                                            const el = document.getElementById('dynamic-report-content');
-                                                            if (el) handleDownloadPDF(el.innerHTML, "Dynamic Analytics Report");
-                                                        }}
-                                                        className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1"
-                                                    >
-                                                        <Download size={12} /> PDF Export
-                                                    </button>
-                                                    <button onClick={() => setIsDynamicReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
-                                                        <X size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                                <p className="text-[10px] font-bold text-slate-400 mt-2 line-clamp-1 group-hover:text-slate-500 transition-colors">{s.query}</p>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {messages.map(m => (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    key={m.id}
+                                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                                >
+                                    <div className={`max-w-[85%] p-4 rounded-[20px] ${m.role === 'user'
+                                        ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
+                                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
+                                        }`}>
+                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
+                                            {typeof (m as any).content === 'string' ? (m as any).content : (String((m as any).ui || JSON.stringify((m as any).content || '')))}
+                                        </div>
 
-                                            <div id="dynamic-report-content" className="mt-4 space-y-6">
-                                                <div style={{ display: 'none' }} className="print-only-header">
-                                                    <h2>Dynamic CRM Report</h2>
-                                                    <p>Generated on: {new Date().toLocaleString()}</p>
-                                                    <hr style={{ margin: '20px 0' }} />
-                                                </div>
-
-                                                <div className="grid grid-cols-3 gap-4">
-                                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
-                                                        <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
-                                                    </div>
-                                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
-                                                        <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
-                                                    </div>
-                                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
-                                                        <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
-                                                    </div>
-                                                </div>
-
-                                                {Object.keys(dynamicStats.statusCounts).length > 0 && (
-                                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 mt-6">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
-                                                        <div className="space-y-3">
-                                                            {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-                                                                <div key={status} className="flex items-center justify-between">
-                                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
-                                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
-                                                                </div>
+                                        {/* Render Tool Invocations nicely */}
+                                        {Array.isArray(m.toolInvocations) && m.toolInvocations.map((toolInvocation: any) => {
+                                            if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
+                                                return (
+                                                    <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
+                                                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                            <Filter size={12} className="text-indigo-400" /> Filters Applied
+                                                        </p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {toolInvocation.result?.filtersApplied && Array.isArray(toolInvocation.result.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
+                                                                <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
+                                                                    <span className="text-indigo-400">{String(f.operator || f.op)}</span>
+                                                                    <span>{String(f.value || f.val)}</span>
+                                                                </span>
                                                             ))}
                                                         </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        </motion.div>
+                                                );
+                                            }
+                                            return null;
+                                        })}
+                                    </div>
+                                </motion.div>
+                            ))}
+                            {isAIFetching && (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                                    <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
+                                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
+                                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+                                        <div className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+                                    </div>
+                                </motion.div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        <div className="p-4 bg-white border-t border-slate-100">
+                            <form id="ai-chat-form" onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
+                                <input
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    placeholder="Message AI..."
+                                    className="w-full pl-5 pr-14 py-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all placeholder:text-slate-400"
+                                    autoFocus
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!(input || "").trim() || isAIFetching}
+                                    className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
+                                >
+                                    <ArrowUp size={16} />
+                                </button>
+                            </form>
+                            <div className="mt-3 flex justify-between items-center px-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1"><Sparkles size={10} /> AI SDK V3</p>
+                                <button
+                                    onClick={(e) => { e.preventDefault(); handleGenerateReport(); }}
+                                    disabled={isGeneratingReport}
+                                    className="text-[9px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                >
+                                    {isGeneratingReport ? "Analyzing..." : "Generate Full Report"} <ArrowUpRight size={10} />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* AI Report Viewer Modal */}
+            <AnimatePresence>
+                {isAIReportOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAIReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-[32px] shadow-2xl p-8 border border-white custom-scrollbar">
+                            <div className="flex justify-between items-start mb-6 sticky top-0 bg-white/80 backdrop-blur-md pt-2 pb-4 z-10 border-b border-slate-100">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-600 rounded-[24px]">
+                                        <Activity size={32} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-xl font-black text-slate-900 tracking-tighter">AI Insight Report</h3>
+                                            {isReportCached && (
+                                                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-bold uppercase rounded-full border border-slate-200">Archived Analysis</span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-1">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Generated by Google Gemini</p>
+                                            <button
+                                                onClick={() => handleGenerateReport(true)}
+                                                disabled={isGeneratingReport}
+                                                className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 flex items-center gap-1 disabled:opacity-50"
+                                            >
+                                                <RefreshCw size={10} className={isGeneratingReport ? "animate-spin" : ""} />
+                                                {isGeneratingReport ? "Analyzing..." : "Refresh"}
+                                            </button>
+                                            <div className="w-1 h-1 bg-slate-300 rounded-full mx-1" />
+                                            <button
+                                                onClick={() => handleDownloadPDF(aiReportHtml || "", "AI Insight Report")}
+                                                className="text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                                            >
+                                                <Download size={10} /> PDF
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsAIReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="mt-4 text-slate-800 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: aiReportHtml || "No report content generated." }}></div>
+
+                            <div className="mt-8 flex justify-end">
+                                <button onClick={() => setIsAIReportOpen(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
+                                    Dismiss Report
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Dynamic Report Modal (Simple Stats) */}
+            <AnimatePresence>
+                {isDynamicReportOpen && dynamicStats && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsDynamicReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-2xl bg-white rounded-[32px] shadow-2xl p-8 border border-white">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-600 rounded-[24px]">
+                                        <BarChart3 size={32} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">Live Dynamic Report</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Real-time Data Matrix Aggregation</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const el = document.getElementById('dynamic-report-content');
+                                            if (el) handleDownloadPDF(el.innerHTML, "Dynamic Analytics Report");
+                                        }}
+                                        className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1"
+                                    >
+                                        <Download size={12} /> PDF Export
+                                    </button>
+                                    <button onClick={() => setIsDynamicReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="dynamic-report-content" className="mt-4 space-y-6">
+                                <div style={{ display: 'none' }} className="print-only-header">
+                                    <h2>Dynamic CRM Report</h2>
+                                    <p>Generated on: {new Date().toLocaleString()}</p>
+                                    <hr style={{ margin: '20px 0' }} />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
+                                        <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
+                                    </div>
+                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
+                                        <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
+                                    </div>
+                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
+                                        <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
+                                    </div>
+                                </div>
+
+                                {Object.keys(dynamicStats.statusCounts).length > 0 && (
+                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 mt-6">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
+                                        <div className="space-y-3">
+                                            {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+                                                <div key={status} className="flex items-center justify-between">
+                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
+                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 )}
-                            </AnimatePresence>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
-                            <style jsx global>{`
+            <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             `}</style>
-                        </div >
-                    );
+        </div >
+    );
 }
