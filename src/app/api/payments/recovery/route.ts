@@ -143,73 +143,75 @@ export async function GET(req: NextRequest) {
         }
 
         // --- AUTOMATED CHASING LOGIC (Notifications) ---
-        // Throttled: Only run for a subset to prevent request timeouts
-        try {
-            // 1. Follow-ups DUE TODAY
-            const dueFollowUps = await prisma.paymentRemark.findMany({
-                where: {
-                    nextFollowUpDate: { lte: new Date() },
-                    reminderSent: false,
-                    followUpStatus: { not: "completed" }
-                },
-                include: { task: true },
-                take: 10 // Limit per request
-            });
+        // Run completely asynchronously in the background so it doesn't block the API response
+        (async () => {
+            try {
+                // 1. Follow-ups DUE TODAY
+                const dueFollowUps = await prisma.paymentRemark.findMany({
+                    where: {
+                        nextFollowUpDate: { lte: new Date() },
+                        reminderSent: false,
+                        followUpStatus: { not: "completed" }
+                    },
+                    include: { task: true },
+                    take: 10 // Limit per request
+                });
 
-            if (dueFollowUps.length > 0) {
-                await Promise.all(dueFollowUps.map(async (remark) => {
-                    await prisma.notification.create({
-                        data: {
-                            userId: remark.task.createdByClerkId,
-                            type: "COLLECTION_REMINDER",
-                            content: `⏰ COLLECTION DUE: ${remark.task.shopName || remark.task.title}. Follow-up scheduled. Outstanding: ₹${(remark.task.amount || 0) - (remark.task.received || 0)}`,
-                            taskId: remark.taskId
-                        }
-                    });
-                    await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } });
-                }));
-            }
-
-            // 2. IGNORED TASKS (No update in 5 days)
-            const fiveDaysAgo = new Date();
-            fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-
-            const ignoredTasks = await prisma.task.findMany({
-                where: {
-                    amount: { gt: 0 },
-                    OR: [
-                        { paymentRemarks: { none: {} } },
-                        { paymentRemarks: { none: { createdAt: { gte: fiveDaysAgo } } } }
-                    ]
-                },
-                take: 5, // Strictly limit to prevent dashboard lag
-                select: { id: true, shopName: true, title: true, createdByClerkId: true }
-            });
-
-            if (ignoredTasks.length > 0) {
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-
-                for (const t of ignoredTasks) {
-                    const recentNotif = await prisma.notification.findFirst({
-                        where: { taskId: t.id, type: "COLLECTION_IGNORE_WARNING", createdAt: { gte: yesterday } }
-                    });
-
-                    if (!recentNotif) {
+                if (dueFollowUps.length > 0) {
+                    await Promise.all(dueFollowUps.map(async (remark) => {
                         await prisma.notification.create({
                             data: {
-                                userId: t.createdByClerkId,
-                                type: "COLLECTION_IGNORE_WARNING",
-                                content: `🚨 IGNORED: ${t.shopName || t.title} has no updates in 5 days.`,
-                                taskId: t.id
+                                userId: remark.task.createdByClerkId,
+                                type: "COLLECTION_REMINDER",
+                                content: `⏰ COLLECTION DUE: ${remark.task.shopName || remark.task.title}. Follow-up scheduled. Outstanding: ₹${(remark.task.amount || 0) - (remark.task.received || 0)}`,
+                                taskId: remark.taskId
                             }
                         });
+                        await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } });
+                    }));
+                }
+
+                // 2. IGNORED TASKS (No update in 5 days)
+                const fiveDaysAgo = new Date();
+                fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+                const ignoredTasks = await prisma.task.findMany({
+                    where: {
+                        amount: { gt: 0 },
+                        OR: [
+                            { paymentRemarks: { none: {} } },
+                            { paymentRemarks: { none: { createdAt: { gte: fiveDaysAgo } } } }
+                        ]
+                    },
+                    take: 5, // Strictly limit to prevent dashboard lag
+                    select: { id: true, shopName: true, title: true, createdByClerkId: true }
+                });
+
+                if (ignoredTasks.length > 0) {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+
+                    for (const t of ignoredTasks) {
+                        const recentNotif = await prisma.notification.findFirst({
+                            where: { taskId: t.id, type: "COLLECTION_IGNORE_WARNING", createdAt: { gte: yesterday } }
+                        });
+
+                        if (!recentNotif) {
+                            await prisma.notification.create({
+                                data: {
+                                    userId: t.createdByClerkId,
+                                    type: "COLLECTION_IGNORE_WARNING",
+                                    content: `🚨 IGNORED: ${t.shopName || t.title} has no updates in 5 days.`,
+                                    taskId: t.id
+                                }
+                            });
+                        }
                     }
                 }
+            } catch (remErr) {
+                console.warn("Automated chasing error:", remErr);
             }
-        } catch (remErr) {
-            console.warn("Automated chasing error:", remErr);
-        }
+        })();
         // --- END AUTOMATED CHASING ---
 
         // Efficient Summary Aggregation
