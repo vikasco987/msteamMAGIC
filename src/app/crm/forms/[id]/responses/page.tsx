@@ -1662,14 +1662,12 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0]">
                                         <th className="w-[50px] px-3 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] flex items-center justify-center gap-1">
-                                            {isMaster && (
-                                                <div
-                                                    onClick={toggleAllRows}
-                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                                >
-                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
-                                                </div>
-                                            )}
+                                            <div
+                                                onClick={toggleAllRows}
+                                                className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
+                                            >
+                                                {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
+                                            </div>
                                             <span className="text-[9px] font-black text-slate-400">ID</span>
                                         </th>
                                         {getColumns.map((col, cIdx) => {
@@ -1678,10 +1676,12 @@ export default function CRMSpreadsheetPage() {
 
                                             // Dynamic left offset
                                             let leftOffset = 50;
+                                            if (cIdx === 0) leftOffset = 50; // Ensure first col starts at 50
                                             if (isSticky && cIdx > 0) {
                                                 for (let i = 0; i < cIdx; i++) {
                                                     const prevCol = getColumns[i];
-                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
+                                                    // use same logic as totalTableWidth
+                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 120 : 180));
                                                 }
                                             }
 
@@ -1872,14 +1872,12 @@ export default function CRMSpreadsheetPage() {
                                                 className={`group hover:bg-indigo-50/30 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
                                             >
                                                 <td className={`w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
-                                                    {isMaster && (
-                                                        <div
-                                                            onClick={() => toggleRowSelection(res.id)}
-                                                            className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                                        >
-                                                            {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
-                                                        </div>
-                                                    )}
+                                                    <div
+                                                        onClick={() => toggleRowSelection(res.id)}
+                                                        className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
+                                                    >
+                                                        {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
+                                                    </div>
                                                     <div className="flex flex-col items-center">
                                                         <span className="text-[10px] font-black text-slate-400">
                                                             {((currentPage - 1) * rowsPerPage) + rIdx + 1}
@@ -1902,11 +1900,12 @@ export default function CRMSpreadsheetPage() {
                                                         : getCellValue(res.id, col.id, col.isInternal);
 
                                                     const isSticky = cIdx < 2;
-                                                    let leftOffset = isMaster ? 50 : 0;
+                                                    let leftOffset = 50;
                                                     if (isSticky && cIdx > 0) {
                                                         for (let i = 0; i < cIdx; i++) {
                                                             const prevCol = getColumns[i];
-                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : 180));
+                                                            // Match logic we put in `<th>` above
+                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 120 : 180));
                                                         }
                                                     }
                                                     const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
