@@ -286,6 +286,7 @@ model FormResponse {
   // Permission Controls
   visibleToRoles  String[]    @default([])
   visibleToUsers  String[]    @default([])
+  assignedTo      String[]    @default([]) // Array of Clerk User IDs assigned to this lead/response
 
   submittedAt     DateTime    @default(now())
 }

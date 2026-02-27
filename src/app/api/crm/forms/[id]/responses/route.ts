@@ -102,8 +102,21 @@ export async function GET(
         const responses = isMasterRole ? allResponses : allResponses.filter(res => {
             const roles = res.visibleToRoles || [];
             const users = res.visibleToUsers || [];
-            if (roles.length === 0 && users.length === 0) return true; // Public
-            return roles.includes(userRole) || users.includes(userId) || res.submittedBy === userId;
+            const assignees = res.assignedTo || [];
+
+            // Condition 1: Submitter/Creator always sees their own record
+            if (res.submittedBy === userId) return true;
+
+            // Condition 2: Explicitly Assigned users can see it
+            if (assignees.includes(userId)) return true;
+
+            // Condition 3: Legacy or explicit visibility permissions
+            if (roles.includes(userRole) || users.includes(userId)) return true;
+
+            // Condition 4: If completely unassigned and no special visibility roles -> "Public" / open
+            if (roles.length === 0 && users.length === 0 && assignees.length === 0) return true;
+
+            return false;
         });
 
         // We also need the internal columns for the form
