@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -160,9 +160,37 @@ export async function GET(
             orderBy: { createdAt: "desc" }
         });
 
+        // Resolve user data for UI mapping
+        const allUserIds = form.visibleToUsers || [];
+        const usersMap: Record<string, { email: string; name: string; imageUrl: string }> = {};
+
+        if (allUserIds.length > 0) {
+            try {
+                const clerk = await clerkClient();
+                const usersList = await clerk.users.getUserList({ userId: allUserIds });
+                usersList.data.forEach(u => {
+                    usersMap[u.id] = {
+                        email: u.emailAddresses[0]?.emailAddress || "Unknown",
+                        name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
+                        imageUrl: u.imageUrl || ""
+                    };
+                });
+            } catch (err) {
+                console.error("Clerk fetch users mapping error:", err);
+            }
+        }
+
+        const enrichedForm: any = {
+            ...form,
+            visibleToUsersData: allUserIds.map(uid => ({
+                id: uid,
+                ...(usersMap[uid] || { email: "Unknown", name: "User", imageUrl: "" })
+            }))
+        };
+
         return NextResponse.json({
             responses,
-            form,
+            form: enrichedForm,
             internalColumns,
             internalValues,
             activities,

@@ -139,8 +139,11 @@ interface SavedView {
 interface FormResponse {
     id: string;
     submittedAt: string;
+    createdAt?: string;
     submittedByName: string;
     assignedTo?: string[];
+    visibleToRoles?: string[];
+    visibleToUsers?: string[];
     values: ResponseValue[];
 }
 
@@ -150,6 +153,7 @@ interface MasterData {
         fields: FormField[];
         visibleToRoles?: string[];
         visibleToUsers?: string[];
+        visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
     };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
@@ -1638,12 +1642,22 @@ export default function CRMSpreadsheetPage() {
                     const visibleUsers = data?.form?.visibleToUsers || [];
                     const visibleRoles = data?.form?.visibleToRoles || [];
 
-                    const allWithAccess = teamMembers.filter(m =>
-                        visibleUsers.includes(m.clerkId) ||
+                    const explicitUsers = (data?.form?.visibleToUsersData || []).map((u: any) => ({
+                        clerkId: u.id,
+                        firstName: u.name,
+                        lastName: "",
+                        email: u.email,
+                        role: visibleUsers.includes(u.id) ? "Specially Added User" : "",
+                        imageUrl: u.imageUrl
+                    }));
+
+                    const roleUsers = teamMembers.filter(m =>
                         (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
                         m.role === 'ADMIN' || m.role === 'MASTER' ||
                         (visibleUsers.length === 0 && visibleRoles.length === 0)
-                    );
+                    ).filter(m => !explicitUsers.some((eu: any) => eu.clerkId === m.clerkId));
+
+                    const allWithAccess = [...explicitUsers, ...roleUsers];
 
                     if (allWithAccess.length === 0) return null;
 
@@ -1655,10 +1669,14 @@ export default function CRMSpreadsheetPage() {
                             </div>
                             <div className="flex -space-x-1.5 overflow-visible pl-1">
                                 {allWithAccess.slice(0, 5).map((m) => {
-                                    const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
+                                    const initial = (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?');
                                     return (
-                                        <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200">
-                                            {initial}
+                                        <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
+                                            {m.imageUrl ? (
+                                                <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                initial
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -1675,15 +1693,19 @@ export default function CRMSpreadsheetPage() {
                                     {allWithAccess.map(m => {
                                         return (
                                             <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900">
-                                                    {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
+                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900 overflow-hidden">
+                                                    {m.imageUrl ? (
+                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?')
+                                                    )}
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center justify-between gap-2">
-                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
-                                                        {m.role && <span className="text-[7px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block border border-indigo-500/30 font-black tracking-widest">{m.role}</span>}
+                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{(m.firstName && m.firstName !== "Unknown User") ? `${m.firstName} ${m.lastName || ''}` : m.email.split('@')[0]}</p>
+                                                        {m.role && <span className="text-[6px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block border border-indigo-500/30 font-black tracking-widest">{m.role}</span>}
                                                     </div>
-                                                    <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m?.email || 'No email'}</p>
+                                                    <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m.email || 'No email'}</p>
                                                 </div>
                                             </div>
                                         )
@@ -2814,7 +2836,7 @@ export default function CRMSpreadsheetPage() {
                         </motion.div>
                     )
                 }
-            </AnimatePresence>
+            </AnimatePresence >
 
             {/* Column Manager Modal */}
             <AnimatePresence>
@@ -2909,8 +2931,9 @@ export default function CRMSpreadsheetPage() {
                                 </div>
                             </motion.div>
                         </div>
-                    )}
-            </AnimatePresence>
+                    )
+                }
+            </AnimatePresence >
 
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -3481,6 +3504,7 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
+            </main>
             <style jsx global>{`
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
