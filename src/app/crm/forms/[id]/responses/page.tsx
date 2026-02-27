@@ -1648,7 +1648,7 @@ export default function CRMSpreadsheetPage() {
                     if (allWithAccess.length === 0) return null;
 
                     return (
-                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-4 py-2 bg-slate-900/95 backdrop-blur shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] rounded-full border border-slate-700/50 group/team cursor-pointer hover:bg-slate-900 transition-all hover:scale-[1.02]">
+                        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2 bg-slate-900/95 backdrop-blur shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] rounded-full border border-slate-700/50 group/team cursor-pointer hover:bg-slate-900 transition-all hover:scale-[1.02]">
                             <div className="flex items-center gap-2 border-r border-slate-700/50 pr-4">
                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
                                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Shared With</span>
@@ -1670,7 +1670,7 @@ export default function CRMSpreadsheetPage() {
                             </div>
 
                             {/* Center-Bottom Tooltip */}
-                            <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom pointer-events-none">
+                            <div className="absolute bottom-[120%] left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom pointer-events-none">
                                 <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
                                     {allWithAccess.map(m => {
                                         return (
