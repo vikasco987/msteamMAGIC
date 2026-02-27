@@ -30,7 +30,8 @@ export default function HighlightColorPicker({ taskId, value, onChange }: Props)
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="w-6 h-6 rounded-full border"
+          type="button"
+          className="w-6 h-6 rounded-full border shadow-sm"
           style={{ backgroundColor: value || "#ffffff" }}
           title="Click to change highlight color"
         ></button>
@@ -38,29 +39,31 @@ export default function HighlightColorPicker({ taskId, value, onChange }: Props)
 
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="bg-white border rounded-md p-2 shadow-md space-y-2"
+          className="bg-white border rounded-md p-2 shadow-md space-y-2 z-[9999]"
           side="bottom"
           align="start"
         >
           <div className="grid grid-cols-4 gap-2">
             {presetColors.map((color) => (
-              <button
-                key={color}
-                onClick={() => handleColorChange(color)}
-                className="w-6 h-6 rounded-full border"
-                style={{ backgroundColor: color }}
-              />
+              <DropdownMenu.Item key={color} asChild onSelect={() => handleColorChange(color)}>
+                <button
+                  className="w-6 h-6 rounded-full border outline-none hover:ring-2 hover:ring-indigo-500 hover:ring-offset-1"
+                  style={{ backgroundColor: color }}
+                />
+              </DropdownMenu.Item>
             ))}
           </div>
 
           <div className="flex items-center gap-2 mt-2">
             <span className="text-xs text-gray-500">Custom:</span>
-            <input
-              type="color"
-              value={value || "#ffffff"}
-              onChange={(e) => handleColorChange(e.target.value)}
-              className="w-6 h-6 border rounded cursor-pointer"
-            />
+            <DropdownMenu.Item asChild onSelect={(e) => e.preventDefault()}>
+              <input
+                type="color"
+                value={value || "#ffffff"}
+                onChange={(e) => handleColorChange(e.target.value)}
+                className="w-6 h-6 border rounded cursor-pointer outline-none hover:ring-2 hover:ring-indigo-500"
+              />
+            </DropdownMenu.Item>
           </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

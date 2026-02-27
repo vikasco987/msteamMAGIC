@@ -107,16 +107,28 @@ export async function PATCH(
 
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id } = await params;
+        const resolvedParams = await params;
+        const id = resolvedParams.id;
+
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+        if (!id || id.length !== 24 || !/^[0-9a-fA-F]{24}$/.test(id)) {
+            return NextResponse.json({ error: "Invalid form ID format" }, { status: 400 });
+        }
+
+        const existingForm = await prisma.dynamicForm.findUnique({ where: { id } });
+        if (!existingForm) {
+            return NextResponse.json({ error: "Form not found" }, { status: 404 });
+        }
+
         await prisma.dynamicForm.delete({ where: { id } });
         return NextResponse.json({ success: true });
-    } catch (error) {
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    } catch (error: any) {
+        console.error("DELETE FORM ERROR:", error);
+        return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
     }
 }
