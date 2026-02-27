@@ -680,7 +680,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
-            { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
+            { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
+            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" }
         ];
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
@@ -724,7 +725,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
-            { id: "__contributor", label: "Contributor", isPublic: false, type: "static" }
+            { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
+            { id: "__submittedAt", label: "Date", isPublic: false, type: "date" }
         ];
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
@@ -766,6 +768,7 @@ export default function CRMSpreadsheetPage() {
         if (!resp) return "";
 
         if (colId === "__contributor") return resp.submittedByName || "";
+        if (colId === "__submittedAt") return resp.submittedAt || "";
 
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
@@ -1685,7 +1688,7 @@ export default function CRMSpreadsheetPage() {
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
                                                             <TypeIcon size={10} className={col.isInternal ? "text-indigo-600 shrink-0" : "text-[#667085] shrink-0"} />
-                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.id === "__contributor" ? "Submitter info" : col.label}</span>
+                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (

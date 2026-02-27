@@ -55,21 +55,48 @@ export async function PATCH(
             data: updateData
         });
 
-        // Optional: Re-create fields if provided
         if (fields) {
-            // Delete old fields and create new ones is simplest for dynamic builder
-            await prisma.formField.deleteMany({ where: { formId: id } });
-            await prisma.formField.createMany({
-                data: fields.map((f: any, index: number) => ({
-                    formId: id,
-                    label: f.label,
-                    type: f.type,
-                    placeholder: f.placeholder,
-                    required: f.required || false,
-                    options: f.options || [],
-                    order: index
-                }))
-            });
+            const existingFields = await prisma.formField.findMany({ where: { formId: id } });
+            const fieldsToDelete = existingFields.filter(ex => !fields.some((f: any) => f.id === ex.id));
+
+            // Safely delete removed fields and their response values first to avoid constraint errors
+            if (fieldsToDelete.length > 0) {
+                const deleteIds = fieldsToDelete.map(f => f.id);
+                await prisma.responseValue.deleteMany({ where: { fieldId: { in: deleteIds } } });
+                await prisma.formField.deleteMany({ where: { id: { in: deleteIds } } });
+            }
+
+            // Update or Create fields
+            for (let i = 0; i < fields.length; i++) {
+                const f = fields[i];
+                const isExisting = f.id && existingFields.some(ex => ex.id === f.id);
+
+                if (isExisting) {
+                    await prisma.formField.update({
+                        where: { id: f.id },
+                        data: {
+                            label: f.label,
+                            type: f.type,
+                            placeholder: f.placeholder,
+                            required: f.required || false,
+                            options: f.options || [],
+                            order: i
+                        }
+                    });
+                } else {
+                    await prisma.formField.create({
+                        data: {
+                            formId: id,
+                            label: f.label,
+                            type: f.type,
+                            placeholder: f.placeholder,
+                            required: f.required || false,
+                            options: f.options || [],
+                            order: i
+                        }
+                    });
+                }
+            }
         }
 
         return NextResponse.json({ success: true });
