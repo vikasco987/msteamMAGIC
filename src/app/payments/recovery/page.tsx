@@ -63,7 +63,7 @@ export default function PaymentRecoveryPage() {
     // Custom Date Filters
     const [startDate, setStartDate] = useState<string>("");
     const [endDate, setEndDate] = useState<string>("");
-    const [selectedMonth, setSelectedMonth] = useState<string>("all");
+    const [selectedMonth, setSelectedMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
     const [sortKey, setSortKey] = useState<SortKey>("createdAt");
     const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -388,8 +388,8 @@ export default function PaymentRecoveryPage() {
                         )}
                         <div className="flex-1 space-y-2 min-w-[100px]">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Show Rows</label>
-                            <select 
-                                value={pagination.limit} 
+                            <select
+                                value={pagination.limit}
                                 onChange={e => {
                                     const newLimit = parseInt(e.target.value);
                                     setPagination(p => ({ ...p, limit: newLimit, page: 1 }));

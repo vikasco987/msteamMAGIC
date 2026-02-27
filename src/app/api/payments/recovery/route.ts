@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { users } from "@clerk/clerk-sdk-node";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Match TaskTableView role logic exactly
 async function getUserRole(userId: string): Promise<string | null> {
     try {
