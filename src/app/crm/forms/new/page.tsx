@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import toast from "react-hot-toast";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useUser } from "@clerk/nextjs";
 
@@ -45,6 +45,8 @@ interface FormField {
 
 export default function FormBuilderPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editId = searchParams.get("edit");
     const { user, isLoaded } = useUser();
     const [title, setTitle] = useState("Untitled Form");
     const [description, setDescription] = useState("");
@@ -52,6 +54,28 @@ export default function FormBuilderPage() {
     const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [sidebarTab, setSidebarTab] = useState<"fields" | "permissions">("fields");
+
+    // Fetch Existing Form if Edit Mode
+    React.useEffect(() => {
+        if (!editId) return;
+        const fetchForm = async () => {
+            try {
+                const res = await fetch(`/api/crm/forms/${editId}`);
+                if (!res.ok) throw new Error("Not found");
+                const data = await res.json();
+                if (data.form) {
+                    setTitle(data.form.title);
+                    setDescription(data.form.description || "");
+                    setFields(data.form.fields || []);
+                    setVisibleToRoles(data.form.visibleToRoles || []);
+                    setVisibleToUsers(data.form.visibleToUsers || []);
+                }
+            } catch (err) {
+                toast.error("Failed to load existing form");
+            }
+        };
+        fetchForm();
+    }, [editId]);
 
     // Authorization Check (TeamBoard Consistency)
     React.useEffect(() => {
@@ -125,8 +149,11 @@ export default function FormBuilderPage() {
         }
         setIsSaving(true);
         try {
-            const res = await fetch("/api/crm/forms", {
-                method: "POST",
+            const url = editId ? `/api/crm/forms/${editId}` : "/api/crm/forms";
+            const method = editId ? "PATCH" : "POST";
+
+            const res = await fetch(url, {
+                method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     title,
@@ -138,7 +165,7 @@ export default function FormBuilderPage() {
                 }),
             });
             if (res.ok) {
-                toast.success(publish ? "Form Published!" : "Form Saved!");
+                toast.success(publish ? "Form Published!" : (editId ? "Form Updated!" : "Form Saved!"));
                 router.push("/crm/forms");
             } else {
                 toast.error("Failed to save form");
