@@ -760,7 +760,7 @@ export default function CRMSpreadsheetPage() {
         if (!data) return 1400;
         let w = (isMaster || isPureMaster ? 50 : 0);
         getColumns.forEach(c => {
-            w += (columnWidths[c.id] || (c.id === "__profile" ? 70 : c.id === "__contributor" ? 220 : 180));
+            w += (columnWidths[c.id] || (c.id === "__profile" ? 70 : c.id === "__contributor" ? 220 : c.id === "__assigned" ? 200 : 180));
         });
         return w;
     }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
@@ -1655,7 +1655,7 @@ export default function CRMSpreadsheetPage() {
                                             <th
                                                 key={`excel-label-${col.id}`}
                                                 className="bg-slate-100 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase p-0 h-6 text-center"
-                                                style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180) }}
+                                                style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
                                             >
                                                 {getExcelLabel(idx)}
                                             </th>
@@ -1682,7 +1682,7 @@ export default function CRMSpreadsheetPage() {
                                                 for (let i = 0; i < cIdx; i++) {
                                                     const prevCol = getColumns[i];
                                                     // use same logic as totalTableWidth
-                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 120 : 180));
+                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
                                                 }
                                             }
 
@@ -1902,14 +1902,15 @@ export default function CRMSpreadsheetPage() {
 
                                                     const isSticky = cIdx < 2;
                                                     let leftOffset = 50;
+                                                    if (cIdx === 0) leftOffset = 50; // Ensure first col starts at 50
                                                     if (isSticky && cIdx > 0) {
                                                         for (let i = 0; i < cIdx; i++) {
                                                             const prevCol = getColumns[i];
                                                             // Match logic we put in `<th>` above
-                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 120 : 180));
+                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
                                                         }
                                                     }
-                                                    const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
+                                                    const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
 
                                                     if (col.id === "__profile") {
                                                         return (
@@ -1959,36 +1960,26 @@ export default function CRMSpreadsheetPage() {
                                                                 {assignedUsers.length === 0 ? (
                                                                     <div className="text-[10px] font-bold text-slate-400 mt-1">Unassigned</div>
                                                                 ) : (
-                                                                    <div className="flex -space-x-2 overflow-visible group/team relative cursor-pointer py-1">
+                                                                    <div className="flex flex-col gap-2 py-1">
                                                                         {assignedUsers.map((uid) => {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
-                                                                            const initial = m ? m.email[0].toUpperCase() : '?';
-                                                                            const title = m ? m.email : 'Unknown';
+                                                                            const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
                                                                             return (
-                                                                                <div key={uid} title={title} className="inline-block h-8 w-8 rounded-full ring-2 ring-white bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0">
-                                                                                    {initial}
+                                                                                <div key={uid} className="flex items-center gap-2">
+                                                                                    <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100">
+                                                                                        {initial}
+                                                                                    </div>
+                                                                                    <div className="min-w-0 flex-1">
+                                                                                        <p className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tighter">
+                                                                                            {m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email ? m.email.split('@')[0] : 'Unknown')}
+                                                                                        </p>
+                                                                                        <p className="text-[9px] text-slate-400 font-bold truncate">
+                                                                                            {m?.email || 'No email'}
+                                                                                        </p>
+                                                                                    </div>
                                                                                 </div>
                                                                             );
                                                                         })}
-                                                                        <div className="absolute top-10 left-0 z-[100] w-[220px] bg-slate-900 border border-slate-700 shadow-xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible transition-all">
-                                                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 block border-b border-slate-700 pb-2">Assigned Protocols ({assignedUsers.length})</span>
-                                                                            <div className="space-y-1 mt-2">
-                                                                                {assignedUsers.map(uid => {
-                                                                                    const m = teamMembers.find(t => t.clerkId === uid);
-                                                                                    return (
-                                                                                        <div key={`details-${uid}`} className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-slate-800 transition-colors">
-                                                                                            <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0">
-                                                                                                {m?.firstName ? m.firstName[0].toUpperCase() : (m?.email ? m.email[0].toUpperCase() : '?')}
-                                                                                            </div>
-                                                                                            <div className="min-w-0 flex-1">
-                                                                                                <p className="text-[10px] font-black text-white truncate uppercase tracking-widest">{m?.firstName || 'Unknown'} {m?.lastName || ''}</p>
-                                                                                                <p className="text-[8px] text-slate-400 truncate">{m?.email || 'No email'}</p>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )
-                                                                                })}
-                                                                            </div>
-                                                                        </div>
                                                                     </div>
                                                                 )}
                                                             </td>
