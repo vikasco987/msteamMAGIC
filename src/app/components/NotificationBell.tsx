@@ -49,18 +49,32 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
         }
     };
 
+    const handleOpenChange = (open: boolean) => {
+        if (open && unreadCount > 0) {
+            setUnreadCount(0); // clear the badge instantly (WhatsApp style)
+            fetch("/api/notifications", {
+                method: "PATCH",
+                body: JSON.stringify({ all: true }),
+            }).catch((err) => console.error("Auto mark read failed:", err));
+            // We intentionally DO NOT fetchNotifications() here so that the currently
+            // unread items remain visually highlighted for this viewing session!
+        }
+    };
+
     const getIcon = (type: string) => {
         switch (type) {
             case "MENTION": return <MessageSquare size={16} className="text-blue-400" />;
             case "TASK_COMPLETED": return <CheckSquare size={16} className="text-green-400" />;
             case "PAYMENT_ADDED": return <CreditCard size={16} className="text-yellow-400" />;
+            case "COLLECTION_REMINDER":
             case "COLLECTION_FOLLOWUP": return <Bell size={16} className="text-red-400 animate-pulse" />;
+            case "COLLECTION_IGNORE_WARNING": return <Bell size={16} className="text-orange-400" />;
             default: return <Bell size={16} />;
         }
     };
 
     return (
-        <DropdownMenu.Root>
+        <DropdownMenu.Root onOpenChange={handleOpenChange}>
             <DropdownMenu.Trigger asChild>
                 <button
                     className="flex items-center gap-3 px-4 py-2 rounded-md transition-all font-medium text-gray-300 hover:text-purple-300 hover:bg-white/5 w-full text-left outline-none"
@@ -87,17 +101,7 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
                 >
                     <div className="p-3 border-b border-violet-800 flex justify-between items-center bg-white/5">
                         <h3 className="font-bold text-sm">Team Alerts</h3>
-                        {unreadCount > 0 && (
-                            <button
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    markAsRead();
-                                }}
-                                className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
-                            >
-                                <CheckCircle2 size={12} /> Mark all read
-                            </button>
-                        )}
+                        {/* Auto-read is active, so explicit 'Mark all read' button is removed for cleaner UI */}
                     </div>
 
                     <div className="max-h-[400px] overflow-y-auto focus:outline-none">
@@ -110,10 +114,9 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
                                 <DropdownMenu.Item
                                     key={n.id}
                                     onSelect={(e) => {
-                                        e.preventDefault();
-                                        markAsRead(n.id);
+                                        // Just standard menu dismiss behavior
                                     }}
-                                    className={`p-3 border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer outline-none ${!n.isRead ? 'bg-purple-500/10' : ''}`}
+                                    className={`p-3 border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer outline-none ${!n.isRead ? 'bg-purple-500/10 border-l-2 border-l-purple-500' : ''}`}
                                 >
                                     <div className="flex gap-3">
                                         <div className="mt-1">{getIcon(n.type)}</div>

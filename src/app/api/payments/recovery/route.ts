@@ -146,6 +146,15 @@ export async function GET(req: NextRequest) {
         // Run completely asynchronously in the background so it doesn't block the API response
         (async () => {
             try {
+                // Fetch all users to find Admins and Masters
+                const allUsers = await users.getUserList({ limit: 500 });
+                const adminMasterIds = allUsers.data
+                    .filter(u => {
+                        const r = ((u.publicMetadata as any)?.role || (u.privateMetadata as any)?.role || '').toLowerCase();
+                        return r === 'admin' || r === 'master';
+                    })
+                    .map(u => u.id);
+
                 // 1. Follow-ups DUE TODAY
                 const dueFollowUps = await prisma.paymentRemark.findMany({
                     where: {
@@ -159,14 +168,25 @@ export async function GET(req: NextRequest) {
 
                 if (dueFollowUps.length > 0) {
                     await Promise.all(dueFollowUps.map(async (remark) => {
-                        await prisma.notification.create({
-                            data: {
-                                userId: remark.task.createdByClerkId,
-                                type: "COLLECTION_REMINDER",
-                                content: `⏰ COLLECTION DUE: ${remark.task.shopName || remark.task.title}. Follow-up scheduled. Outstanding: ₹${(remark.task.amount || 0) - (remark.task.received || 0)}`,
-                                taskId: remark.taskId
-                            }
-                        });
+                        const amountPending = (remark.task.amount || 0) - (remark.task.received || 0);
+                        const phoneInfo = remark.task.phone ? ` | 📞 ${remark.task.phone}` : '';
+
+                        const targetUserIds = new Set<string>([...adminMasterIds]);
+                        if (remark.createdById) targetUserIds.add(remark.createdById);
+                        else if (remark.task.assigneeId) targetUserIds.add(remark.task.assigneeId);
+                        else if (remark.task.createdByClerkId) targetUserIds.add(remark.task.createdByClerkId);
+
+                        const notificationsToCreate = Array.from(targetUserIds).map(uid => ({
+                            userId: uid,
+                            type: "COLLECTION_REMINDER",
+                            content: `⏰ DUE TODAY: ${remark.task.shopName || remark.task.title}. Follow-up scheduled by assigner. Outstanding: ₹${amountPending}${phoneInfo}`,
+                            taskId: remark.taskId
+                        }));
+
+                        for (const n of notificationsToCreate) {
+                            await prisma.notification.create({ data: n }).catch(() => { });
+                        }
+
                         await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } });
                     }));
                 }
