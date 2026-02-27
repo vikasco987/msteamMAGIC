@@ -9,10 +9,12 @@ import {
     Loader2,
     Lock,
     Globe,
-    ShieldCheck
+    ShieldCheck,
+    Maximize2,
+    Edit3
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 
 interface FormField {
@@ -35,12 +37,23 @@ interface FormData {
 export default function PublicFormPage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+
     const [form, setForm] = useState<FormData | null>(null);
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [isFullScreen, setIsFullScreen] = useState(false);
+
     const [loading, setLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [values, setValues] = useState<Record<string, string>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        if (searchParams.get("fullview") === "true") {
+            setIsFullScreen(true);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         const fetchForm = async () => {
@@ -49,6 +62,7 @@ export default function PublicFormPage() {
                 const data = await res.json();
                 if (data.form) {
                     setForm(data.form);
+                    if (data.userRole) setUserRole(data.userRole);
                 } else {
                     toast.error("Form not found");
                 }
@@ -138,21 +152,49 @@ export default function PublicFormPage() {
     );
 
     return (
-        <div className="min-h-screen bg-[#f8fafc] py-20 px-6">
-            {/* Security Badge */}
-            <div className="max-w-[800px] mx-auto mb-12 flex items-center justify-center gap-6">
-                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-100 shadow-sm text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    <ShieldCheck size={14} className="text-emerald-500" /> Encrypted Connection
+        <div className={`min-h-screen bg-[#f8fafc] flex flex-col ${isFullScreen ? 'p-0' : 'py-20 px-6'}`}>
+            {/* Security Badge & Controls */}
+            {!isFullScreen && (
+                <div className="max-w-[800px] w-full mx-auto mb-12 flex items-center justify-between">
+                    <div className="flex gap-4">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-100 shadow-sm text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            <ShieldCheck size={14} className="text-emerald-500" /> Encrypted Connection
+                        </div>
+                        <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-100 shadow-sm text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            <Globe size={14} className="text-indigo-500" /> Public Access Live
+                        </div>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-slate-100 shadow-sm text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    <Globe size={14} className="text-indigo-500" /> Public Access Live
+            )}
+
+            {/* Admin Controls */}
+            {(userRole === 'ADMIN' || userRole === 'MASTER') && (
+                <div className={`max-w-[800px] w-full mx-auto mb-6 flex justify-end gap-3 ${isFullScreen ? 'px-6 pt-6' : ''}`}>
+                    <button
+                        onClick={() => router.push(`/crm/forms/${params.id}/responses`)}
+                        className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                    >
+                        View Responses
+                    </button>
+                    <button
+                        onClick={() => window.open(`/f/${params.id}?fullview=true`, "_blank")}
+                        className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+                    >
+                        <Maximize2 size={12} /> Full View
+                    </button>
+                    <button
+                        onClick={() => router.push(`/crm/forms/new?edit=${params.id}`)}
+                        className="px-4 py-2 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+                    >
+                        <Edit3 size={12} /> Edit Form
+                    </button>
                 </div>
-            </div>
+            )}
 
             <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="max-w-[800px] mx-auto bg-white rounded-[60px] shadow-[0_50px_100px_rgba(0,0,0,0.05)] border-4 border-white overflow-hidden"
+                className={`w-full mx-auto bg-white overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.05)] ${isFullScreen ? 'flex-1 rounded-none border-x-0 border-b-0 border-t border-slate-200' : 'max-w-[800px] rounded-[60px] border-4 border-white flex-shrink-0 mb-20'}`}
             >
                 {/* Visual Header Banner */}
                 <div className="h-40 bg-indigo-600 relative overflow-hidden flex items-center px-12 md:px-20">

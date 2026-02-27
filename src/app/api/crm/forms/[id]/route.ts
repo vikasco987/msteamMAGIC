@@ -8,6 +8,17 @@ export async function GET(
 ) {
     try {
         const { id } = await params;
+        const { userId } = await auth();
+
+        let userRole = null;
+        if (userId) {
+            const dbUser = await prisma.user.findUnique({
+                where: { clerkId: userId },
+                select: { role: true }
+            });
+            userRole = dbUser?.role || null;
+        }
+
         const form = await prisma.dynamicForm.findUnique({
             where: { id },
             include: { fields: { orderBy: { order: "asc" } } }
@@ -15,7 +26,7 @@ export async function GET(
 
         if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
 
-        return NextResponse.json({ form });
+        return NextResponse.json({ form, userRole });
     } catch (error) {
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
