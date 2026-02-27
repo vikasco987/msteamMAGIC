@@ -758,7 +758,7 @@ export default function CRMSpreadsheetPage() {
 
     const totalTableWidth = useMemo(() => {
         if (!data) return 1400;
-        let w = (isMaster || isPureMaster ? 50 : 0);
+        let w = isPureMaster ? 70 : 50; // 70px if master, 50px if normal for row selector column
         getColumns.forEach(c => {
             w += (columnWidths[c.id] || (c.id === "__profile" ? 70 : c.id === "__contributor" ? 220 : c.id === "__assigned" ? 200 : 180));
         });
@@ -1648,7 +1648,7 @@ export default function CRMSpreadsheetPage() {
                                 <thead className="sticky top-0 z-[40]">
                                     {/* Excel Column Labels Header */}
                                     <tr className="bg-slate-100 divide-x divide-slate-200">
-                                        <th className="w-[50px] sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 h-6">
+                                        <th className={`sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 h-6 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'}`}>
                                             #
                                         </th>
                                         {getColumns.map((col, idx) => (
@@ -1662,22 +1662,24 @@ export default function CRMSpreadsheetPage() {
                                         ))}
                                     </tr>
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0]">
-                                        <th className="w-[50px] px-3 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] flex items-center justify-center gap-1">
-                                            <div
-                                                onClick={toggleAllRows}
-                                                className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                            >
-                                                {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
+                                        <th className={`px-3 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] ${isPureMaster ? 'w-[70px]' : 'w-[50px]'}`}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <div
+                                                    onClick={toggleAllRows}
+                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
+                                                >
+                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
+                                                </div>
+                                                <span className="text-[9px] font-black text-slate-400">ID</span>
                                             </div>
-                                            <span className="text-[9px] font-black text-slate-400">ID</span>
                                         </th>
                                         {getColumns.map((col, cIdx) => {
                                             const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
                                             const isSticky = cIdx < 2;
 
                                             // Dynamic left offset
-                                            let leftOffset = 50;
-                                            if (cIdx === 0) leftOffset = 50; // Ensure first col starts at 50
+                                            let leftOffset = isPureMaster ? 70 : 50;
+                                            if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
                                             if (isSticky && cIdx > 0) {
                                                 for (let i = 0; i < cIdx; i++) {
                                                     const prevCol = getColumns[i];
@@ -1872,27 +1874,29 @@ export default function CRMSpreadsheetPage() {
                                                 transition={{ duration: 0.2, delay: rIdx * 0.03 }}
                                                 className={`group hover:bg-indigo-50/30 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
                                             >
-                                                <td className={`w-[50px] px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 flex items-center justify-center gap-1.5 ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
-                                                    <div
-                                                        onClick={() => toggleRowSelection(res.id)}
-                                                        className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                                    >
-                                                        {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
-                                                    </div>
-                                                    <div className="flex flex-col items-center">
-                                                        <span className="text-[10px] font-black text-slate-400">
-                                                            {((currentPage - 1) * rowsPerPage) + rIdx + 1}
-                                                        </span>
-                                                        {isPureMaster && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                                className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
-                                                                title="Master Purge"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                                <span className="text-[7px] font-black uppercase">Purge</span>
-                                                            </button>
-                                                        )}
+                                                <td className={`px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
+                                                    <div className="flex items-center justify-center gap-2 w-full h-full">
+                                                        <div
+                                                            onClick={() => toggleRowSelection(res.id)}
+                                                            className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all shadow-sm shrink-0 ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
+                                                        >
+                                                            {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
+                                                        </div>
+                                                        <div className="flex flex-col items-center">
+                                                            <span className="text-[10px] font-black text-slate-400">
+                                                                {((currentPage - 1) * rowsPerPage) + rIdx + 1}
+                                                            </span>
+                                                            {isPureMaster && (
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
+                                                                    className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
+                                                                    title="Master Purge"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                    <span className="text-[7px] font-black uppercase">Purge</span>
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 {getColumns.map((col, cIdx) => {
@@ -1901,8 +1905,8 @@ export default function CRMSpreadsheetPage() {
                                                         : getCellValue(res.id, col.id, col.isInternal);
 
                                                     const isSticky = cIdx < 2;
-                                                    let leftOffset = 50;
-                                                    if (cIdx === 0) leftOffset = 50; // Ensure first col starts at 50
+                                                    let leftOffset = isPureMaster ? 70 : 50;
+                                                    if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
                                                     if (isSticky && cIdx > 0) {
                                                         for (let i = 0; i < cIdx; i++) {
                                                             const prevCol = getColumns[i];
