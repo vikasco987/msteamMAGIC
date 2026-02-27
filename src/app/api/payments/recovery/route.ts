@@ -176,18 +176,42 @@ export async function GET(req: NextRequest) {
                         else if (remark.task.assigneeId) targetUserIds.add(remark.task.assigneeId);
                         else if (remark.task.createdByClerkId) targetUserIds.add(remark.task.createdByClerkId);
 
-                        const notificationsToCreate = Array.from(targetUserIds).map(uid => ({
-                            userId: uid,
-                            type: "COLLECTION_REMINDER",
-                            content: `⏰ DUE TODAY: ${remark.task.shopName || remark.task.title}. Follow-up scheduled by assigner. Outstanding: ₹${amountPending}${phoneInfo}`,
-                            taskId: remark.taskId
-                        }));
+                        // Determine morning or evening in IST
+                        const currentHourIST = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', timeZone: 'Asia/Kolkata', hour12: false }).format(new Date()));
+                        const isEvening = currentHourIST >= 16; // 4 PM onwards
+                        const shiftType = isEvening ? "COLLECTION_REMINDER_EVENING" : "COLLECTION_REMINDER_MORNING";
+                        const shiftLabel = isEvening ? "🌆 EVENING FOLLOW-UP" : "🌅 MORNING FOLLOW-UP";
 
-                        for (const n of notificationsToCreate) {
-                            await prisma.notification.create({ data: n }).catch(() => { });
+                        // Ensure we haven't already sent a reminder for this specific shift today
+                        const startOfToday = new Date();
+                        startOfToday.setUTCHours(0, 0, 0, 0);
+
+                        const existingShiftNotif = await prisma.notification.findFirst({
+                            where: {
+                                taskId: remark.taskId,
+                                type: shiftType,
+                                createdAt: { gte: startOfToday }
+                            }
+                        });
+
+                        // If NOT sent yet for this shift
+                        if (!existingShiftNotif) {
+                            const notificationsToCreate = Array.from(targetUserIds).map(uid => ({
+                                userId: uid,
+                                type: shiftType,
+                                content: `⏰ ${shiftLabel} DUE TODAY: ${remark.task.shopName || remark.task.title}. Assigner marked it for today. Outstanding: ₹${amountPending}${phoneInfo}`,
+                                taskId: remark.taskId
+                            }));
+
+                            for (const n of notificationsToCreate) {
+                                await prisma.notification.create({ data: n }).catch(() => { });
+                            }
+
+                            // If we just sent the Evening one, mark the remark as completely reminded.
+                            if (isEvening) {
+                                await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } }).catch(() => { });
+                            }
                         }
-
-                        await prisma.paymentRemark.update({ where: { id: remark.id }, data: { reminderSent: true } });
                     }));
                 }
 
