@@ -57,7 +57,8 @@ import {
     Minimize2,
     Sparkles,
     Bot,
-    RefreshCw
+    RefreshCw,
+    BarChart3
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
@@ -311,7 +312,7 @@ export default function CRMSpreadsheetPage() {
     const [isAIReportOpen, setIsAIReportOpen] = useState(false);
     const [aiReportHtml, setAiReportHtml] = useState<string | null>(null);
     const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-    const [pastReports, setPastReports] = useState<any[]>([]);
+    const [isDynamicReportOpen, setIsDynamicReportOpen] = useState(false);
 
     const reportSuggestions = [
         { title: "Standard Summary", query: "Generate a simple, easy-to-read summary of the key data points without complex deep analysis." },
@@ -481,11 +482,6 @@ export default function CRMSpreadsheetPage() {
                 const permJson = await permRes.json();
                 setColPermissions(permJson && Object.keys(permJson).length > 0 ? permJson : { roles: {}, users: {} });
             }
-
-            fetch(`/api/crm/forms/${params.id}/ai-report`)
-                .then(r => r.json())
-                .then(setPastReports)
-                .catch(e => console.error("Report sync error", e));
 
             // Phase 2: Auto-detect Kanban Group Field (Dropdown)
             if (!groupByColId) {
@@ -1370,6 +1366,64 @@ export default function CRMSpreadsheetPage() {
         } catch (e) { return "—"; }
     };
 
+    const dynamicStats = useMemo(() => {
+        if (!data || !data.responses) return null;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        const totalEntries = data.responses.length;
+        const newToday = data.responses.filter(r => new Date(r.createdAt) >= today).length;
+        const newThisMonth = data.responses.filter(r => new Date(r.createdAt) >= thisMonth).length;
+
+        // Try to find a dropdown/status column
+        const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
+        let statusCounts: Record<string, number> = {};
+
+        if (statusCol && data.internalValues) {
+            data.internalValues.filter(v => v.columnId === statusCol.id).forEach(v => {
+                statusCounts[v.value] = (statusCounts[v.value] || 0) + 1;
+            });
+        }
+
+        return {
+            totalEntries,
+            newToday,
+            newThisMonth,
+            statusCounts,
+            statusColName: statusCol?.label || "Status"
+        };
+    }, [data]);
+
+    const handleDownloadPDF = (htmlContent: string, title: string = "Report") => {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>${title}</title>
+                        <style>
+                            @page { margin: 20mm; }
+                            body { font-family: 'Inter', system-ui, sans-serif; padding: 0; margin: 0; }
+                            .print-only { padding: 40px; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="print-only">
+                            ${htmlContent}
+                        </div>
+                        <script>
+                            window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); }
+                        </script>
+                    </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
+    };
+
     if (loading) return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
             <div className="w-16 h-16 border-4 border-slate-900 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-xl" />
@@ -1441,6 +1495,14 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <Maximize2 size={12} />
                                 Full View
+                            </button>
+
+                            <button
+                                onClick={() => setIsDynamicReportOpen(true)}
+                                className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-indigo-200 shadow-sm"
+                            >
+                                <BarChart3 size={12} />
+                                Analytics
                             </button>
 
                             <button
@@ -2983,27 +3045,6 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </div>
 
-                        {/* Report Quick Archive Row */}
-                        {pastReports.length > 0 && (
-                            <div className="px-6 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0 mr-2">Archive:</span>
-                                {pastReports.map((report, idx) => (
-                                    <button
-                                        key={report.id}
-                                        onClick={() => {
-                                            setAiReportHtml(report.htmlReport);
-                                            setIsReportCached(true);
-                                            setIsAIReportOpen(true);
-                                        }}
-                                        title={report.query}
-                                        className="h-7 px-3 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-600 hover:border-indigo-500 hover:text-indigo-600 hover:shadow-sm transition-all whitespace-nowrap"
-                                    >
-                                        R${idx + 1}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
                             {messages.length === 0 && (
                                 <div className="space-y-8 py-4">
@@ -3149,7 +3190,14 @@ export default function CRMSpreadsheetPage() {
                                                 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 flex items-center gap-1 disabled:opacity-50"
                                             >
                                                 <RefreshCw size={10} className={isGeneratingReport ? "animate-spin" : ""} />
-                                                {isGeneratingReport ? "Analyzing..." : "Refresh Analysis"}
+                                                {isGeneratingReport ? "Analyzing..." : "Refresh"}
+                                            </button>
+                                            <div className="w-1 h-1 bg-slate-300 rounded-full mx-1" />
+                                            <button
+                                                onClick={() => handleDownloadPDF(aiReportHtml || "", "AI Insight Report")}
+                                                className="text-[9px] font-black uppercase tracking-widest text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                                            >
+                                                <Download size={10} /> PDF
                                             </button>
                                         </div>
                                     </div>
@@ -3165,6 +3213,79 @@ export default function CRMSpreadsheetPage() {
                                 <button onClick={() => setIsAIReportOpen(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
                                     Dismiss Report
                                 </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Dynamic Report Modal (Simple Stats) */}
+            <AnimatePresence>
+                {isDynamicReportOpen && dynamicStats && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsDynamicReportOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                        <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-2xl bg-white rounded-[32px] shadow-2xl p-8 border border-white">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-600 rounded-[24px]">
+                                        <BarChart3 size={32} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tighter">Live Dynamic Report</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Real-time Data Matrix Aggregation</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const el = document.getElementById('dynamic-report-content');
+                                            if (el) handleDownloadPDF(el.innerHTML, "Dynamic Analytics Report");
+                                        }}
+                                        className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1"
+                                    >
+                                        <Download size={12} /> PDF Export
+                                    </button>
+                                    <button onClick={() => setIsDynamicReportOpen(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-[20px] transition-all">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="dynamic-report-content" className="mt-4 space-y-6">
+                                <div style={{ display: 'none' }} className="print-only-header">
+                                    <h2>Dynamic CRM Report</h2>
+                                    <p>Generated on: {new Date().toLocaleString()}</p>
+                                    <hr style={{ margin: '20px 0' }} />
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
+                                        <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
+                                    </div>
+                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
+                                        <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
+                                    </div>
+                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
+                                        <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
+                                    </div>
+                                </div>
+
+                                {Object.keys(dynamicStats.statusCounts).length > 0 && (
+                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 mt-6">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
+                                        <div className="space-y-3">
+                                            {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
+                                                <div key={status} className="flex items-center justify-between">
+                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
+                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>
