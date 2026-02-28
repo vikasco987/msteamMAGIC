@@ -58,7 +58,9 @@ import {
     Sparkles,
     Bot,
     RefreshCw,
-    BarChart3
+    BarChart3,
+    CloudOff,
+    Wifi
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
@@ -247,6 +249,10 @@ export default function CRMSpreadsheetPage() {
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
+
+    // Offline Syncing States
+    const [isOnline, setIsOnline] = useState(true);
+    const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -585,37 +591,62 @@ export default function CRMSpreadsheetPage() {
         if (isLoaded && user) fetchData();
     }, [params.id, isLoaded, user]);
 
+    // Check offline status and pending count on mount
     useEffect(() => {
-        const handleOnline = async () => {
-            const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-            if (offlineUpdates.length > 0) {
-                toast.loading(`Syncing ${offlineUpdates.length} offline changes...`, { id: "offline-sync" });
-                try {
-                    let successCount = 0;
-                    for (const update of offlineUpdates) {
-                        const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(update)
-                        });
-                        if (res.ok) successCount++;
-                    }
-                    localStorage.removeItem(`offlineUpdates-${params.id}`);
-                    if (successCount === offlineUpdates.length) {
-                        toast.success("Offline changes synced successfully!", { id: "offline-sync" });
-                    } else {
-                        toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
-                    }
-                    // Background refresh
-                    fetchData();
-                } catch (err) {
-                    toast.error("Offline sync failed.", { id: "offline-sync" });
+        setIsOnline(navigator.onLine);
+        const pending = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+        setPendingOfflineCount(pending.length);
+    }, [params.id, data]); // re-check when data changes
+
+    const handleManualSync = async () => {
+        if (!navigator.onLine) {
+            toast.error("Can't sync, you are still offline.");
+            return;
+        }
+        const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+        if (offlineUpdates.length > 0) {
+            toast.loading(`Syncing ${offlineUpdates.length} offline changes...`, { id: "offline-sync" });
+            try {
+                let successCount = 0;
+                for (const update of offlineUpdates) {
+                    const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(update)
+                    });
+                    if (res.ok) successCount++;
                 }
+                localStorage.removeItem(`offlineUpdates-${params.id}`);
+                setPendingOfflineCount(0);
+                if (successCount === offlineUpdates.length) {
+                    toast.success("Offline changes synced successfully!", { id: "offline-sync" });
+                } else {
+                    toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
+                }
+                fetchData();
+            } catch (err) {
+                toast.error("Offline sync failed.", { id: "offline-sync" });
             }
+        } else {
+            toast("Everything is already synced.", { icon: '✅' });
+        }
+    };
+
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            handleManualSync();
+        };
+        const handleOffline = () => {
+            setIsOnline(false);
         };
 
         window.addEventListener("online", handleOnline);
-        return () => window.removeEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
+        return () => {
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
+        };
     }, [params.id]);
 
     useEffect(() => {
@@ -1161,8 +1192,9 @@ export default function CRMSpreadsheetPage() {
         try {
             if (!navigator.onLine) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: Date.now() });
+                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: crypto.randomUUID(), updatedAt: Date.now() });
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                setPendingOfflineCount(pendingUpdates.length);
                 toast("Saved offline. Will sync when online.", { icon: '📶' });
                 return;
             }
@@ -1178,10 +1210,11 @@ export default function CRMSpreadsheetPage() {
                 setData(previousData); // Rollback
             }
         } catch (err) {
-            if (!navigator.onLine || String(err).includes('Network')) {
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: Date.now() });
+                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: crypto.randomUUID(), updatedAt: Date.now() });
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                setPendingOfflineCount(pendingUpdates.length);
                 toast("Saved offline. Will sync when online.", { icon: '📶' });
             } else {
                 toast.error("Matrix error");
@@ -1522,6 +1555,20 @@ export default function CRMSpreadsheetPage() {
                                         <span className="text-[9px] font-black text-white uppercase tracking-widest">Master Auth</span>
                                     </div>
                                 )}
+
+                                {/* System Online/Offline Status Indicator */}
+                                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border shadow-sm transition-all cursor-pointer ${isOnline ? 'bg-white border-slate-200 hover:border-slate-300' : 'bg-rose-50 border-rose-200 animate-pulse'}`} onClick={handleManualSync}>
+                                    <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${isOnline ? 'text-slate-600' : 'text-rose-600'}`}>
+                                        {isOnline ? 'Online' : 'Offline'}
+                                    </span>
+                                    {pendingOfflineCount > 0 && (
+                                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-md ml-1 border border-amber-200">
+                                            <CloudOff size={10} />
+                                            {pendingOfflineCount} Pending Sync
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Fast View Switchers */}
