@@ -2634,7 +2634,10 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
 
                                                         {userResults.length > 0 && (
-                                                            <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto">
+                                                            <div
+                                                                onMouseDown={(e) => e.preventDefault()}
+                                                                className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto"
+                                                            >
                                                                 {userResults.map(u => (
                                                                     <button
                                                                         key={u.clerkId}
@@ -2781,7 +2784,10 @@ export default function CRMSpreadsheetPage() {
                                         onChange={(e) => searchUsers(e.target.value)}
                                     />
                                     {userResults.length > 0 && (
-                                        <div className="absolute bottom-full mb-4 left-0 w-[200px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 overflow-hidden">
+                                        <div
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            className="absolute bottom-full mb-4 left-0 w-[200px] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 overflow-hidden max-h-[200px] overflow-y-auto"
+                                        >
                                             {userResults.map(u => (
                                                 <button
                                                     key={u.clerkId}
