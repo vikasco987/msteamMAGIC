@@ -2198,8 +2198,19 @@ export default function CRMSpreadsheetPage() {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95 }}
                                                 transition={{ duration: 0.2, delay: rIdx * 0.03 }}
-                                                onClick={() => toggleRowSelection(res.id)}
-                                                className={`group cursor-pointer hover:bg-indigo-50/50 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
+                                                className={`group cursor-pointer hover:bg-indigo-50/50 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
+                                                    const remarks = res.remarks || [];
+                                                    const latestRemark = remarks[0];
+                                                    if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
+                                                        const followUpDate = new Date(latestRemark.nextFollowUpDate);
+                                                        const today = new Date();
+                                                        today.setHours(0, 0, 0, 0);
+                                                        if (followUpDate < today) {
+                                                            return 'bg-rose-50/30 border-y border-rose-100 shadow-[inset_4px_0_0_#e11d48]';
+                                                        }
+                                                    }
+                                                    return '';
+                                                })()}`}
                                             >
                                                 <td className={`px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">

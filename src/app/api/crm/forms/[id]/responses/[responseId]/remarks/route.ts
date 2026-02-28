@@ -62,6 +62,38 @@ export async function POST(
             }
         });
 
+        // Get the form to find authorized users to notify
+        const form = await prisma.dynamicForm.findUnique({
+            where: { id },
+            select: { title: true, visibleToUsers: true }
+        });
+
+        const response = await prisma.formResponse.findUnique({
+            where: { id: responseId },
+            select: { assignedTo: true }
+        });
+
+        // Notify assigned users or all authorized users
+        const notifyIds = (response as any)?.assignedTo?.length
+            ? (response as any).assignedTo
+            : (form?.visibleToUsers || []);
+
+        // Filter out the current user who is making the remark
+        const recipients = notifyIds.filter((uid: string) => uid !== user.id);
+
+        if (recipients.length > 0) {
+            await prisma.notification.createMany({
+                data: recipients.map((uid: string) => ({
+                    userId: uid,
+                    type: "CRM_FOLLOWUP",
+                    title: `New Follow-up: ${form?.title || 'CRM Form'}`,
+                    content: `${user.firstName || 'A team member'} added a remark: "${remark.substring(0, 50)}${remark.length > 50 ? '...' : ''}"`,
+                    formId: id,
+                    responseId: responseId
+                }))
+            });
+        }
+
         return NextResponse.json({ success: true, remark: newRemark });
     } catch (error) {
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

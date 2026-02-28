@@ -71,6 +71,7 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
             case "COLLECTION_REMINDER_EVENING":
             case "COLLECTION_FOLLOWUP": return <Bell size={16} className="text-red-400 animate-pulse" />;
             case "COLLECTION_IGNORE_WARNING": return <Bell size={16} className="text-orange-400" />;
+            case "CRM_FOLLOWUP": return <Bell size={16} className="text-rose-500 animate-bounce" />;
             default: return <Bell size={16} />;
         }
     };

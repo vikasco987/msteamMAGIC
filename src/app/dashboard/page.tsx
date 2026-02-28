@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import {
   Activity, Users, ClipboardList, CheckCircle2, Timer, TrendingUp,
-  ArrowUpRight, ArrowDownRight, Zap, Target, Award
+  ArrowUpRight, ArrowDownRight, Zap, Target, Award, Bell
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -35,6 +35,7 @@ const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
 export default function TaskStatsDashboard() {
   const [totals, setTotals] = useState({ todo: 0, inprogress: 0, done: 0 });
   const [rows, setRows] = useState<Row[]>([]);
+  const [crmStats, setCrmStats] = useState({ today: 0, overdue: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,6 +45,14 @@ export default function TaskStatsDashboard() {
         if (res.data.success) {
           setTotals(res.data.totals || { todo: 0, inprogress: 0, done: 0 });
           setRows(res.data.data || []);
+        }
+
+        const crmRes = await axios.get("/api/crm/stats");
+        if (crmRes.data.success) {
+          setCrmStats({
+            today: crmRes.data.today || 0,
+            overdue: crmRes.data.overdue || 0
+          });
         }
       } catch (err) {
         console.error(err);
@@ -183,6 +192,30 @@ export default function TaskStatsDashboard() {
           <div className="flex items-center gap-1.5 text-slate-400">
             <ArrowDownRight size={14} />
             <span className="text-xs font-bold">Requires attention</span>
+          </div>
+        </motion.div>
+
+        {/* CRM FOLLOW-UPS */}
+        <motion.div
+          whileHover={{ y: -5 }}
+          className="bg-white p-8 rounded-[32px] shadow-xl shadow-slate-200/50 border border-slate-50 relative overflow-hidden group"
+        >
+          <div className="absolute top-0 right-0 p-6 opacity-10 transition-opacity group-hover:opacity-20">
+            <Bell size={80} className="text-rose-500" />
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+              <Bell size={20} />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">CRM Follow-ups</span>
+          </div>
+          <div className="flex items-baseline gap-2 mb-2">
+            <p className="text-5xl font-black text-slate-900">{crmStats.today}</p>
+            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Today</span>
+          </div>
+          <div className={`flex items-center gap-1.5 ${crmStats.overdue > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`}>
+            <Activity size={14} />
+            <span className="text-xs font-bold">{crmStats.overdue} Overdue items</span>
           </div>
         </motion.div>
 

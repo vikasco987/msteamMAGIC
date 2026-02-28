@@ -226,13 +226,16 @@ model Activity {
 }
 
 model Notification {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId    String   // Clerk user ID of the recipient
-  type      String   // "MENTION", "TASK_COMPLETED", "PAYMENT_ADDED"
-  content   String   // The notification message
-  taskId    String?  @db.ObjectId
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String   // Clerk user ID of the recipient
+  type            String   // "MENTION", "TASK_COMPLETED", "PAYMENT_ADDED", "CRM_FOLLOWUP"
+  title           String?  // Notification title
+  content         String   // The notification message
+  taskId          String?  @db.ObjectId
+  formId          String?  @db.ObjectId
+  responseId      String?  @db.ObjectId
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
 }
 
 model DynamicForm {
