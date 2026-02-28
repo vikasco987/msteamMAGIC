@@ -149,8 +149,13 @@ export default function CRMFormsList() {
     };
 
     useEffect(() => {
-        if (isLoaded) fetchForms();
-    }, [isLoaded]);
+        if (isLoaded && user) {
+            fetchForms();
+        } else if (isLoaded && !user) {
+            // Wait for user or handle unauthenticated state if needed
+            // But usually Clerk will redirect if protected
+        }
+    }, [isLoaded, user]);
 
     const copyToClipboard = (id: string) => {
         const url = `${window.location.origin}/f/${id}`;

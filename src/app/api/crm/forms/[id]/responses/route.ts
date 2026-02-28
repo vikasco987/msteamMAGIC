@@ -234,8 +234,7 @@ export async function PATCH(
                 select: { columnPermissions: true, createdBy: true }
             });
             const response = await prisma.formResponse.findUnique({
-                where: { id: responseId },
-                select: { visibleToUsers: true, visibleToRoles: true, submittedBy: true }
+                where: { id: responseId }
             });
 
             // Column Level check first
@@ -247,7 +246,8 @@ export async function PATCH(
             const isOwner = form?.createdBy === user.id;
             const isSubmitter = response?.submittedBy === user.id;
             const isAssigned = response?.visibleToUsers?.includes(user.id) ||
-                response?.visibleToRoles?.includes(userRole);
+                response?.visibleToRoles?.includes(userRole) ||
+                (response as any)?.assignedTo?.includes(user.id);
 
             // Access Logic:
             // 1. If GAC explicitly says 'edit' -> ALLOW

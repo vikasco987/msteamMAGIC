@@ -65,6 +65,7 @@ import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
+import { useUser } from "@clerk/nextjs";
 
 const getExcelLabel = (index: number): string => {
     let label = "";
@@ -227,6 +228,7 @@ const FILTER_OPERATORS = {
 };
 
 export default function CRMSpreadsheetPage() {
+    const { user, isLoaded } = useUser();
     const router = useRouter();
     const params = useParams();
     const searchParams = useSearchParams();
@@ -578,7 +580,9 @@ export default function CRMSpreadsheetPage() {
         }
     }, [searchParams]);
 
-    useEffect(() => { fetchData(); }, [params.id]);
+    useEffect(() => {
+        if (isLoaded && user) fetchData();
+    }, [params.id, isLoaded, user]);
 
     useEffect(() => {
         if (data?.form) {
