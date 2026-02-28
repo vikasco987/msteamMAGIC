@@ -884,6 +884,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -935,6 +936,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -2434,6 +2436,22 @@ export default function CRMSpreadsheetPage() {
                                                         );
                                                     }
 
+                                                    if (col.id === "__followUpStatus") {
+                                                        const latestStatus = res.remarks?.[0]?.followUpStatus || "";
+                                                        return (
+                                                            <td key={col.id} style={{ width, left: isSticky ? leftOffset : undefined }} className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-text relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}>
+                                                                {latestStatus ? (
+                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest ${latestStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                        latestStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                        }`}>
+                                                                        {latestStatus}
+                                                                    </span>
+                                                                ) : <span className="text-xs text-slate-300">-</span>}
+                                                            </td>
+                                                        );
+                                                    }
+
                                                     const isInternal = col.isInternal;
                                                     const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
                                                     const currentClerkId = (data as any).clerkId;
@@ -3266,7 +3284,7 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        {isPureMaster && (col.isInternal || ["__followup", "__recentRemark", "__nextFollowUpDate"].includes(col.id)) && col.id !== "__profile" && col.id !== "__submittedAt" && col.id !== "__contributor" && col.id !== "__assigned" && (
+                                                        {isPureMaster && (col.isInternal || ["__followup", "__recentRemark", "__nextFollowUpDate", "__followUpStatus"].includes(col.id)) && col.id !== "__profile" && col.id !== "__submittedAt" && col.id !== "__contributor" && col.id !== "__assigned" && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteColumn(col.id); }}
                                                                 className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all border border-transparent hover:border-rose-100"

@@ -9,6 +9,7 @@ interface FormRemark {
     id: string;
     remark: string;
     nextFollowUpDate?: string;
+    followUpStatus?: string;
     authorName: string;
     createdAt: string;
 }
@@ -27,7 +28,8 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
     const [remarks, setRemarks] = useState<FormRemark[]>([]);
     const [form, setForm] = useState({
         remark: "",
-        nextFollowUpDate: ""
+        nextFollowUpDate: "",
+        followUpStatus: "Scheduled"
     });
 
     const [isAdding, setIsAdding] = useState(false);
@@ -65,7 +67,7 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
             if (res.ok) {
                 toast.success("Follow-up added!");
-                setForm({ remark: "", nextFollowUpDate: "" });
+                setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "Scheduled" });
                 setIsAdding(false);
                 fetchRemarks();
                 if (onSave) onSave();
@@ -101,7 +103,7 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
     const canDelete = userRole === "MASTER" || userRole === "ADMIN";
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[10000] p-4">
             <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="bg-indigo-600 p-5 pl-6 text-white flex justify-between items-center shrink-0">
                     <div>
@@ -166,6 +168,21 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                             onChange={(e) => setForm({ ...form, nextFollowUpDate: e.target.value })}
                                         />
                                     </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Follow-up Status</label>
+                                        <select
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
+                                            value={form.followUpStatus}
+                                            onChange={(e) => setForm({ ...form, followUpStatus: e.target.value })}
+                                        >
+                                            <option>Scheduled</option>
+                                            <option>Called</option>
+                                            <option>Walked In</option>
+                                            <option>Follow-up Done</option>
+                                            <option>Missed</option>
+                                            <option>Closed</option>
+                                        </select>
+                                    </div>
                                     <div className="flex gap-2 pt-2">
                                         <button
                                             type="button"
@@ -214,6 +231,14 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-[10px] font-black uppercase tracking-widest">
                                                     <FaCalendarAlt /> Next: {format(new Date(r.nextFollowUpDate), "MMM d, yyyy")}
                                                 </span>
+                                                {r.followUpStatus && (
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${r.followUpStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                            r.followUpStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                        }`}>
+                                                        {r.followUpStatus}
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
