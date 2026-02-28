@@ -474,6 +474,45 @@ export default function CRMSpreadsheetPage() {
     const [isSelecting, setIsSelecting] = useState(false);
 
     const fetchData = async () => {
+        // 1. FAST CACHE LOAD (Run before API Call)
+        const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
+        if (cachedDataStr) {
+            try {
+                const cachedJson = JSON.parse(cachedDataStr);
+                const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                if (offlineUpdates.length > 0) {
+                    offlineUpdates.forEach((update: any) => {
+                        const { responseId, columnId, value, isInternal } = update;
+                        if (isInternal) {
+                            if (!cachedJson.internalValues) cachedJson.internalValues = [];
+                            const idx = cachedJson.internalValues.findIndex((v: any) => v.responseId === responseId && v.columnId === columnId);
+                            if (idx > -1) cachedJson.internalValues[idx].value = value;
+                            else cachedJson.internalValues.push({ responseId, columnId, value });
+                        } else {
+                            if (!cachedJson.responses) cachedJson.responses = [];
+                            const rIdx = cachedJson.responses.findIndex((r: any) => r.id === responseId);
+                            if (rIdx > -1) {
+                                if (!cachedJson.responses[rIdx].values) cachedJson.responses[rIdx].values = [];
+                                const vIdx = cachedJson.responses[rIdx].values.findIndex((v: any) => v.fieldId === columnId);
+                                if (vIdx > -1) cachedJson.responses[rIdx].values[vIdx].value = value;
+                                else cachedJson.responses[rIdx].values.push({ fieldId: columnId, value });
+                            }
+                        }
+                    });
+                }
+                setData(cachedJson);
+                setUserRole(cachedJson.userRole);
+                setIsMaster(cachedJson.isMaster);
+                setIsPureMaster(cachedJson.isPureMaster);
+                setLoading(false); // Stop loading instantly so UI shows!
+            } catch (e) {
+                console.error("Cache parsing error", e);
+            }
+        }
+
+        // 2. NETWORK SYNC (Silently override cache if online)
+        if (!navigator.onLine) return; // if definitely offline, skip API
+
         try {
             const [dataRes, viewsRes, permRes] = await Promise.all([
                 fetch(`/api/crm/forms/${params.id}/responses?_t=${Date.now()}`, { cache: 'no-store' }),
@@ -669,27 +708,37 @@ export default function CRMSpreadsheetPage() {
         const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
         if (offlineUpdates.length > 0) {
             toast.loading(`Syncing ${offlineUpdates.length} offline changes...`, { id: "offline-sync" });
-            try {
-                let successCount = 0;
-                for (const update of offlineUpdates) {
+            let successCount = 0;
+            const failedUpdates: any[] = [];
+
+            for (const update of offlineUpdates) {
+                try {
                     const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(update)
                     });
-                    if (res.ok) successCount++;
+                    if (res.ok) {
+                        successCount++;
+                    } else {
+                        failedUpdates.push(update);
+                    }
+                } catch (err) {
+                    failedUpdates.push(update);
                 }
+            }
+
+            // Important: Handle pending queue properly based on failed items
+            if (failedUpdates.length === 0) {
                 localStorage.removeItem(`offlineUpdates-${params.id}`);
                 setPendingOfflineCount(0);
-                if (successCount === offlineUpdates.length) {
-                    toast.success("Offline changes synced successfully!", { id: "offline-sync" });
-                } else {
-                    toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
-                }
-                fetchData();
-            } catch (err) {
-                toast.error("Offline sync failed.", { id: "offline-sync" });
+                toast.success("Offline changes synced successfully!", { id: "offline-sync" });
+            } else {
+                localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(failedUpdates));
+                setPendingOfflineCount(failedUpdates.length);
+                toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
             }
+            fetchData();
         } else {
             toast("Everything is already synced.", { icon: '✅' });
         }
