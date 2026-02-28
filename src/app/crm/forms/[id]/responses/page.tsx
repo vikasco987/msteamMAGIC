@@ -871,6 +871,24 @@ export default function CRMSpreadsheetPage() {
     // AI chatbot and filters are now handled by useChat at the top level.
 
 
+    // ⚡ Flash Recovery Engine: Identify items needing attention TODAY
+    const todayFollowUps = useMemo(() => {
+        if (!data?.responses) return [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        return data.responses.filter(res => {
+            const remarks = res.remarks || [];
+            const latestRemark = remarks?.[0];
+            if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
+                const followUpDate = new Date(latestRemark.nextFollowUpDate);
+                followUpDate.setHours(0, 0, 0, 0);
+                return followUpDate.getTime() === today.getTime();
+            }
+            return false;
+        });
+    }, [data?.responses]);
+
     const getColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
@@ -882,9 +900,6 @@ export default function CRMSpreadsheetPage() {
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -934,9 +949,6 @@ export default function CRMSpreadsheetPage() {
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -1886,7 +1898,65 @@ export default function CRMSpreadsheetPage() {
             }
 
             {/* Matrix Console */}
-            <main className="flex-1 overflow-hidden bg-slate-50 relative">
+            <main className="flex-1 overflow-hidden bg-slate-50 relative flex flex-col">
+
+                {/* ⚡ FLASH RECOVERY: Today's High priority actions */}
+                {todayFollowUps.length > 0 && !isFullScreen && (
+                    <div className="px-6 py-4 bg-white/40 border-b border-slate-200 shadow-[inset_0_10px_30px_-10px_rgba(0,0,0,0.02)] overflow-x-auto custom-scrollbar flex items-center gap-4 shrink-0 transition-all">
+                        <div className="flex flex-col gap-0.5 min-w-fit pr-6 border-r border-slate-200">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">Flash Hub</span>
+                            </div>
+                            <span className="text-xl font-black tracking-tight text-slate-800">{todayFollowUps.length} Pending Actions</span>
+                        </div>
+                        <div className="flex items-center gap-4 py-1">
+                            {todayFollowUps.slice(0, 10).map((res) => {
+                                // Smart Search for Number
+                                const phone = res.values?.find(v => v.fieldId.toLowerCase().includes("phone") || v.fieldId.toLowerCase().includes("number"))?.value || "—";
+                                const latestRemark = res.remarks?.[0]?.remark || "Waiting for interaction protocol...";
+                                return (
+                                    <motion.div
+                                        key={`flash-${res.id}`}
+                                        initial={{ opacity: 0, scale: 0.9, x: 20 }}
+                                        animate={{ opacity: 1, scale: 1, x: 0 }}
+                                        onClick={() => setSelectedResponse(res)}
+                                        className="min-w-[300px] max-w-[340px] bg-white p-4 rounded-[24px] border border-slate-200 shadow-sm hover:shadow-[0_15px_30px_-10px_rgba(0,0,0,0.08)] hover:border-indigo-300 flex flex-col gap-3 transition-all cursor-pointer group hover:-translate-y-1 active:scale-95"
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2.5">
+                                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 border-2 border-white shadow-md flex items-center justify-center text-white font-black text-xs">
+                                                    {res.submittedByName ? res.submittedByName[0].toUpperCase() : "C"}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-black uppercase text-slate-900 truncate tracking-tight">{res.submittedByName || "Lead Contact"}</p>
+                                                    <p className="text-[9px] font-black text-indigo-500 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md w-fit"><Phone size={8} /> {phone}</p>
+                                                </div>
+                                            </div>
+                                            <div className="w-7 h-7 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-inner">
+                                                <ArrowUpRight size={14} />
+                                            </div>
+                                        </div>
+                                        <div className="px-3 py-2.5 bg-slate-50/50 rounded-2xl border border-slate-100 group-hover:bg-white group-hover:border-indigo-100 transition-colors">
+                                            <p className="text-[10px] font-bold text-slate-600 line-clamp-2 leading-relaxed italic">“{latestRemark}”</p>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                            {todayFollowUps.length > 10 && (
+                                <button
+                                    onClick={() => window.open("/dashboard/followups", "_blank")}
+                                    className="min-w-[140px] px-6 h-[110px] rounded-[24px] border-2 border-dashed border-slate-200 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-white transition-all flex flex-col items-center justify-center gap-2 group"
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-indigo-50 transition-colors">
+                                        <Plus size={20} />
+                                    </div>
+                                    +{todayFollowUps.length - 10} Explorer
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* FLOATING ACCESS DOCK (Mac OS / Premium SaaS Style) */}
                 {(() => {
@@ -1975,7 +2045,7 @@ export default function CRMSpreadsheetPage() {
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
-                            className="h-full w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200"
+                            className="flex-1 w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200"
                         >
                             <table
                                 style={{ minWidth: totalTableWidth }}
@@ -2575,7 +2645,34 @@ export default function CRMSpreadsheetPage() {
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>{val || "—"}</span>
+                                                                            <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
+                                                                                {(() => {
+                                                                                    if (!val) return "—";
+                                                                                    // Apply premium styles for sync columns by label
+                                                                                    if (col.label === "Recent Remark") {
+                                                                                        return <span className="text-indigo-600 font-bold">{val}</span>;
+                                                                                    }
+                                                                                    if (col.label === "Next Follow-up Date") {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-sm">
+                                                                                                <Calendar size={10} />
+                                                                                                {safeFormat(val, "dd MMM")}
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    if (col.label === "Follow-up Status") {
+                                                                                        return (
+                                                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border shadow-sm ${val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                                                val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                                                }`}>
+                                                                                                {val}
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    return val;
+                                                                                })()}
+                                                                            </span>
                                                                         )}
                                                                     </div>
                                                                     {isSaving && (
@@ -2660,7 +2757,7 @@ export default function CRMSpreadsheetPage() {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
-                            className="h-full overflow-x-auto overflow-y-hidden p-12 flex gap-10 custom-scrollbar bg-slate-100/50"
+                            className="flex-1 overflow-x-auto overflow-y-hidden p-12 flex gap-10 custom-scrollbar bg-slate-100/50"
                         >
                             {Object.entries(groupedResponses).map(([groupName, items]) => (
                                 <div key={groupName} className="w-[380px] shrink-0 flex flex-col gap-6">
