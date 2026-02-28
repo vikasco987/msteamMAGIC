@@ -60,7 +60,7 @@ export async function GET() {
         if (allUserIds.length > 0) {
             try {
                 const clerk = await clerkClient();
-                const usersList = await clerk.users.getUserList({ userId: allUserIds });
+                const usersList = await clerk.users.getUserList({ userId: allUserIds, limit: 100 });
                 usersList.data.forEach(u => {
                     usersMap[u.id] = {
                         email: u.emailAddresses[0]?.emailAddress || "Unknown",
