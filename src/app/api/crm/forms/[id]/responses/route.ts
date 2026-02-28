@@ -79,10 +79,19 @@ export async function GET(
         const userPerms = gac.users?.[userId] || {};
         const colAccess = { ...rolePerms, ...userPerms };
 
+        const allResponses = await prisma.formResponse.findMany({
+            where: { formId },
+            include: { values: true },
+            orderBy: { submittedAt: "asc" }
+        });
+
+        const isAssignedToAny = allResponses.some(r => ((r as any).assignedTo || []).includes(userId));
+
         // Form Level Access Control
         const hasFormAccess = isMasterRole || isMaster ||
             form.visibleToRoles.includes(userRole) ||
             form.visibleToUsers.includes(userId) ||
+            isAssignedToAny ||
             (form.visibleToRoles.length === 0 && form.visibleToUsers.length === 0);
 
         if (!hasFormAccess) {
@@ -91,18 +100,12 @@ export async function GET(
 
         console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
 
-        const allResponses = await prisma.formResponse.findMany({
-            where: { formId },
-            include: { values: true },
-            orderBy: { submittedAt: "asc" }
-        });
-
         // Filter responses: ONLY Pure Master bypasses all checks.
         // Admins and Owners follow visibility rules (unless records are shared with them or they are the submitter)
         const responses = isMasterRole ? allResponses : allResponses.filter(res => {
             const roles = res.visibleToRoles || [];
             const users = res.visibleToUsers || [];
-            const assignees = res.assignedTo || [];
+            const assignees = (res as any).assignedTo || [];
 
             // Condition 1: Submitter/Creator always sees their own record
             if (res.submittedBy === userId) return true;

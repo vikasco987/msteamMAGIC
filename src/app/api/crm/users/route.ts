@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
             clerkId: u.id,
             email: u.emailAddresses?.[0]?.emailAddress || "",
             name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown",
+            firstName: u.firstName || "",
+            lastName: u.lastName || "",
+            imageUrl: u.imageUrl || "",
             role: "USER" // Default fallback, as we don't strictly need precise DB roles for the access search list visually
         }));
 

@@ -39,7 +39,8 @@ export async function GET() {
                     { visibleToRoles: { has: userRole } },
                     { visibleToRoles: { has: dbRole } },
                     { visibleToUsers: { has: userId } },
-                    { createdBy: userId }
+                    { createdBy: userId },
+                    { responses: { some: { assignedTo: { has: userId } } } }
                 ]
             };
         }
