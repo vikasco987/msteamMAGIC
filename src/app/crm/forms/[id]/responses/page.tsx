@@ -482,10 +482,37 @@ export default function CRMSpreadsheetPage() {
             ]);
 
             const json = await dataRes.json();
+
+            // Inject offline edits before rendering
+            const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+            if (offlineUpdates.length > 0) {
+                offlineUpdates.forEach((update: any) => {
+                    const { responseId, columnId, value, isInternal } = update;
+                    if (isInternal) {
+                        if (!json.internalValues) json.internalValues = [];
+                        const idx = json.internalValues.findIndex((v: any) => v.responseId === responseId && v.columnId === columnId);
+                        if (idx > -1) json.internalValues[idx].value = value;
+                        else json.internalValues.push({ responseId, columnId, value });
+                    } else {
+                        if (!json.responses) json.responses = [];
+                        const rIdx = json.responses.findIndex((r: any) => r.id === responseId);
+                        if (rIdx > -1) {
+                            if (!json.responses[rIdx].values) json.responses[rIdx].values = [];
+                            const vIdx = json.responses[rIdx].values.findIndex((v: any) => v.fieldId === columnId);
+                            if (vIdx > -1) json.responses[rIdx].values[vIdx].value = value;
+                            else json.responses[rIdx].values.push({ fieldId: columnId, value });
+                        }
+                    }
+                });
+            }
+
             setData(json);
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
+
+            // Save safe cache
+            localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(json));
 
             if (viewsRes.ok) {
                 const viewsJson = await viewsRes.json();
@@ -503,7 +530,43 @@ export default function CRMSpreadsheetPage() {
                 if (firstDropdown) setGroupByColId(firstDropdown.id);
             }
         } catch (err) {
-            toast.error("Failed to sync matrix");
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
+                const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
+                if (cachedDataStr) {
+                    const cachedJson = JSON.parse(cachedDataStr);
+
+                    const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                    if (offlineUpdates.length > 0) {
+                        offlineUpdates.forEach((update: any) => {
+                            const { responseId, columnId, value, isInternal } = update;
+                            if (isInternal) {
+                                if (!cachedJson.internalValues) cachedJson.internalValues = [];
+                                const idx = cachedJson.internalValues.findIndex((v: any) => v.responseId === responseId && v.columnId === columnId);
+                                if (idx > -1) cachedJson.internalValues[idx].value = value;
+                                else cachedJson.internalValues.push({ responseId, columnId, value });
+                            } else {
+                                if (!cachedJson.responses) cachedJson.responses = [];
+                                const rIdx = cachedJson.responses.findIndex((r: any) => r.id === responseId);
+                                if (rIdx > -1) {
+                                    if (!cachedJson.responses[rIdx].values) cachedJson.responses[rIdx].values = [];
+                                    const vIdx = cachedJson.responses[rIdx].values.findIndex((v: any) => v.fieldId === columnId);
+                                    if (vIdx > -1) cachedJson.responses[rIdx].values[vIdx].value = value;
+                                    else cachedJson.responses[rIdx].values.push({ fieldId: columnId, value });
+                                }
+                            }
+                        });
+                    }
+                    setData(cachedJson);
+                    setUserRole(cachedJson.userRole);
+                    setIsMaster(cachedJson.isMaster);
+                    setIsPureMaster(cachedJson.isPureMaster);
+                    toast("Restored offline session", { icon: "📶" });
+                } else {
+                    toast.error("Offline and no cached data available.", { id: 'offline-err' });
+                }
+            } else {
+                toast.error("Failed to sync matrix");
+            }
         } finally {
             setLoading(false);
         }
