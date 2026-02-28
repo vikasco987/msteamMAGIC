@@ -1962,12 +1962,13 @@ export default function CRMSpreadsheetPage() {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95 }}
                                                 transition={{ duration: 0.2, delay: rIdx * 0.03 }}
-                                                className={`group hover:bg-indigo-50/30 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
+                                                onClick={() => toggleRowSelection(res.id)}
+                                                className={`group cursor-pointer hover:bg-indigo-50/50 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}
                                             >
                                                 <td className={`px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">
                                                         <div
-                                                            onClick={() => toggleRowSelection(res.id)}
+                                                            onClick={(e) => { e.stopPropagation(); toggleRowSelection(res.id); }}
                                                             className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all shadow-sm shrink-0 ${selectedRows.includes(res.id) ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
                                                         >
                                                             {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
@@ -2014,7 +2015,7 @@ export default function CRMSpreadsheetPage() {
                                                                 className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
                                                             >
                                                                 <button
-                                                                    onClick={() => setSelectedResponse(res)}
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); }}
                                                                     className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
                                                                 >
                                                                     <Maximize2 size={14} />
@@ -2177,11 +2178,16 @@ export default function CRMSpreadsheetPage() {
                                                         <td
                                                             key={col.id}
                                                             style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                            onClick={() => { if (!isLocked) { setEditingCell({ rowId: res.id, colId: col.id }); setEditValue(val); } }}
+                                                            onClick={(e) => {
+                                                                if (!isLocked && !isEditing) {
+                                                                    setEditingCell({ rowId: res.id, colId: col.id });
+                                                                    setEditValue(val);
+                                                                }
+                                                            }}
                                                             className={`px-4 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-5' : 'py-2'}`}
                                                         >
                                                             {isEditing ? (
-                                                                <div className="w-full">
+                                                                <div className="w-full" onClick={(e) => e.stopPropagation()}>
                                                                     {col.type === "dropdown" ? (
                                                                         <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
