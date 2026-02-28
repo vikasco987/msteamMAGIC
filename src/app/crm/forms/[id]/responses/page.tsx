@@ -467,9 +467,9 @@ export default function CRMSpreadsheetPage() {
     const fetchData = async () => {
         try {
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses`),
-                fetch(`/api/crm/forms/${params.id}/views`),
-                fetch(`/api/crm/forms/${params.id}/column-permissions`)
+                fetch(`/api/crm/forms/${params.id}/responses?_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
             ]);
 
             const json = await dataRes.json();
@@ -2039,7 +2039,9 @@ export default function CRMSpreadsheetPage() {
                                                     }
 
                                                     if (col.id === "__assigned") {
-                                                        const assignedUsers = res.assignedTo || [];
+                                                        const rawAssigned = res.assignedTo || [];
+                                                        const rawVisible = res.visibleToUsers || [];
+                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible]));
                                                         return (
                                                             <td
                                                                 key={col.id}

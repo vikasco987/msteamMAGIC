@@ -88,7 +88,7 @@ export default function CRMFormsList() {
 
     const fetchForms = async () => {
         try {
-            const res = await fetch("/api/crm/forms");
+            const res = await fetch(`/api/crm/forms?_t=${Date.now()}`, { cache: 'no-store' });
             const data = await res.json();
             setForms(data.forms || []);
 
