@@ -282,6 +282,7 @@ model FormResponse {
   
   values          ResponseValue[]
   internalValues  InternalValue[]
+  remarks         FormRemark[]
 
   // Permission Controls
   visibleToRoles  String[]    @default([])
@@ -298,7 +299,7 @@ model ResponseValue {
   response    FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 
   fieldId     String      @db.ObjectId
-  field       FormField   @relation(fields: [fieldId], references: [id])
+  field       FormField   @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   
   value       String      // Store as string
 }
@@ -376,4 +377,21 @@ model AIAnalysis {
   updatedAt       DateTime @updatedAt
 
   @@index([formId])
+}
+
+model FormRemark {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  remark            String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime? @updatedAt
+
+  authorName        String?
+  authorEmail       String?
+  createdById       String?   // Clerk userId of creator
+
+  nextFollowUpDate  DateTime? 
+  followUpStatus    String?   // "scheduled", "completed", "missed"
+
+  responseId        String    @db.ObjectId
+  response          FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
 }

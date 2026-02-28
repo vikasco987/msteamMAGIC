@@ -125,6 +125,40 @@ export async function DELETE(
             return NextResponse.json({ error: "Form not found" }, { status: 404 });
         }
 
+        // 1️⃣ Find all fields and columns
+        const fields = await prisma.formField.findMany({ where: { formId: id } });
+        const fieldIds = fields.map(f => f.id);
+
+        const internalCols = await prisma.internalColumn.findMany({ where: { formId: id } });
+        const colIds = internalCols.map(c => c.id);
+
+        const responses = await prisma.formResponse.findMany({ where: { formId: id } });
+        const responseIds = responses.map(r => r.id);
+
+        // 2️⃣ Delete all deep child relations (Values, Activities, Views, Analysis)
+        if (fieldIds.length > 0) {
+            await prisma.responseValue.deleteMany({ where: { fieldId: { in: fieldIds } } });
+        }
+
+        if (colIds.length > 0) {
+            await prisma.internalValue.deleteMany({ where: { columnId: { in: colIds } } });
+        }
+
+        if (responseIds.length > 0) {
+            // Failsafe delete values again by responseId to be 100% sure
+            await prisma.responseValue.deleteMany({ where: { responseId: { in: responseIds } } });
+            await prisma.internalValue.deleteMany({ where: { responseId: { in: responseIds } } });
+            await prisma.formActivity.deleteMany({ where: { responseId: { in: responseIds } } });
+        }
+
+        // 3️⃣ Delete mid-level relations (Responses, Fields, Columns, Views, Analysis)
+        await prisma.formResponse.deleteMany({ where: { formId: id } });
+        await prisma.formField.deleteMany({ where: { formId: id } });
+        await prisma.internalColumn.deleteMany({ where: { formId: id } });
+        await prisma.savedView.deleteMany({ where: { formId: id } });
+        await prisma.aIAnalysis.deleteMany({ where: { formId: id } });
+
+        // 4️⃣ Finally delete the Form itself
         await prisma.dynamicForm.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error: any) {

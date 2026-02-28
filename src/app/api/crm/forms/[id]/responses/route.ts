@@ -78,10 +78,13 @@ export async function GET(
         const rolePerms = gac.roles?.[userRole] || {};
         const userPerms = gac.users?.[userId] || {};
         const colAccess = { ...rolePerms, ...userPerms };
-
         const allResponses = await prisma.formResponse.findMany({
             where: { formId },
-            include: { values: true },
+            include: {
+                values: true,
+                // @ts-ignore - Prisma types might need generation
+                remarks: { orderBy: { createdAt: "desc" } }
+            },
             orderBy: { submittedAt: "asc" }
         });
 
