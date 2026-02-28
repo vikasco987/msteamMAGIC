@@ -2054,7 +2054,7 @@ export default function CRMSpreadsheetPage() {
                                                             return r === "ADMIN" || r === "MASTER";
                                                         }).map(m => m.clerkId);
 
-                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds, ...authorityIds]));
+                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
                                                         const isCellOpen = openAssignedCell === res.id;
                                                         return (
                                                             <td
