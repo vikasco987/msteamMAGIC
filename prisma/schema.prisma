@@ -345,6 +345,8 @@ model InternalValue {
   updatedBy       String?     // UserID
   updatedByName   String?
   updatedAt       DateTime    @updatedAt
+
+  @@unique([responseId, columnId])
 }
 
 model FormActivity {

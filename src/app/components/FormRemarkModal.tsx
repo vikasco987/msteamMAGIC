@@ -68,6 +68,43 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
         }
     };
 
+    // 🧠 AI Automation: Suggest next follow-up date based on status
+    useEffect(() => {
+        if (!isAdding) return;
+
+        const today = new Date();
+        let daysToAdd = 0;
+
+        switch (form.followUpStatus) {
+            case "Missed":
+                daysToAdd = 1;
+                break;
+            case "Called":
+                daysToAdd = 2;
+                break;
+            case "Scheduled":
+                daysToAdd = 3;
+                break;
+            case "Walked In":
+                daysToAdd = 3;
+                break;
+            case "Follow-up Done":
+                daysToAdd = 7;
+                break;
+            case "Closed":
+                setForm(prev => ({ ...prev, nextFollowUpDate: "" }));
+                return;
+            default:
+                return;
+        }
+
+        if (daysToAdd > 0) {
+            const nextDate = new Date(today);
+            nextDate.setDate(today.getDate() + daysToAdd);
+            setForm(prev => ({ ...prev, nextFollowUpDate: nextDate.toISOString().split('T')[0] }));
+        }
+    }, [form.followUpStatus, isAdding]);
+
     useEffect(() => {
         fetchRemarks();
 

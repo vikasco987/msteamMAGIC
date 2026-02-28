@@ -12,7 +12,7 @@ export async function GET(
 
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const remarks = await prisma.formRemark.findMany({
+        const remarks = await (prisma as any).formRemark.findMany({
             where: { responseId },
             orderBy: { createdAt: 'desc' }
         });
@@ -39,7 +39,7 @@ export async function POST(
             return NextResponse.json({ error: "Remark text is required" }, { status: 400 });
         }
 
-        const newRemark = await prisma.formRemark.create({
+        const newRemark = await (prisma as any).formRemark.create({
             data: {
                 responseId,
                 remark,
@@ -70,7 +70,7 @@ export async function POST(
 
         const response = await prisma.formResponse.findUnique({
             where: { id: responseId },
-            select: { assignedTo: true }
+            select: { assignedTo: true } as any
         });
 
         // Notify assigned users or all authorized users
@@ -94,30 +94,91 @@ export async function POST(
             });
         }
 
+        // --- AUTOMATION ENGINE: Escalation & Event Triggers ---
+        const existingRemarks = await (prisma as any).formRemark.findMany({
+            where: { responseId },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+        });
+
+        const missedCount = existingRemarks.filter((r: any) => r.followUpStatus === "Missed" || r.followUpStatus === "missed").length;
+
+        // Trigger: Status Alert
+        if (followUpStatus === "Missed") {
+            const adminUsers = await prisma.user.findMany({
+                where: { role: { in: ["ADMIN", "MASTER"] } },
+                select: { clerkId: true }
+            });
+
+            const adminIds = adminUsers.map(u => u.clerkId).filter(id => id !== user.id);
+
+            await prisma.notification.createMany({
+                data: adminIds.map(uid => ({
+                    userId: uid,
+                    type: "CRM_FOLLOWUP",
+                    title: `⚠️ Follow-up Missed: ${form?.title || 'Lead'}`,
+                    content: `${user.firstName || 'Staff'} marked a follow-up as MISSED. Urgent action may be required.`,
+                    formId: id,
+                    responseId: responseId
+                }))
+            });
+        }
+
+        // 🚀 Trigger: Auto Escalation (3 Missed = Red Alert)
+        if (missedCount >= 3) {
+            const masterUsers = await prisma.user.findMany({
+                where: { role: "MASTER" },
+                select: { clerkId: true }
+            });
+
+            const masterIds = masterUsers.map(u => u.clerkId);
+
+            await prisma.notification.createMany({
+                data: masterIds.map(uid => ({
+                    userId: uid,
+                    type: "CRM_FOLLOWUP",
+                    title: `🔥 CRITICAL ESCALATION: ${form?.title || 'Lead'}`,
+                    content: `This lead has MISSED follow-ups ${missedCount} times! Auto-escalated to Master Auth for recovery.`,
+                    formId: id,
+                    responseId: responseId
+                }))
+            });
+        }
+        // --- END AUTOMATION ENGINE ---
+
         // SYNC TO CRM TABLE (Update Internal Values)
         const remarkCols = await prisma.internalColumn.findMany({
             where: {
                 formId: id,
-                label: { in: ["Recent Remark", "Next Follow-up Date"] }
+                label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status"] }
             }
         });
 
         const remarkCol = remarkCols.find(c => c.label === "Recent Remark");
         const followupCol = remarkCols.find(c => c.label === "Next Follow-up Date");
+        const statusCol = remarkCols.find(c => c.label === "Follow-up Status");
 
         if (remarkCol) {
-            await prisma.internalValue.upsert({
-                where: { responseId_columnId: { responseId, columnId: remarkCol.id } },
+            await (prisma as any).internalValue.upsert({
+                where: { responseId_columnId: { responseId, columnId: remarkCol.id } } as any,
                 update: { value: remark, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" },
                 create: { responseId, columnId: remarkCol.id, value: remark, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" }
             });
         }
 
         if (followupCol && nextFollowUpDate) {
-            await prisma.internalValue.upsert({
-                where: { responseId_columnId: { responseId, columnId: followupCol.id } },
+            await (prisma as any).internalValue.upsert({
+                where: { responseId_columnId: { responseId, columnId: followupCol.id } } as any,
                 update: { value: String(nextFollowUpDate), updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" },
                 create: { responseId, columnId: followupCol.id, value: String(nextFollowUpDate), updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" }
+            });
+        }
+
+        if (statusCol && followUpStatus) {
+            await (prisma as any).internalValue.upsert({
+                where: { responseId_columnId: { responseId, columnId: statusCol.id } } as any,
+                update: { value: followUpStatus, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" },
+                create: { responseId, columnId: statusCol.id, value: followUpStatus, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" }
             });
         }
 
@@ -149,7 +210,7 @@ export async function DELETE(
             return NextResponse.json({ error: "Forbidden: Only Admins can delete remarks" }, { status: 403 });
         }
 
-        await prisma.formRemark.delete({
+        await (prisma as any).formRemark.delete({
             where: { id: remarkId }
         });
 
