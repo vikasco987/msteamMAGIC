@@ -64,6 +64,24 @@ export async function DELETE(
 
         if (!columnId) return NextResponse.json({ error: "Missing columnId" }, { status: 400 });
 
+        // If system column (starts with __)
+        if (columnId.startsWith("__")) {
+            const form = await prisma.dynamicForm.findUnique({ where: { id: formId } });
+            if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+
+            let perms: any = form.columnPermissions || { roles: {}, users: {} };
+            if (!perms.deletedSystemCols) perms.deletedSystemCols = [];
+            if (!perms.deletedSystemCols.includes(columnId)) {
+                perms.deletedSystemCols.push(columnId);
+            }
+
+            await prisma.dynamicForm.update({
+                where: { id: formId },
+                data: { columnPermissions: perms }
+            });
+            return NextResponse.json({ success: true, isSystem: true });
+        }
+
         // Delete column and all its values
         await prisma.$transaction([
             prisma.internalValue.deleteMany({ where: { columnId } }),

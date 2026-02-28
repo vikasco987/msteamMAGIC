@@ -873,13 +873,17 @@ export default function CRMSpreadsheetPage() {
 
     const getColumns = useMemo(() => {
         if (!data) return [];
+        const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" },
-            { id: "__followup", label: "Follow-ups", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
         ];
+
+        if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -920,13 +924,17 @@ export default function CRMSpreadsheetPage() {
 
     const allColumns = useMemo(() => {
         if (!data) return [];
+        const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" },
-            { id: "__followup", label: "Follow-ups", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
         ];
+
+        if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "static" });
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
         (data.internalColumns || []).forEach(ic => baseCols.push({ ...ic, isInternal: true }));
 
@@ -1464,8 +1472,16 @@ export default function CRMSpreadsheetPage() {
         const previousData = { ...data };
         toast.loading("Purging dimension...", { id: `del-col-${columnId}` });
 
-        // Optimistic Delete
-        setData(prev => prev ? { ...prev, internalColumns: prev.internalColumns.filter(c => c.id !== columnId) } : prev);
+        if (columnId.startsWith("__")) {
+            setData(prev => {
+                if (!prev) return prev;
+                const newPerms = { ...(prev.form.columnPermissions || { roles: {}, users: {} }) } as any;
+                newPerms.deletedSystemCols = [...(newPerms.deletedSystemCols || []), columnId];
+                return { ...prev, form: { ...prev.form, columnPermissions: newPerms } };
+            });
+        } else {
+            setData(prev => prev ? { ...prev, internalColumns: prev.internalColumns.filter(c => c.id !== columnId) } : prev);
+        }
 
         try {
             const res = await fetch(`/api/crm/forms/${params.id}/columns?columnId=${columnId}`, {
@@ -2400,6 +2416,24 @@ export default function CRMSpreadsheetPage() {
                                                         );
                                                     }
 
+                                                    if (col.id === "__recentRemark") {
+                                                        const latestRemark = res.remarks?.[0]?.remark || "";
+                                                        return (
+                                                            <td key={col.id} style={{ width, left: isSticky ? leftOffset : undefined }} className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-text relative ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}>
+                                                                {latestRemark ? <span className="text-xs font-bold text-slate-700 truncate block max-w-full">{latestRemark}</span> : <span className="text-xs text-slate-300">-</span>}
+                                                            </td>
+                                                        );
+                                                    }
+
+                                                    if (col.id === "__nextFollowUpDate") {
+                                                        const nextDate = res.remarks?.find(r => r.nextFollowUpDate)?.nextFollowUpDate;
+                                                        return (
+                                                            <td key={col.id} style={{ width, left: isSticky ? leftOffset : undefined }} className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-text relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}>
+                                                                {nextDate ? <span className="text-[10px] font-black uppercase text-amber-700 tracking-widest bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block">{safeFormat(nextDate.toString(), "MMM dd")}</span> : <span className="text-xs text-slate-300">-</span>}
+                                                            </td>
+                                                        );
+                                                    }
+
                                                     const isInternal = col.isInternal;
                                                     const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
                                                     const currentClerkId = (data as any).clerkId;
@@ -3232,7 +3266,7 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        {isPureMaster && col.isInternal && (
+                                                        {isPureMaster && (col.isInternal || ["__followup", "__recentRemark", "__nextFollowUpDate"].includes(col.id)) && col.id !== "__profile" && col.id !== "__submittedAt" && col.id !== "__contributor" && col.id !== "__assigned" && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteColumn(col.id); }}
                                                                 className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all border border-transparent hover:border-rose-100"
