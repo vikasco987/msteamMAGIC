@@ -2031,7 +2031,7 @@ export default function CRMSpreadsheetPage() {
                                                             >
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100">
-                                                                        {res.submittedByName ? res.submittedByName[0].toUpperCase() : 'U'}
+                                                                        {res.submittedByName ? (res.submittedByName[0]?.toUpperCase() || 'U') : 'U'}
                                                                     </div>
                                                                     <div className="min-w-0">
                                                                         <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tighter">{res.submittedByName || "Guest User"}</p>
@@ -2066,7 +2066,7 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="flex -space-x-1.5 overflow-visible py-1">
                                                                         {assignedUsers.slice(0, 5).map((uid) => {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
-                                                                            const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
+                                                                            const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
                                                                                 <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
                                                                                     {m?.imageUrl ? (
@@ -3068,7 +3068,7 @@ export default function CRMSpreadsheetPage() {
                                                                     className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
                                                                 >
                                                                     <div className="flex items-center gap-3">
-                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black">{u.email[0]?.toUpperCase() || 'U'}</div>
                                                                         <div className="text-left">
                                                                             <p className="text-[11px] font-bold text-slate-900 truncate w-[200px]">{u.email}</p>
                                                                             <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Authorized Identity</p>
@@ -3144,7 +3144,7 @@ export default function CRMSpreadsheetPage() {
                                                                         className="w-full p-3 flex items-center justify-between hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0"
                                                                     >
                                                                         <div className="flex items-center gap-3">
-                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black">{u.email[0].toUpperCase()}</div>
+                                                                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[8px] font-black">{u.email[0]?.toUpperCase() || 'U'}</div>
                                                                             <p className="text-[10px] font-bold text-slate-900 truncate">{u.email}</p>
                                                                         </div>
                                                                         <Plus size={12} className="text-slate-300" />
