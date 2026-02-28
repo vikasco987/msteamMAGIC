@@ -246,6 +246,7 @@ export default function CRMSpreadsheetPage() {
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -2054,11 +2055,17 @@ export default function CRMSpreadsheetPage() {
                                                         }).map(m => m.clerkId);
 
                                                         const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds, ...authorityIds]));
+                                                        const isCellOpen = openAssignedCell === res.id;
                                                         return (
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                                className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (isCellOpen) setOpenAssignedCell(null);
+                                                                    else setOpenAssignedCell(res.id);
+                                                                }}
                                                             >
                                                                 {assignedUsers.length === 0 ? (
                                                                     <div className="text-[10px] font-bold text-slate-400 mt-1">Unassigned</div>
@@ -2084,6 +2091,70 @@ export default function CRMSpreadsheetPage() {
                                                                         )}
                                                                     </div>
                                                                 )}
+
+                                                                {/* Assigned Users Dropdown Modal/List */}
+                                                                <AnimatePresence>
+                                                                    {isCellOpen && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                            exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                                                                            transition={{ duration: 0.2 }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            className="absolute top-12 left-0 z-50 w-64 bg-white/70 backdrop-blur-3xl border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto"
+                                                                        >
+                                                                            <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between mb-1 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+                                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Authorized Access</span>
+                                                                                <button onClick={() => setOpenAssignedCell(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                                                                                    <X size={12} />
+                                                                                </button>
+                                                                            </div>
+                                                                            {assignedUsers.length === 0 ? (
+                                                                                <div className="p-4 text-center text-[10px] font-bold text-slate-400">No users assigned.</div>
+                                                                            ) : (
+                                                                                assignedUsers.map(uid => {
+                                                                                    const m = teamMembers.find(t => t.clerkId === uid);
+                                                                                    let badgeText = "Viewer";
+                                                                                    let badgeColor = "bg-slate-100 text-slate-500 border-slate-200";
+
+                                                                                    if (authorityIds.includes(uid)) {
+                                                                                        badgeText = "Admin";
+                                                                                        badgeColor = "bg-rose-50 text-rose-600 border-rose-100";
+                                                                                    } else if (res.submittedBy === uid) {
+                                                                                        badgeText = "Submitter";
+                                                                                        badgeColor = "bg-indigo-50 text-indigo-600 border-indigo-100";
+                                                                                    } else if (rawAssigned.includes(uid)) {
+                                                                                        badgeText = "Assigned";
+                                                                                        badgeColor = "bg-emerald-50 text-emerald-600 border-emerald-100";
+                                                                                    }
+
+                                                                                    const initialStr = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
+
+                                                                                    return (
+                                                                                        <div key={uid} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 transition-colors">
+                                                                                            <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden shadow-sm border border-slate-200 shrink-0 flex items-center justify-center text-[10px] font-black text-slate-600">
+                                                                                                {m?.imageUrl ? (
+                                                                                                    <img src={m.imageUrl} alt="img" className="w-full h-full object-cover" />
+                                                                                                ) : initialStr}
+                                                                                            </div>
+                                                                                            <div className="flex-1 min-w-0">
+                                                                                                <div className="flex items-center gap-2">
+                                                                                                    <p className="text-[11px] font-bold text-slate-900 truncate">
+                                                                                                        {m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email ? m.email.split('@')[0] : 'Unknown')}
+                                                                                                    </p>
+                                                                                                    <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-widest border shrink-0 ${badgeColor}`}>
+                                                                                                        {badgeText}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                                <p className="text-[9px] text-slate-500 truncate">{m?.email || 'No email'}</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    );
+                                                                                })
+                                                                            )}
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
                                                             </td>
                                                         );
                                                     }
