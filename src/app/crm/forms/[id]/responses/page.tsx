@@ -1688,7 +1688,7 @@ export default function CRMSpreadsheetPage() {
                             </div>
 
                             {/* Center-Bottom Tooltip */}
-                            <div className="absolute bottom-[120%] left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom pointer-events-none">
+                            <div className="absolute bottom-[120%] left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom after:content-[''] after:absolute after:top-full after:left-0 after:w-full after:h-8">
                                 <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
                                     {allWithAccess.map(m => {
                                         return (
@@ -2049,26 +2049,25 @@ export default function CRMSpreadsheetPage() {
                                                                 {assignedUsers.length === 0 ? (
                                                                     <div className="text-[10px] font-bold text-slate-400 mt-1">Unassigned</div>
                                                                 ) : (
-                                                                    <div className="flex flex-col gap-2 py-1">
-                                                                        {assignedUsers.map((uid) => {
+                                                                    <div className="flex -space-x-1.5 overflow-visible py-1">
+                                                                        {assignedUsers.slice(0, 5).map((uid) => {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
                                                                             const initial = m?.firstName ? m.firstName[0].toUpperCase() : m?.email ? m.email[0].toUpperCase() : '?';
                                                                             return (
-                                                                                <div key={uid} className="flex items-center gap-2">
-                                                                                    <div className="w-7 h-7 shrink-0 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100">
-                                                                                        {initial}
-                                                                                    </div>
-                                                                                    <div className="min-w-0 flex-1">
-                                                                                        <p className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tighter">
-                                                                                            {m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email ? m.email.split('@')[0] : 'Unknown')}
-                                                                                        </p>
-                                                                                        <p className="text-[9px] text-slate-400 font-bold truncate">
-                                                                                            {m?.email || 'No email'}
-                                                                                        </p>
-                                                                                    </div>
+                                                                                <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
+                                                                                    {m?.imageUrl ? (
+                                                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
+                                                                                    ) : (
+                                                                                        initial
+                                                                                    )}
                                                                                 </div>
                                                                             );
                                                                         })}
+                                                                        {assignedUsers.length > 5 && (
+                                                                            <div className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-slate-100 items-center justify-center text-[9px] font-black text-slate-500 shadow-sm border border-slate-200 shrink-0">
+                                                                                +{assignedUsers.length - 5}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </td>
