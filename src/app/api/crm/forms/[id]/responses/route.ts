@@ -100,9 +100,9 @@ export async function GET(
 
         console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
 
-        // Filter responses: ONLY Pure Master bypasses all checks.
-        // Admins and Owners follow visibility rules (unless records are shared with them or they are the submitter)
-        const responses = isMasterRole ? allResponses : allResponses.filter(res => {
+        // Filter responses: Admins, Masters, and Owners bypass all row-level checks.
+        // Others only see rows they submitted, are assigned to, or are explicitly shared with them.
+        const responses = isMaster ? allResponses : allResponses.filter(res => {
             const roles = res.visibleToRoles || [];
             const users = res.visibleToUsers || [];
             const assignees = (res as any).assignedTo || [];
@@ -115,9 +115,6 @@ export async function GET(
 
             // Condition 3: Legacy or explicit visibility permissions
             if (roles.includes(userRole) || users.includes(userId)) return true;
-
-            // Condition 4: If completely unassigned and no special visibility roles -> "Public" / open
-            if (roles.length === 0 && users.length === 0 && assignees.length === 0) return true;
 
             return false;
         });
