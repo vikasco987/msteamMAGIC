@@ -2045,7 +2045,15 @@ export default function CRMSpreadsheetPage() {
                                                     if (col.id === "__assigned") {
                                                         const rawAssigned = res.assignedTo || [];
                                                         const rawVisible = res.visibleToUsers || [];
-                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible]));
+
+                                                        const defaultVisibleIds: string[] = [];
+                                                        if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
+                                                        const authorityIds = teamMembers.filter(m => {
+                                                            const r = (m.role || "").toUpperCase();
+                                                            return r === "ADMIN" || r === "MASTER";
+                                                        }).map(m => m.clerkId);
+
+                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds, ...authorityIds]));
                                                         return (
                                                             <td
                                                                 key={col.id}

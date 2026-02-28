@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { users as clerkUsers } from "@clerk/clerk-sdk-node";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
     try {
@@ -9,12 +10,19 @@ export async function GET(req: NextRequest) {
 
         const { searchParams } = new URL(req.url);
         const query = searchParams.get("q") || "";
-        const limit = parseInt(searchParams.get("limit") || "100");
+        let reqLimit = parseInt(searchParams.get("limit") || "100");
+        if (reqLimit > 500) reqLimit = 500;
 
         const userList = await clerkUsers.getUserList({
             query,
-            limit
+            limit: reqLimit
         });
+
+        const dbUsers = await prisma.user.findMany({
+            where: { clerkId: { in: userList.map(u => u.id) } },
+            select: { clerkId: true, role: true }
+        });
+        const roleMap = new Map(dbUsers.map(u => [u.clerkId, u.role]));
 
         const formattedUsers = userList.map(u => ({
             clerkId: u.id,
@@ -23,7 +31,7 @@ export async function GET(req: NextRequest) {
             firstName: u.firstName || "",
             lastName: u.lastName || "",
             imageUrl: u.imageUrl || "",
-            role: "USER" // Default fallback, as we don't strictly need precise DB roles for the access search list visually
+            role: roleMap.get(u.id) || (u.publicMetadata?.role as string) || "USER"
         }));
 
         return NextResponse.json(formattedUsers);
