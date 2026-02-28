@@ -586,6 +586,39 @@ export default function CRMSpreadsheetPage() {
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
+        const handleOnline = async () => {
+            const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+            if (offlineUpdates.length > 0) {
+                toast.loading(`Syncing ${offlineUpdates.length} offline changes...`, { id: "offline-sync" });
+                try {
+                    let successCount = 0;
+                    for (const update of offlineUpdates) {
+                        const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(update)
+                        });
+                        if (res.ok) successCount++;
+                    }
+                    localStorage.removeItem(`offlineUpdates-${params.id}`);
+                    if (successCount === offlineUpdates.length) {
+                        toast.success("Offline changes synced successfully!", { id: "offline-sync" });
+                    } else {
+                        toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
+                    }
+                    // Background refresh
+                    fetchData();
+                } catch (err) {
+                    toast.error("Offline sync failed.", { id: "offline-sync" });
+                }
+            }
+        };
+
+        window.addEventListener("online", handleOnline);
+        return () => window.removeEventListener("online", handleOnline);
+    }, [params.id]);
+
+    useEffect(() => {
         if (data?.form) {
             setPermRoles(data.form.visibleToRoles || []);
             setPermUsers(data.form.visibleToUsers || []);
@@ -1126,6 +1159,14 @@ export default function CRMSpreadsheetPage() {
         });
 
         try {
+            if (!navigator.onLine) {
+                const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: Date.now() });
+                localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                toast("Saved offline. Will sync when online.", { icon: '📶' });
+                return;
+            }
+
             const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -1137,8 +1178,15 @@ export default function CRMSpreadsheetPage() {
                 setData(previousData); // Rollback
             }
         } catch (err) {
-            toast.error("Matrix error");
-            setData(previousData); // Rollback
+            if (!navigator.onLine || String(err).includes('Network')) {
+                const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: Date.now() });
+                localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                toast("Saved offline. Will sync when online.", { icon: '📶' });
+            } else {
+                toast.error("Matrix error");
+                setData(previousData); // Rollback
+            }
         } finally {
             setSavingCells(prev => {
                 const next = new Set(prev);
