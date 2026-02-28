@@ -25,7 +25,8 @@ import {
   ShieldCheck,
   Compass,
   Zap,
-  Briefcase
+  Briefcase,
+  Calendar
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -51,6 +52,7 @@ const NAVIGATION_GROUPS = [
       { label: 'Sales Matrix', icon: TrendingUp, href: '/sales-dashboard', roles: ['master'] },
       { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master'] },
       { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'user', 'guest', 'intern', 'manager'] },
+      { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'manager'] },
     ]
   },
   {

@@ -94,6 +94,33 @@ export async function POST(
             });
         }
 
+        // SYNC TO CRM TABLE (Update Internal Values)
+        const remarkCols = await prisma.internalColumn.findMany({
+            where: {
+                formId: id,
+                label: { in: ["Recent Remark", "Next Follow-up Date"] }
+            }
+        });
+
+        const remarkCol = remarkCols.find(c => c.label === "Recent Remark");
+        const followupCol = remarkCols.find(c => c.label === "Next Follow-up Date");
+
+        if (remarkCol) {
+            await prisma.internalValue.upsert({
+                where: { responseId_columnId: { responseId, columnId: remarkCol.id } },
+                update: { value: remark, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" },
+                create: { responseId, columnId: remarkCol.id, value: remark, updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" }
+            });
+        }
+
+        if (followupCol && nextFollowUpDate) {
+            await prisma.internalValue.upsert({
+                where: { responseId_columnId: { responseId, columnId: followupCol.id } },
+                update: { value: String(nextFollowUpDate), updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" },
+                create: { responseId, columnId: followupCol.id, value: String(nextFollowUpDate), updatedByName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "System" }
+            });
+        }
+
         return NextResponse.json({ success: true, remark: newRemark });
     } catch (error) {
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

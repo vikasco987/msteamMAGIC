@@ -128,6 +128,39 @@ export async function GET(
             orderBy: { order: "asc" }
         });
 
+        // Ensure Default Columns (Recent Remark & Next Follow-up)
+        const hasRemarkCol = internalColumns.some(c => c.label === "Recent Remark");
+        const hasFollowUpCol = internalColumns.some(c => c.label === "Next Follow-up Date");
+
+        if (!hasRemarkCol || !hasFollowUpCol) {
+            const newCols = [];
+            if (!hasRemarkCol) {
+                const col = await prisma.internalColumn.create({
+                    data: {
+                        formId,
+                        label: "Recent Remark",
+                        type: "text",
+                        options: {},
+                        order: internalColumns.length
+                    }
+                });
+                newCols.push(col);
+            }
+            if (!hasFollowUpCol) {
+                const col = await prisma.internalColumn.create({
+                    data: {
+                        formId,
+                        label: "Next Follow-up Date",
+                        type: "date",
+                        options: {},
+                        order: internalColumns.length + (hasRemarkCol ? 0 : 1)
+                    }
+                });
+                newCols.push(col);
+            }
+            internalColumns = [...internalColumns, ...newCols].sort((a, b) => (a.order || 0) - (b.order || 0));
+        }
+
         // Filter columns by GAC for non-masters
         if (!isMasterRole) {
             // Filter internal columns

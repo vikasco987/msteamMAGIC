@@ -1763,6 +1763,14 @@ export default function CRMSpreadsheetPage() {
                             </button>
 
                             <button
+                                onClick={() => window.open("/dashboard/followups", "_blank")}
+                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-rose-200 shadow-sm"
+                            >
+                                <Calendar size={12} />
+                                Follow-up Board
+                            </button>
+
+                            <button
                                 onClick={() => setIsAIFilterOpen(true)}
                                 className="px-4 py-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg hover:shadow-xl hover:scale-105"
                             >
@@ -1863,17 +1871,19 @@ export default function CRMSpreadsheetPage() {
                 </header>
             )}
 
-            {isFullScreen && (
-                <button
-                    onClick={() => setIsFullScreen(false)}
-                    className="fixed top-4 right-4 z-[100] p-3 bg-slate-900/80 text-white rounded-full backdrop-blur-md hover:bg-slate-900 transition-all shadow-2xl flex items-center gap-2 pr-6 group"
-                >
-                    <div className="p-1 bg-white/20 rounded-full group-hover:rotate-90 transition-transform">
-                        <X size={14} />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest">Exit Matrix Focus</span>
-                </button>
-            )}
+            {
+                isFullScreen && (
+                    <button
+                        onClick={() => setIsFullScreen(false)}
+                        className="fixed top-4 right-4 z-[100] p-3 bg-slate-900/80 text-white rounded-full backdrop-blur-md hover:bg-slate-900 transition-all shadow-2xl flex items-center gap-2 pr-6 group"
+                    >
+                        <div className="p-1 bg-white/20 rounded-full group-hover:rotate-90 transition-transform">
+                            <X size={14} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Exit Matrix Focus</span>
+                    </button>
+                )
+            }
 
             {/* Matrix Console */}
             <main className="flex-1 overflow-hidden bg-slate-50 relative">
@@ -2785,7 +2795,7 @@ export default function CRMSpreadsheetPage() {
                 {
                     isFilterBuilderOpen && (
                         <div className="fixed inset-0 flex items-center justify-center z-[100] p-10">
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80" />
                             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[60px] shadow-2xl w-full max-w-[900px] relative z-10 p-12 overflow-hidden flex flex-col gap-10 border-4 border-indigo-50">
                                 <div className="flex items-center justify-between">
                                     <div>
@@ -2956,7 +2966,7 @@ export default function CRMSpreadsheetPage() {
                 {
                     isAddColumnOpen && (
                         <div className="fixed inset-0 flex items-center justify-center z-[100] p-10 overflow-hidden">
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddColumnOpen(false)} className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" />
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAddColumnOpen(false)} className="absolute inset-0 bg-slate-900/80" />
                             <motion.div initial={{ scale: 0.9, opacity: 0, y: 50 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 50 }} className="bg-white rounded-[70px] shadow-[0_40px_100px_rgba(0,0,0,0.3)] w-full max-w-[1100px] h-[85vh] relative z-10 border-8 border-white flex overflow-hidden">
                                 <div className="w-[350px] bg-slate-50 border-r border-slate-100 p-12 overflow-y-auto custom-scrollbar">
                                     <h3 className="text-2xl font-black tracking-tighter mb-10 flex items-center gap-4"><Plus className="text-indigo-600" /> Dimension Lab</h3>
@@ -3160,7 +3170,7 @@ export default function CRMSpreadsheetPage() {
             <AnimatePresence>
                 {
                     selectedRows.length > 0 && (
-                        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-6 bg-slate-900 border border-slate-800 p-4 px-8 rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl">
+                        <motion.div initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }} className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-6 bg-slate-900 border border-slate-800 p-4 px-8 rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.4)]">
                             <div className="flex items-center gap-4 border-r border-slate-800 pr-6 mr-2">
                                 <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">{selectedRows.length}</div>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Records Selected</span>
@@ -3247,7 +3257,7 @@ export default function CRMSpreadsheetPage() {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 onClick={() => setIsColumnManagerOpen(false)}
-                                className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                                className="absolute inset-0 bg-slate-900/40"
                             />
                             <motion.div
                                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -3351,7 +3361,7 @@ export default function CRMSpreadsheetPage() {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setIsAccessModalOpen(false)}
-                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                            className="absolute inset-0 bg-slate-900/40"
                         />
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -3634,7 +3644,7 @@ export default function CRMSpreadsheetPage() {
                         transition={{ type: "spring", bounce: 0, duration: 0.3 }}
                         className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
                     >
-                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80 backdrop-blur-md">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
                                     <Sparkles size={18} />
@@ -3911,17 +3921,19 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
             ` }} />
-            {openFollowUpModal && (
-                <FormRemarkModal
-                    formId={openFollowUpModal.formId}
-                    responseId={openFollowUpModal.responseId}
-                    userRole={userRole || 'GUEST'}
-                    onClose={() => {
-                        setOpenFollowUpModal(null);
-                        fetchData(); // Refresh to update count if changed
-                    }}
-                />
-            )}
+            {
+                openFollowUpModal && (
+                    <FormRemarkModal
+                        formId={openFollowUpModal.formId}
+                        responseId={openFollowUpModal.responseId}
+                        userRole={userRole || 'GUEST'}
+                        onClose={() => {
+                            setOpenFollowUpModal(null);
+                            fetchData(); // Refresh to update count if changed
+                        }}
+                    />
+                )
+            }
         </div >
     );
 }

@@ -36,14 +36,33 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
     const fetchRemarks = async () => {
         setFetching(true);
+        // 1. Load from cache first
+        const cacheKey = `remarks_cache_${responseId}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            try { setRemarks(JSON.parse(cached)); } catch (e) { }
+        }
+
         try {
-            const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks`);
+            const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks?_t=${Date.now()}`);
             if (res.ok) {
                 const data = await res.json();
-                setRemarks(data.remarks || []);
+                const fetchedRemarks = data.remarks || [];
+
+                // Combine with offline-queued remarks for this response if they exist
+                const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
+                const currentOffline = queue.filter((item: any) => item.responseId === responseId);
+
+                const finalRemarks = [...currentOffline, ...fetchedRemarks];
+                setRemarks(finalRemarks);
+                localStorage.setItem(cacheKey, JSON.stringify(fetchedRemarks));
             }
         } catch (error) {
-            toast.error("Failed to load follow-ups");
+            if (!navigator.onLine) {
+                // If offline, just rely on cache + existing state
+            } else {
+                toast.error("Failed to load follow-ups");
+            }
         } finally {
             setFetching(false);
         }
@@ -51,11 +70,76 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
     useEffect(() => {
         fetchRemarks();
+
+        const handleSync = () => {
+            syncOfflineQueue();
+        };
+        window.addEventListener('online', handleSync);
+        return () => window.removeEventListener('online', handleSync);
     }, [formId, responseId]);
+
+    const syncOfflineQueue = async () => {
+        const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
+        if (queue.length === 0) return;
+
+        toast.loading("Syncing offline follow-ups...", { id: "sync-toast" });
+
+        const newQueue = [...queue];
+        for (let i = 0; i < queue.length; i++) {
+            const item = queue[i];
+            try {
+                const res = await fetch(`/api/crm/forms/${item.formId}/responses/${item.responseId}/remarks`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(item.data)
+                });
+                if (res.ok) {
+                    newQueue.splice(newQueue.indexOf(item), 1);
+                }
+            } catch (e) {
+                console.error("Sync failed for item", item);
+            }
+        }
+
+        localStorage.setItem("offline_remarks_queue", JSON.stringify(newQueue));
+        if (newQueue.length === 0) {
+            toast.success("All follow-ups synced!", { id: "sync-toast" });
+            fetchRemarks();
+            if (onSave) onSave();
+        } else {
+            toast.error("Some follow-ups failed to sync.", { id: "sync-toast" });
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.remark) return toast.error("Please enter a remark.");
+
+        // OFFLINE HANDLER
+        if (!navigator.onLine) {
+            const offlineItem = {
+                id: `offline-${Date.now()}`,
+                formId,
+                responseId,
+                data: form,
+                remark: form.remark,
+                authorName: "You (Offline)",
+                createdAt: new Date().toISOString(),
+                nextFollowUpDate: form.nextFollowUpDate,
+                followUpStatus: form.followUpStatus
+            };
+
+            const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
+            localStorage.setItem("offline_remarks_queue", JSON.stringify([...queue, offlineItem]));
+
+            // Optimistic Update
+            setRemarks(prev => [offlineItem as any, ...prev]);
+            setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "Scheduled" });
+            setIsAdding(false);
+            toast.success("Saved offline. Will sync when online.");
+            if (onSave) onSave();
+            return;
+        }
 
         setLoading(true);
         try {
@@ -233,8 +317,8 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                                 </span>
                                                 {r.followUpStatus && (
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${r.followUpStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                            r.followUpStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                        r.followUpStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                            'bg-indigo-50 text-indigo-700 border-indigo-200'
                                                         }`}>
                                                         {r.followUpStatus}
                                                     </span>
