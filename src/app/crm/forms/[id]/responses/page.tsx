@@ -2935,12 +2935,13 @@ export default function CRMSpreadsheetPage() {
                 }
             </AnimatePresence >
 
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{
+                __html: `
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-            `}</style>
+            ` }} />
 
             {/* Access Control Modal */}
             <AnimatePresence>
@@ -3504,13 +3505,13 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
-            </main>
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{
+                __html: `
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
-            `}</style>
+            ` }} />
         </div >
     );
 }
