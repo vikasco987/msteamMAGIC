@@ -1379,8 +1379,8 @@ export const TaskFilters = ({
           .includes(lower)
       );
     }
-    if (statusFilter) {
-      currentFilteredTasks = currentFilteredTasks.filter((t) => t.status === statusFilter);
+    if (status) {
+      currentFilteredTasks = currentFilteredTasks.filter((t) => t.status === status);
     }
 
     // New filter for assigners
@@ -1500,7 +1500,7 @@ export const TaskFilters = ({
     initialTasks,
     query,
     sortConfig,
-    statusFilter,
+    status,
     selectedAssigners, // New dependency
     selectedAssignees,
     selectedCategories, // Now correctly compares against `task.title` after emoji stripping
@@ -1533,9 +1533,9 @@ export const TaskFilters = ({
       Location: task.customFields?.location,
       Notes: (notesMap[task.id] || []).map((note) => note.content).join(" | "),
       Attachments:
-        task.attachments?.map((a) => (typeof a === "string" ? a : a.url)).join(" | ") || "",
+        task.attachments?.join(" | ") || "",
       "Payment Proofs":
-        task.paymentProofs?.map((p) => (typeof p === "string" ? p : p.url)).filter(Boolean).join(" | ") || "",
+        task.paymentProofs?.join(" | ") || "",
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);

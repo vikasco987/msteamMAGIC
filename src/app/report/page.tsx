@@ -125,6 +125,11 @@ export default function ReportPage() {
     return () => clearTimeout(timer);
   }, [query]);
 
+  // Reset to page 1 when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedQuery, status, limit]);
+
   // Re-fetch when page, limit, debouncedQuery, or status changes
   useEffect(() => {
     if (isLoaded && user && (user.publicMetadata?.role === "admin" || user.publicMetadata?.role === "seller" || user.publicMetadata?.role === "master")) {

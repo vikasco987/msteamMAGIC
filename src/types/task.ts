@@ -307,6 +307,7 @@ export interface Task {
   assigneeId?: string; // For single assignee (legacy or alternative)
   assigneeIds?: string[]; // For multiple assignees (Clerk IDs)
   createdByClerkId: string;
+  createdByName?: string;
 
   phone?: string;
   email?: string; // Could be customer email, different from assigneeEmail

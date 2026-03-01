@@ -6517,7 +6517,7 @@ import { Note } from "../../../types/note";
 import HighlightColorDropdown from "../components/HighlightColorDropdown";
 
 import { TaskFilters } from "./TaskFilters";
-import { useUser, UserResource } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 
 import { format } from "date-fns";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -6634,7 +6634,7 @@ function PaymentProofsModal({
 
 interface Props {
   tasks: Task[];
-  user: UserResource;
+  user: any; // UserResource from Clerk
   onTasksUpdate?: (updatedTasks: Task[]) => void;
   // Pagination & Filter Props
   currentPage: number;
@@ -6717,16 +6717,10 @@ export default function TaskTableView({
   const role = (user.publicMetadata?.role as string) || "";
 
   useEffect(() => {
-    if (!user) return;
+    setLocalTasks(tasks || []);
 
-    if (!Array.isArray(tasks)) {
-      console.warn("⚠️ Invalid task data received:", tasks);
-      setLocalTasks([]);
-      setNotesMap({});
-      return;
-    }
-
-    const initialNotes = tasks.reduce(
+    // Initialize notes map
+    const initialNotes = (tasks || []).reduce(
       (acc, task) => {
         if (Array.isArray(task.notes)) {
           acc[task.id] = task.notes;
@@ -6738,23 +6732,7 @@ export default function TaskTableView({
       {} as { [taskId: string]: Note[] }
     );
     setNotesMap(initialNotes);
-
-    let filteredByRoleTasks: Task[] = [];
-    if (role === "admin" || role === "master") {
-      filteredByRoleTasks = tasks;
-    } else if (role === "seller" && currentUserId) {
-      filteredByRoleTasks = tasks.filter(
-        (t) =>
-          t.createdByClerkId === currentUserId ||
-          (Array.isArray(t.assigneeIds) && t.assigneeIds.includes(currentUserId))
-      );
-    } else {
-      filteredByRoleTasks = [];
-    }
-    setLocalTasks(filteredByRoleTasks);
-    setFilteredTasks(filteredByRoleTasks);
-    setCurrentPage(1);
-  }, [tasks, user, currentUserId, role]);
+  }, [tasks]);
 
   const refetchTasks = async () => {
     try {
@@ -7149,7 +7127,7 @@ export default function TaskTableView({
                 const amount = Number(task.amount) || 0;
                 const received = Number(task.received) || 0;
                 const pending = amount - received;
-                const rowNumber = (currentPage - 1) * tasksPerPage + index + 1;
+                const rowNumber = (currentPage - 1) * limit + index + 1;
                 const hasNotes = (notesMap[task.id]?.length || 0) > 0;
 
                 return (
@@ -7496,13 +7474,15 @@ export default function TaskTableView({
         <NotesModal
           taskId={selectedTaskIdForNotes}
           initialNotes={notesMap[selectedTaskIdForNotes] || []}
-          onClose={() => setIsNoteModalOpen(false)}
-          onSaveSuccess={async (newNotes) => {
-            setNotesMap((prev) => ({
-              ...prev,
-              [selectedTaskIdForNotes]: newNotes,
-            }));
-            await refetchTasks();
+          onClose={(updatedNotes) => {
+            if (updatedNotes) {
+              setNotesMap((prev) => ({
+                ...prev,
+                [selectedTaskIdForNotes]: updatedNotes,
+              }));
+            }
+            setIsNoteModalOpen(false);
+            setSelectedTaskIdForNotes(null);
           }}
         />
       )}
