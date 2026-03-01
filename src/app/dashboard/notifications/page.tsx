@@ -103,8 +103,8 @@ export default function NotificationsPage() {
             if (filter === "payments") list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
             if (filter === "crm") list = list.filter(n => n.type === "CRM_FOLLOWUP");
 
-            // For category tabs, hide things that are deep in the future (> 1 min)
-            list = list.filter(n => !isFuture(new Date(new Date(n.scheduledAt || n.createdAt).getTime() - 60000)));
+            // Only filter out deep future items (> 1 hour) to avoid hiding "just now" items
+            list = list.filter(n => !isFuture(new Date(new Date(n.scheduledAt || n.createdAt).getTime() - 3600000)));
         }
 
         // Filter by Search
