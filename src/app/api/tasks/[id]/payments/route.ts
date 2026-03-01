@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
-import { users as clerkUsers } from "@clerk/clerk-sdk-node";
 import cloudinary from "cloudinary";
 import { Readable } from "stream";
 import { Prisma } from "@prisma/client";
@@ -142,26 +141,22 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       authorId: userId
     });
 
-    // 🚀 NEW: Notify ONLY Admin and Master
-    console.log("DEBUG: Fetching admins from Clerk for payment notifications...");
-    const allClerkUsers = await clerkUsers.getUserList({ limit: 500 });
-    const adminMasterIds = allClerkUsers
-      .filter(u => {
-        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        return role === "admin" || role === "master";
-      })
-      .map(u => u.id)
-      .filter(id => id !== userId);
+    // 🚀 NEW: Notify ONLY Admin and Master from Database (More reliable than Clerk Metadata)
+    console.log("DEBUG: Fetching admins/masters from Prisma for payment notifications...");
+    const admins = await prisma.user.findMany({
+      where: {
+        role: { in: ["ADMIN", "MASTER", "admin", "master"] },
+        clerkId: { not: userId }
+      },
+      select: { clerkId: true }
+    });
+    const adminMasterIds = admins.map(u => u.clerkId);
 
-    console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from Clerk:`, adminMasterIds);
+    console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from DB:`, adminMasterIds);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-
-    if (adminMasterIds.length === 0) {
-      console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
-    }
 
     await Promise.all(adminMasterIds.map(async recipientId => {
       try {
@@ -241,26 +236,22 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       data: updateData,
     });
 
-    // 🚀 NEW: Notify ONLY Admin and Master
-    console.log("DEBUG: Fetching admins from Clerk for payment override notifications...");
-    const allClerkUsersForPatch = await clerkUsers.getUserList({ limit: 500 });
-    const adminMasterIdsForPatch = allClerkUsersForPatch
-      .filter(u => {
-        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        return role === "admin" || role === "master";
-      })
-      .map(u => u.id)
-      .filter(id => id !== userId);
+    // 🚀 NEW: Notify ONLY Admin and Master from Database
+    console.log("DEBUG: Fetching admins/masters from Prisma for payment override notifications...");
+    const adminsForPatch = await prisma.user.findMany({
+      where: {
+        role: { in: ["ADMIN", "MASTER", "admin", "master"] },
+        clerkId: { not: userId }
+      },
+      select: { clerkId: true }
+    });
+    const adminMasterIdsForPatch = adminsForPatch.map(u => u.clerkId);
 
-    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} recipient admins from Clerk for override:`, adminMasterIdsForPatch);
+    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} recipient admins from DB for override:`, adminMasterIdsForPatch);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-
-    if (adminMasterIdsForPatch.length === 0) {
-      console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
-    }
 
     await Promise.all(adminMasterIdsForPatch.map(async recipientId => {
       try {
