@@ -21,7 +21,6 @@ interface PaymentHistoryEntry {
   assignerName?: string;
 }
 
-// Get parent task ID if exists
 async function getEffectiveTaskId(taskId: string): Promise<string> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -30,60 +29,47 @@ async function getEffectiveTaskId(taskId: string): Promise<string> {
   return task?.parentTaskId || taskId;
 }
 
-// 🚀 Helper to find all admins and masters
-async function getNotificationRecipients(currentUserId: string): Promise<string[]> {
-  const recipientIds = new Set<string>();
-
-  // 1. From Database
+// 🚀 RECIPIENT DISCOVERY (Hybrid)
+async function getAdminRecipients(): Promise<string[]> {
+  const ids = new Set<string>();
   try {
-    const dbAdmins = await prisma.user.findMany({
+    const db = await prisma.user.findMany({
       where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
       select: { clerkId: true }
     });
-    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
-  } catch (e) {
-    console.error("DB Recipient Discovery Error:", e);
-  }
+    db.forEach(u => ids.add(u.clerkId));
 
-  // 2. From Clerk (Fallback)
-  try {
     const client = await clerkClient();
-    const clerkRes = await client.users.getUserList({ limit: 100 });
-    clerkRes.data.forEach((u: any) => {
-      const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-      if (role === "admin" || role === "master") {
-        recipientIds.add(u.id);
-      }
+    const clerk = await client.users.getUserList({ limit: 100 });
+    clerk.data.forEach((u: any) => {
+      const r = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+      if (r === "admin" || r === "master") ids.add(u.id);
     });
   } catch (e) {
-    console.error("Clerk Recipient Discovery Error:", e);
+    console.error("Discovery Error:", e);
   }
-
-  // Ensure we send to everyone including the person who updated (as requested)
-  return Array.from(recipientIds);
+  return Array.from(ids);
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: taskId } = await context.params;
   const user = await currentUser();
-  const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
+  const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown";
   const originalTaskId = await getEffectiveTaskId(taskId);
 
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
-
     const newAmount = formData.get("amount") ? Number(formData.get("amount")) : undefined;
     const newReceived = formData.get("received") ? Number(formData.get("received")) : undefined;
 
     const existingTask = await prisma.task.findUnique({
       where: { id: originalTaskId },
-      select: { title: true, amount: true, received: true, paymentProofs: true, paymentHistory: true, assignerName: true, customFields: true },
+      select: { title: true, amount: true, received: true, paymentProofs: true, paymentHistory: true, customFields: true },
     });
-
     if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
     let uploadedFileUrl: string | undefined;
@@ -91,47 +77,35 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       const uploadRes = await new Promise<cloudinary.UploadApiResponse>((resolve, reject) => {
-        const uploadStream = cloudinary.v2.uploader.upload_stream(
-          { resource_type: "auto", folder: "payment_proofs" },
-          (err, result) => {
-            if (err) return reject(err);
-            resolve(result!);
-          }
-        );
-        Readable.from(buffer).pipe(uploadStream);
+        const stream = cloudinary.v2.uploader.upload_stream({ folder: "payment_proofs" }, (err, res) => {
+          if (err) reject(err); else resolve(res!);
+        });
+        Readable.from(buffer).pipe(stream);
       });
       uploadedFileUrl = uploadRes.secure_url;
     }
 
-    let updatedAmountToSave = existingTask.amount;
-    if (newAmount !== undefined && (existingTask.amount === null || existingTask.amount === 0)) {
-      updatedAmountToSave = newAmount;
-    }
+    const updatedAmount = (existingTask.amount === null || existingTask.amount === 0) ? (newAmount ?? existingTask.amount) : existingTask.amount;
+    const updatedReceived = (existingTask.received ?? 0) + (newReceived ?? 0);
 
-    let updatedReceivedToSave = (existingTask.received ?? 0) + (newReceived ?? 0);
-
-    const updateData: Prisma.TaskUpdateInput = {
-      amount: updatedAmountToSave,
-      received: updatedReceivedToSave,
-      updatedAt: new Date()
+    const updateData: any = {
+      amount: updatedAmount,
+      received: updatedReceived,
+      updatedAt: new Date(),
     };
 
     if (uploadedFileUrl) {
-      const currentProofs = Array.isArray(existingTask.paymentProofs) ? (existingTask.paymentProofs as string[]) : [];
-      updateData.paymentProofs = [...currentProofs, uploadedFileUrl];
+      updateData.paymentProofs = [...(existingTask.paymentProofs || []), uploadedFileUrl];
     }
 
     const paymentEntry = {
-      amount: updatedAmountToSave ?? 0,
-      received: updatedReceivedToSave,
+      amount: updatedAmount ?? 0,
+      received: updatedReceived,
       fileUrl: uploadedFileUrl || null,
       updatedAt: new Date(),
       updatedBy: userName,
-      assignerName: existingTask.assignerName || "Unknown",
     };
-
-    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as any[]) : [];
-    updateData.paymentHistory = [...existingHistory, paymentEntry] as any;
+    updateData.paymentHistory = [...(existingTask.paymentHistory as any[] || []), paymentEntry];
 
     const updatedTask = await prisma.task.update({
       where: { id: originalTaskId },
@@ -141,101 +115,74 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     await logActivity({
       taskId: originalTaskId,
       type: "PAYMENT_ADDED",
-      content: `₹${newReceived || 0} payment recorded. Total: ₹${updatedReceivedToSave}`,
+      content: `₹${newReceived || 0} added. Total: ₹${updatedReceived}`,
       author: userName,
       authorId: userId
     });
 
-    // 🚀 Send Notifications with Title
-    const recipients = await getNotificationRecipients(userId);
-    const cf = (updatedTask.customFields as any) || {};
-    const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
-    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-
-    for (const recipientId of recipients) {
-      try {
-        await prisma.notification.create({
-          data: {
-            userId: recipientId,
-            type: "PAYMENT_ADDED",
-            title: "💰 New Payment Added",
-            content: `Payment of ₹${newReceived || 0} recorded for ${taskDetails}. Updated By: ${userName} at ${timestamp}`,
-            taskId: originalTaskId
-          } as any
-        });
-      } catch (err) {
-        console.error(`Notification failed for ${recipientId}:`, err);
-      }
-    }
-
-    return NextResponse.json({ success: true, task: updatedTask, fileUrl: uploadedFileUrl });
-  } catch (err: any) {
-    console.error("POST Error:", err);
-    return NextResponse.json({ error: "Failed to process payment", details: err.message }, { status: 500 });
-  }
-}
-
-export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const { userId, sessionClaims } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { id: taskId } = await context.params;
-  const originalTaskId = await getEffectiveTaskId(taskId);
-  const userName = (sessionClaims?.firstName as string) || (sessionClaims?.email as string) || "Unknown User";
-
-  try {
-    const { amount, received } = await req.json();
-    const existingTask = await prisma.task.findUnique({
-      where: { id: originalTaskId },
-      select: { title: true, amount: true, received: true, paymentHistory: true, assignerName: true, customFields: true },
-    });
-
-    if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
-
-    const updatedAmountToSave = (existingTask.amount === null || existingTask.amount === 0) ? (amount ?? existingTask.amount) : existingTask.amount;
-    const updatedReceivedToSave = received ?? existingTask.received;
-
-    const paymentEntry = {
-      amount: updatedAmountToSave ?? 0,
-      received: updatedReceivedToSave,
-      fileUrl: null,
-      updatedAt: new Date(),
-      updatedBy: userName,
-    };
-
-    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as any[]) : [];
-
-    const updatedTask = await prisma.task.update({
-      where: { id: originalTaskId },
-      data: {
-        amount: updatedAmountToSave,
-        received: updatedReceivedToSave,
-        paymentHistory: [...existingHistory, paymentEntry] as any,
-        updatedAt: new Date(),
-      },
-    });
-
-    // 🚀 Send Overridden Notifications
-    const recipients = await getNotificationRecipients(userId);
-    const cf = (updatedTask.customFields as any) || {};
-    const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
+    // 🚀 NOTIFICATIONS
+    const recipients = await getAdminRecipients();
+    const shop = (updatedTask.customFields as any)?.shopName || "N/A";
 
     for (const rid of recipients) {
       try {
-        await prisma.notification.create({
+        const n = await prisma.notification.create({
           data: {
             userId: rid,
             type: "PAYMENT_ADDED",
-            title: "⚠️ Payment Overridden",
-            content: `Payment details updated for ${taskDetails}. New Total: ₹${updatedReceivedToSave}. By: ${userName}`,
-            taskId: originalTaskId
+            title: "📂 Payment Update",
+            content: `New payment of ₹${newReceived || 0} for [${shop}] - ${updatedTask.title}. By: ${userName}`,
+            taskId: originalTaskId,
           } as any
         });
-      } catch (e) { }
+        console.log(`DEBUG: Notification ${n.id} sent to ${rid}`);
+      } catch (e) {
+        console.error("Notif Error:", e);
+      }
     }
 
     return NextResponse.json({ success: true, task: updatedTask });
   } catch (err: any) {
-    return NextResponse.json({ error: "Update failed", details: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id: taskId } = await context.params;
+  const originalTaskId = await getEffectiveTaskId(taskId);
+  const user = await currentUser();
+  const userName = user?.firstName || "Admin";
+
+  try {
+    const { amount, received } = await req.json();
+    const existing = await prisma.task.findUnique({ where: { id: originalTaskId } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const updatedTask = await prisma.task.update({
+      where: { id: originalTaskId },
+      data: {
+        amount: amount ?? existing.amount,
+        received: received ?? existing.received,
+        updatedAt: new Date(),
+      }
+    });
+
+    const recipients = await getAdminRecipients();
+    for (const rid of recipients) {
+      await prisma.notification.create({
+        data: {
+          userId: rid,
+          type: "PAYMENT_ADDED",
+          title: "📂 Payment Update",
+          content: `Payment overridden to ₹${received} for ${updatedTask.title}. By: ${userName}`,
+          taskId: originalTaskId
+        } as any
+      });
+    }
+    return NextResponse.json({ success: true, task: updatedTask });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
