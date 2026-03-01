@@ -185,16 +185,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         recipientIds.add(updated.assigneeId);
       }
 
-      // 2. Add creator/assigner
-      if (updated.createdByClerkId) {
-        recipientIds.add(updated.createdByClerkId);
+      // 2. Add creator (The person who needs to be notified)
+      if (currentTask.createdByClerkId) {
+        recipientIds.add(currentTask.createdByClerkId);
       }
 
       // 3. Remove the person who performed the action
       recipientIds.delete(userId);
 
+      const cf = (updated.customFields as any) || {};
+      const shopName = cf.shopName || "N/A";
+      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
       const notificationTitle = "✅ Task Completed";
-      const notificationContent = `Task "${updated.title}" was completed by ${userName}.`;
+      const notificationContent = `Task Finished: "${updated.title}"\nShop: ${shopName}\nCompleted By: ${userName}\nDate: ${timestamp}`;
 
       await Promise.all(Array.from(recipientIds).map(recipientId =>
         prisma.notification.create({
