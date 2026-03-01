@@ -21,7 +21,6 @@ interface PaymentHistoryEntry {
   assignerName?: string;
 }
 
-// Get parent task ID if exists
 async function getEffectiveTaskId(taskId: string): Promise<string> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -35,8 +34,6 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: taskId } = await context.params;
-  if (!taskId) return NextResponse.json({ error: "Missing task ID" }, { status: 400 });
-
   const user = await currentUser();
   const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
   const originalTaskId = await getEffectiveTaskId(taskId);
@@ -45,16 +42,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
-    const readNumberFromForm = (v: FormDataEntryValue | null | undefined) => {
-      if (v == null) return undefined;
-      const s = String(v).trim();
-      if (s === "") return undefined;
-      const n = Number(s);
-      return Number.isFinite(n) ? n : undefined;
-    };
-
-    const newAmount = readNumberFromForm(formData.get("amount"));
-    const newReceived = readNumberFromForm(formData.get("received"));
+    const newAmount = formData.get("amount") ? Number(formData.get("amount")) : undefined;
+    const newReceived = formData.get("received") ? Number(formData.get("received")) : undefined;
 
     const existingTask = await prisma.task.findUnique({
       where: { id: originalTaskId },
@@ -63,12 +52,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-    // Upload proof file
     let uploadedFileUrl: string | undefined;
     if (file && file.size > 0) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-
       const uploadRes = await new Promise<cloudinary.UploadApiResponse>((resolve, reject) => {
         const uploadStream = cloudinary.v2.uploader.upload_stream(
           { resource_type: "auto", folder: "payment_proofs" },
@@ -79,32 +66,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         );
         Readable.from(buffer).pipe(uploadStream);
       });
-
       uploadedFileUrl = uploadRes.secure_url;
     }
 
     let updatedAmountToSave = existingTask.amount;
-    let currentTotalReceived = existingTask.received ?? 0;
-
-    // 🔒 Rule 1: Amount is locked after first set
     if (newAmount !== undefined && (existingTask.amount === null || existingTask.amount === 0)) {
       updatedAmountToSave = newAmount;
     }
 
-    // 💰 Rule 2: Received is cumulative (add to existing)
+    let currentTotalReceived = existingTask.received ?? 0;
     let updatedReceivedToSave = currentTotalReceived;
     if (newReceived !== undefined) {
-      if (!updatedAmountToSave || updatedAmountToSave === 0) {
-        return NextResponse.json({ error: "Set total amount before recording payment." }, { status: 400 });
-      }
       updatedReceivedToSave += newReceived;
-
-      // Prevent overpayment (with minor float tolerance)
-      if (updatedReceivedToSave > (updatedAmountToSave + 0.01)) {
-        return NextResponse.json({
-          error: `Total received ($${updatedReceivedToSave}) cannot exceed total amount ($${updatedAmountToSave}).`
-        }, { status: 400 });
-      }
     }
 
     const updateData: Prisma.TaskUpdateInput = { updatedAt: new Date() };
@@ -136,61 +109,62 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     await logActivity({
       taskId: originalTaskId,
       type: "PAYMENT_ADDED",
-      content: `₹${newReceived || 0} payment recorded. Total received: ₹${updatedReceivedToSave}`,
+      content: `₹${newReceived || 0} payment recorded. Total: ₹${updatedReceivedToSave}`,
       author: userName,
       authorId: userId
     });
 
-    // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk (Ensures consistency)
-    console.log("DEBUG: Discovering recipients (DB + Clerk)...");
+    // 🚀 ROBUST RECIPIENT DISCOVERY
+    const recipientIds = new Set<string>();
 
+    // 1. From DB
     const dbAdmins = await prisma.user.findMany({
-      where: {
-        role: { in: ["ADMIN", "MASTER", "admin", "master"] }
-      },
+      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
       select: { clerkId: true }
     });
+    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
 
-    const clerkAdminsIds: string[] = [];
+    // 2. From Clerk
     try {
       const client = await clerkClient();
       const clerkRes = await client.users.getUserList({ limit: 100 });
       clerkRes.data.forEach((u: any) => {
         const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if ((role === "admin" || role === "master")) {
-          clerkAdminsIds.push(u.id);
+        if (role === "admin" || role === "master") {
+          recipientIds.add(u.id);
         }
       });
-    } catch (err) {
-      console.error("DEBUG: Clerk lookup failed:", err);
+    } catch (e) {
+      console.error("DEBUG: Clerk discovery failed", e);
     }
 
-    const adminMasterIds = Array.from(new Set([...dbAdmins.map(u => u.clerkId), ...clerkAdminsIds]));
-    console.log(`DEBUG: Found ${adminMasterIds.length} unique recipients:`, adminMasterIds);
+    const finalRecipients = Array.from(recipientIds);
+    console.log(`DEBUG: Sending notifications to ${finalRecipients.length} users:`, finalRecipients);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    await Promise.all(adminMasterIds.map(async recipientId => {
+    // Sequential creation for better tracking
+    for (const recipientId of finalRecipients) {
       try {
-        const notif = await prisma.notification.create({
+        await prisma.notification.create({
           data: {
             userId: recipientId,
             type: "PAYMENT_ADDED",
-            content: `💰 PAYMENT UPDATE (Timeline): ₹${newReceived || 0} recorded for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+            content: `💰 PAYMENT UPDATE: ₹${newReceived || 0} recorded for ${taskDetails}. \nBy: ${userName} \nDate: ${timestamp}`,
             taskId: originalTaskId
           } as any
         });
-        console.log(`DEBUG: Notification ${notif.id} created for Recipient ${recipientId}`);
+        console.log(`DEBUG: ✅ Notified ${recipientId}`);
       } catch (err) {
-        console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
+        console.error(`DEBUG: ❌ Failed for ${recipientId}`, err);
       }
-    }));
+    }
 
     return NextResponse.json({ success: true, task: updatedTask, fileUrl: uploadedFileUrl });
   } catch (err: any) {
-    console.error("Payment Processing Error:", err);
+    console.error("POST Error:", err);
     return NextResponse.json({ error: "Failed to process payment", details: err.message }, { status: 500 });
   }
 }
@@ -205,9 +179,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
   try {
     const { amount, received } = await req.json();
-    const newAmount = typeof amount === "number" ? amount : undefined;
-    const newReceived = typeof received === "number" ? received : undefined;
-
     const existingTask = await prisma.task.findUnique({
       where: { id: originalTaskId },
       select: { title: true, amount: true, received: true, paymentHistory: true, assignerName: true, customFields: true },
@@ -215,22 +186,16 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
-    // Patch usually implies setting the absolute value, but we still apply the lock rule
-    let updatedAmountToSave = existingTask.amount;
-    if (newAmount !== undefined && (existingTask.amount === null || existingTask.amount === 0)) {
-      updatedAmountToSave = newAmount;
-    }
+    const updatedAmountToSave = (existingTask.amount === null || existingTask.amount === 0) ? (amount ?? existingTask.amount) : existingTask.amount;
+    const updatedReceivedToSave = received ?? existingTask.received;
 
-    let updatedReceivedToSave = existingTask.received ?? 0;
-    if (newReceived !== undefined) {
-      updatedReceivedToSave = newReceived;
-    }
+    const updateData: Prisma.TaskUpdateInput = {
+      updatedAt: new Date(),
+      amount: updatedAmountToSave,
+      received: updatedReceivedToSave
+    };
 
-    const updateData: Prisma.TaskUpdateInput = { updatedAt: new Date() };
-    if (updatedAmountToSave !== existingTask.amount) updateData.amount = updatedAmountToSave;
-    if (updatedReceivedToSave !== existingTask.received) updateData.received = updatedReceivedToSave;
-
-    const paymentEntry: PaymentHistoryEntry = {
+    const paymentEntry = {
       amount: updatedAmountToSave ?? 0,
       received: updatedReceivedToSave,
       fileUrl: null,
@@ -247,51 +212,40 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       data: updateData,
     });
 
-    // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk (Ensures consistency)
-    console.log("DEBUG: Discovering recipients for override (DB + Clerk)...");
-    const dbAdminsPatch = await prisma.user.findMany({
-      where: {
-        role: { in: ["ADMIN", "MASTER", "admin", "master"] }
-      },
+    // ROBUST RECIPIENT DISCOVERY (Duplicate for PATCH)
+    const recipientIds = new Set<string>();
+    const dbAdmins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
       select: { clerkId: true }
     });
+    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
 
-    const clerkAdminsIdsPatch: string[] = [];
     try {
-      const clientPatch = await clerkClient();
-      const clerkResPatch = await clientPatch.users.getUserList({ limit: 100 });
-      clerkResPatch.data.forEach((u: any) => {
+      const client = await clerkClient();
+      const clerkRes = await client.users.getUserList({ limit: 100 });
+      clerkRes.data.forEach((u: any) => {
         const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if ((role === "admin" || role === "master")) {
-          clerkAdminsIdsPatch.push(u.id);
-        }
+        if (role === "admin" || role === "master") recipientIds.add(u.id);
       });
-    } catch (err) {
-      console.error("DEBUG: Clerk lookup (PATCH) failed:", err);
-    }
+    } catch (e) { }
 
-    const adminMasterIdsForPatch = Array.from(new Set([...dbAdminsPatch.map(u => u.clerkId), ...clerkAdminsIdsPatch]));
-    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} unique recipients for override:`, adminMasterIdsForPatch);
-
+    const finalRecipients = Array.from(recipientIds);
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    await Promise.all(adminMasterIdsForPatch.map(async recipientId => {
+    for (const rid of finalRecipients) {
       try {
-        const notif = await prisma.notification.create({
+        await prisma.notification.create({
           data: {
-            userId: recipientId,
+            userId: rid,
             type: "PAYMENT_ADDED",
-            content: `⚠️ PAYMENT OVERRIDE (Timeline): Total ₹${updatedReceivedToSave} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+            content: `⚠️ PAYMENT OVERRIDE: Total ₹${updatedReceivedToSave} for ${taskDetails}. \nBy: ${userName}`,
             taskId: originalTaskId
           } as any
         });
-        console.log(`DEBUG: Notification ${notif.id} created for Recipient ${recipientId}`);
-      } catch (err) {
-        console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
-      }
-    }));
+      } catch (e) { }
+    }
 
     return NextResponse.json({ success: true, task: updatedTask });
   } catch (err: any) {
