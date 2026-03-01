@@ -5,7 +5,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
     Bell, CheckCircle2, AlertTriangle, Clock,
     Filter, Search, Trash2, CheckCircle,
-    Calendar, Inbox, ExternalLink, ArrowRight
+    Calendar, Inbox, ExternalLink, ArrowRight,
+    MessageSquare, CheckSquare, CreditCard, User, IndianRupee
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, isToday, isPast, isFuture } from "date-fns";
@@ -18,6 +19,7 @@ interface Notification {
     content: string;
     responseId?: string;
     formId?: string;
+    taskId?: string;
     isRead: boolean;
     isSystem: boolean;
     scheduledAt: string;
@@ -27,7 +29,7 @@ interface Notification {
 export default function NotificationsPage() {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState<"all" | "unread" | "scheduled" | "system">("all");
+    const [filter, setFilter] = useState<"all" | "unread" | "scheduled" | "team" | "payments">("all");
     const [search, setSearch] = useState("");
 
     const fetchNotifications = async () => {
@@ -74,14 +76,15 @@ export default function NotificationsPage() {
 
         // Filter by Tab
         if (filter === "unread") list = list.filter(n => !n.isRead);
-        if (filter === "scheduled") list = list.filter(n => isFuture(new Date(n.scheduledAt)));
-        if (filter === "system") list = list.filter(n => n.isSystem);
+        if (filter === "scheduled") list = list.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt)));
+        if (filter === "team") list = list.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type));
+        if (filter === "payments") list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
 
         // Filter by Search
         if (search) {
             list = list.filter(n =>
-                n.title.toLowerCase().includes(search.toLowerCase()) ||
-                n.content.toLowerCase().includes(search.toLowerCase())
+                (n.title?.toLowerCase() || "").includes(search.toLowerCase()) ||
+                (n.content?.toLowerCase() || "").includes(search.toLowerCase())
             );
         }
 
@@ -90,9 +93,25 @@ export default function NotificationsPage() {
 
     const stats = useMemo(() => ({
         unread: notifications.filter(n => !n.isRead).length,
-        scheduled: notifications.filter(n => isFuture(new Date(n.scheduledAt))).length,
-        system: notifications.filter(n => n.isSystem).length
+        scheduled: notifications.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt))).length,
+        team: notifications.filter(n => ["MENTION", "TASK_COMPLETED"].includes(n.type)).length,
+        payments: notifications.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER"].includes(n.type)).length
     }), [notifications]);
+
+    const getIcon = (type: string, title: string) => {
+        const baseClass = "w-6 h-6";
+        switch (type) {
+            case "MENTION": return { icon: <MessageSquare className={baseClass} />, color: "bg-blue-500", shadow: "shadow-blue-200" };
+            case "TASK_COMPLETED": return { icon: <CheckSquare className={baseClass} />, color: "bg-emerald-500", shadow: "shadow-emerald-200" };
+            case "PAYMENT_ADDED": return { icon: <CreditCard className={baseClass} />, color: "bg-amber-500", shadow: "shadow-amber-200" };
+            case "COLLECTION_REMINDER":
+            case "COLLECTION_FOLLOWUP": return { icon: <IndianRupee className={baseClass} />, color: "bg-rose-500", shadow: "shadow-rose-200" };
+            case "CRM_FOLLOWUP":
+                if (title?.includes("CRITICAL")) return { icon: <AlertTriangle className={baseClass} />, color: "bg-rose-600", shadow: "shadow-rose-200" };
+                return { icon: <ArrowRight className={baseClass} />, color: "bg-indigo-600", shadow: "shadow-indigo-200" };
+            default: return { icon: <Bell className={baseClass} />, color: "bg-slate-500", shadow: "shadow-slate-200" };
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#F8FAFC] pb-20">
@@ -131,8 +150,9 @@ export default function NotificationsPage() {
                         {[
                             { id: "all", label: "All Activity", icon: Bell },
                             { id: "unread", label: "Unread", icon: Clock, count: stats.unread },
-                            { id: "scheduled", label: "Upcoming REMINDERS", icon: Calendar, count: stats.scheduled },
-                            { id: "system", label: "Automations", icon: AlertTriangle, count: stats.system },
+                            { id: "scheduled", label: "Upcoming", icon: Calendar, count: stats.scheduled },
+                            { id: "team", label: "Team & Tasks", icon: CheckSquare, count: stats.team },
+                            { id: "payments", label: "Payments", icon: CreditCard, count: stats.payments },
                         ].map(tab => (
                             <button
                                 key={tab.id}
@@ -185,8 +205,8 @@ export default function NotificationsPage() {
                     <div className="space-y-4">
                         <AnimatePresence mode="popLayout">
                             {filtered.map((notif, idx) => {
-                                const isFutureNotif = isFuture(new Date(notif.scheduledAt));
-                                const isOverdue = isPast(new Date(notif.scheduledAt)) && !notif.isRead;
+                                const isFutureNotif = isFuture(new Date(notif.scheduledAt || notif.createdAt));
+                                const config = getIcon(notif.type, notif.title || "");
 
                                 return (
                                     <motion.div
@@ -200,23 +220,21 @@ export default function NotificationsPage() {
                                         className={`p-6 rounded-[32px] border-2 transition-all cursor-pointer relative group ${notif.isRead
                                                 ? "bg-white/50 border-white text-slate-400 grayscale-[0.5]"
                                                 : isFutureNotif
-                                                    ? "bg-amber-50/30 border-amber-100"
-                                                    : "bg-white border-white hover:border-indigo-100 shadow-sm hover:shadow-xl"
+                                                    ? "bg-amber-50/30 border-amber-100 shadow-[inset_4px_0_0_#f59e0b]"
+                                                    : "bg-white border-white hover:border-indigo-100 shadow-sm hover:shadow-xl hover:-translate-y-1"
                                             }`}
                                     >
                                         <div className="flex gap-6 items-start">
-                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 shrink-0 ${notif.isRead ? "bg-slate-100 text-slate-400" :
-                                                    notif.type === "CRM_FOLLOWUP" ? (notif.title.includes("CRITICAL") ? "bg-rose-500 text-white shadow-rose-200" : "bg-indigo-600 text-white shadow-indigo-100") :
-                                                        "bg-amber-500 text-white shadow-amber-100"
+                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 shrink-0 ${notif.isRead ? "bg-slate-100 text-slate-400 shadow-none" : `${config.color} text-white ${config.shadow}`
                                                 }`}>
-                                                {notif.type === "CRM_FOLLOWUP" ? <ArrowRight size={24} /> : <CheckCircle2 size={24} />}
+                                                {config.icon}
                                             </div>
 
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div>
                                                         <h4 className={`text-sm font-black tracking-tight ${notif.isRead ? "text-slate-500" : "text-slate-900"}`}>
-                                                            {notif.title}
+                                                            {notif.title || "Notification"}
                                                         </h4>
                                                         <div className="flex items-center gap-3 mt-1">
                                                             <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${notif.isSystem ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"
@@ -226,9 +244,14 @@ export default function NotificationsPage() {
                                                             <span className="text-[10px] font-bold text-slate-400 capitalize">
                                                                 {format(new Date(notif.createdAt), "MMM dd, HH:mm")}
                                                             </span>
+                                                            {notif.type.includes("PAYMENT") && (
+                                                                <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100">
+                                                                    Priority Alert
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    {isFutureNotif && (
+                                                    {isFutureNotif && !notif.isRead && (
                                                         <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full flex items-center gap-2">
                                                             <Clock size={12} />
                                                             <span className="text-[10px] font-black uppercase tracking-widest">PENDING</span>
@@ -239,26 +262,32 @@ export default function NotificationsPage() {
                                                     {notif.content}
                                                 </p>
 
-                                                {!notif.isRead && (
-                                                    <div className="mt-4 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        {notif.responseId && (
-                                                            <a
-                                                                href={notif.formId ? `/crm/forms/${notif.formId}/responses` : "#"}
-                                                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:underline"
-                                                            >
-                                                                Open Lead <ExternalLink size={12} />
-                                                            </a>
-                                                        )}
-                                                        <button className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600">
-                                                            Dismiss
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                <div className="mt-4 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {notif.responseId && (
+                                                        <a
+                                                            href={notif.formId ? `/crm/forms/${notif.formId}/responses` : "#"}
+                                                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all"
+                                                        >
+                                                            Open CRM Lead <ExternalLink size={12} />
+                                                        </a>
+                                                    )}
+                                                    {notif.taskId && (
+                                                        <a
+                                                            href="/team-board"
+                                                            className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-lg transition-all"
+                                                        >
+                                                            Open Team Task <ExternalLink size={12} />
+                                                        </a>
+                                                    )}
+                                                    <button className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 px-3 py-1.5 hover:bg-slate-50 rounded-lg transition-all ml-auto">
+                                                        Archive
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        {!notif.isRead && (
-                                            <div className="absolute top-6 right-6 w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
+                                        {!notif.isRead && !isFutureNotif && (
+                                            <div className="absolute top-6 right-6 w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
                                         )}
                                     </motion.div>
                                 );
