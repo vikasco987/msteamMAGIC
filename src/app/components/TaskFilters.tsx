@@ -88,7 +88,7 @@
 
 //   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 //   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  
+
 //   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
 //   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
 
@@ -99,7 +99,7 @@
 //   // State for the new filters
 //   const [nonZeroSalesOnly, setNonZeroSalesOnly] = useState(false);
 //   const [pendingFilter, setPendingFilter] = useState<"all" | "pending" | "paid">("all");
-  
+
 //   const categoryDropdownRef = useRef<HTMLDivElement>(null);
 //   const assigneeDropdownRef = useRef<HTMLDivElement>(null);
 //   const assignerDropdownRef = useRef<HTMLDivElement>(null); // New ref for assigner dropdown
@@ -163,14 +163,14 @@
 //     if (statusFilter) {
 //       currentFilteredTasks = currentFilteredTasks.filter((t) => t.status === statusFilter);
 //     }
-    
+
 //     // New filter for assigners
 //     if (selectedAssigners.length > 0) {
 //       currentFilteredTasks = currentFilteredTasks.filter((t) =>
 //         selectedAssigners.includes(t.assignerName || t.createdByName || "")
 //       );
 //     }
-    
+
 //     if (selectedAssignees.length > 0) {
 //       currentFilteredTasks = currentFilteredTasks.filter((t) =>
 //         t.assignees?.some(
@@ -1239,6 +1239,11 @@ interface TaskFiltersProps {
   onColumnVisibilityChange: (columns: string[]) => void;
   editMode: boolean;
   setEditMode: (mode: boolean) => void;
+  // Controlled Props
+  query: string;
+  onQueryChange: (query: string) => void;
+  status: string | null;
+  onStatusChange: (status: string | null) => void;
 }
 
 const ALL_COLUMNS = [
@@ -1290,16 +1295,19 @@ export const TaskFilters = ({
   onColumnVisibilityChange,
   editMode,
   setEditMode,
+  query,
+  onQueryChange,
+  status,
+  onStatusChange,
 }: TaskFiltersProps) => {
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  // Local states for other filters
   const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [columns, setColumns] = useState<string[]>(ALL_COLUMNS);
 
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  
+
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [isAssigneeDropdownOpen, setIsAssigneeDropdownOpen] = useState(false);
 
@@ -1310,7 +1318,7 @@ export const TaskFilters = ({
   // State for the new filters
   const [salesFilter, setSalesFilter] = useState<"all" | "withSales" | "noSales">("all");
   const [pendingSalesFilter, setPendingSalesFilter] = useState<"all" | "withPendingSales" | "fullyPaidSales" | "zeroAmountAndPaid">("all");
-  
+
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const assigneeDropdownRef = useRef<HTMLDivElement>(null);
   const assignerDropdownRef = useRef<HTMLDivElement>(null); // New ref for assigner dropdown
@@ -1374,14 +1382,14 @@ export const TaskFilters = ({
     if (statusFilter) {
       currentFilteredTasks = currentFilteredTasks.filter((t) => t.status === statusFilter);
     }
-    
+
     // New filter for assigners
     if (selectedAssigners.length > 0) {
       currentFilteredTasks = currentFilteredTasks.filter((t) =>
         selectedAssigners.includes(t.assignerName || t.createdByName || "")
       );
     }
-    
+
     if (selectedAssignees.length > 0) {
       currentFilteredTasks = currentFilteredTasks.filter((t) =>
         t.assignees?.some(
@@ -1562,7 +1570,7 @@ export const TaskFilters = ({
 
 
 
-  
+
   const requestSort = (key: string) => {
     let direction: "asc" | "desc" = "asc";
     if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
@@ -1654,7 +1662,7 @@ export const TaskFilters = ({
             placeholder="Filter tasks by title, shop name, or assignee..."
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
           />
           <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
         </div>
@@ -1692,11 +1700,10 @@ export const TaskFilters = ({
           </button>
           <button
             className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-200 ease-in-out
-            ${
-              editMode
+            ${editMode
                 ? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
                 : "bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-500"
-            }`}
+              }`}
             onClick={() => setEditMode((prev) => !prev)}
           >
             {editMode ? (
@@ -1715,8 +1722,8 @@ export const TaskFilters = ({
       <div className="flex flex-wrap gap-4 px-4 py-3 border-b border-gray-100 bg-gray-50">
         {/* Status Filter */}
         <select
-          value={statusFilter || ""}
-          onChange={(e) => setStatusFilter(e.target.value || null)}
+          value={status || ""}
+          onChange={(e) => onStatusChange(e.target.value || null)}
           className="p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
         >
           <option value="">All Statuses</option>
@@ -1864,11 +1871,10 @@ export const TaskFilters = ({
               setColumns((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]))
             }
             className={`inline-flex items-center px-3 py-1.5 border rounded-full text-xs font-medium transition-all duration-200 ease-in-out
-            ${
-              columns.includes(col)
+            ${columns.includes(col)
                 ? "bg-blue-600 text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
-            }`}
+              }`}
           >
             {columns.includes(col) ? <FaEye className="mr-1" /> : <FaEyeSlash className="mr-1" />}{" "}
             {col.replace(/([A-Z])/g, " $1").replace(/^./, (str) => str.toUpperCase())}

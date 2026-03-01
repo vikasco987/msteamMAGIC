@@ -322,7 +322,8 @@ export interface Task {
   endDate?: string;
   timeline?: string; // A general timeline description or date string
   amount?: number;
-  amountReceived?: number;
+  received?: number;
+  paymentProofs?: string[];
 
   // URL fields for documents/images
   aadhaarUrl?: string;

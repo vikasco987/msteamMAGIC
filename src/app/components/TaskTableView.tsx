@@ -4977,7 +4977,7 @@
 
 
 
-  
+
 //   const pageNumbers = useMemo(() => {
 //     const pages = [];
 //     const maxPagesToShow = 5;
@@ -5282,7 +5282,7 @@
 
 
 
-                    
+
 //                     {visibleColumns.includes("amount") && (
 //                       <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-right">
 //                         {editMode ? (
@@ -5865,7 +5865,7 @@
 
 
 
-  
+
 //   const pageNumbers = useMemo(() => {
 //     const pages = [];
 //     const maxPagesToShow = 5;
@@ -5997,7 +5997,7 @@
 //                   </div>
 //                 </th>
 //               )}
-             
+
 
 //               {visibleColumns.includes("attachments") && (
 //                 <th className="px-3 py-2 text-xs font-bold tracking-wide text-gray-700 border border-gray-200 text-left w-32">
@@ -6497,7 +6497,7 @@
 //       )}
 
 
-   
+
 
 //     </div>
 //   );
@@ -6636,9 +6636,34 @@ interface Props {
   tasks: Task[];
   user: UserResource;
   onTasksUpdate?: (updatedTasks: Task[]) => void;
+  // Pagination & Filter Props
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  limit: number;
+  onLimitChange: (limit: number) => void;
+  totalItems: number;
+  totalPages: number;
+  query: string;
+  onQueryChange: (query: string) => void;
+  status: string | null;
+  onStatusChange: (status: string | null) => void;
 }
 
-export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
+export default function TaskTableView({
+  tasks,
+  user,
+  onTasksUpdate,
+  currentPage,
+  onPageChange,
+  limit,
+  onLimitChange,
+  totalItems,
+  totalPages,
+  query,
+  onQueryChange,
+  status,
+  onStatusChange
+}: Props) {
   const [editMode, setEditMode] = useState(false);
   const [editedValues, setEditedValues] = useState<{ [key: string]: number }>(
     {}
@@ -6646,7 +6671,7 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
   const [localTasks, setLocalTasks] = useState<Task[]>(tasks || []);
   const [isSaving, setIsSaving] = useState<string | null>(null);
 
-  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>(tasks || []);
   // ✅ The `copy` column is now initialized as a visible column
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     "rowNumber",
@@ -6684,8 +6709,7 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
     []
   );
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const [tasksPerPage, setTasksPerPage] = useState(10);
+  // Pagination states are now from props
 
   const { user: clerkUser } = useUser();
   const currentUserId = clerkUser?.id;
@@ -6728,7 +6752,7 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
       filteredByRoleTasks = [];
     }
     setLocalTasks(filteredByRoleTasks);
-    setFilteredTasks(filteredByRoleTasks); 
+    setFilteredTasks(filteredByRoleTasks);
     setCurrentPage(1);
   }, [tasks, user, currentUserId, role]);
 
@@ -6753,28 +6777,23 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
     }
   };
 
-  const totalPages = Math.ceil(filteredTasks.length / tasksPerPage);
-  
   const paginatedTasks = useMemo(() => {
-    const startIndex = (currentPage - 1) * tasksPerPage;
-    const endIndex = startIndex + tasksPerPage;
-    return filteredTasks.slice(startIndex, endIndex);
-  }, [filteredTasks, currentPage, tasksPerPage]);
+    return filteredTasks;
+  }, [filteredTasks]);
 
   const handleTasksPerPageChange = (
     e: React.ChangeEvent<HTMLSelectElement>
   ) => {
-    setTasksPerPage(Number(e.target.value));
-    setCurrentPage(1);
+    onLimitChange(Number(e.target.value));
+    onPageChange(1);
   };
 
   const handlePageChange = (pageNumber: number) => {
-    setCurrentPage(pageNumber);
+    onPageChange(pageNumber);
   };
 
   const handleFilteredTasksChange = useCallback((newFilteredTasks: Task[]) => {
     setFilteredTasks(newFilteredTasks);
-    setCurrentPage(1);
   }, []);
 
   const handleColumnVisibilityChange = useCallback((newColumns: string[]) => {
@@ -6867,85 +6886,85 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
 
 
   const handleBlur = async (
-  taskId: string,
-  field: "amount" | "received"
-) => {
-  // Only allow admin to update amount or received
-  if ((field === "amount" || field === "received") && role !== "master") {
-    toast.error("Only admins can edit this field.");
-    // Remove edited value since it’s not allowed
-    setEditedValues((prev) => {
-      const newState = { ...prev };
-      delete newState[`${taskId}-${field}`];
-      return newState;
-    });
-    return;
-  }
-
-  const key = `${taskId}-${field}`;
-  const value = editedValues[key];
-
-  const originalTask = localTasks.find((t) => t.id === taskId);
-  const originalValue =
-    field === "amount"
-      ? Number(originalTask?.amount) || 0
-      : Number(originalTask?.received) || 0;
-
-  if (typeof value === "number" && !isNaN(value) && value !== originalValue) {
-    setIsSaving(key);
-    try {
-      const res = await fetch("/api/tasks/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId, field, value }),
+    taskId: string,
+    field: "amount" | "received"
+  ) => {
+    // Only allow admin to update amount or received
+    if ((field === "amount" || field === "received") && role !== "master") {
+      toast.error("Only admins can edit this field.");
+      // Remove edited value since it’s not allowed
+      setEditedValues((prev) => {
+        const newState = { ...prev };
+        delete newState[`${taskId}-${field}`];
+        return newState;
       });
-
-      if (!res.ok) {
-        const contentType = res.headers.get("content-type");
-        const errorText = await res.text();
-
-        let errorMessage = "Failed to update task.";
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMessage = errorJson.error || errorMessage;
-          } catch (jsonErr) {
-            console.error("Failed to parse error JSON:", jsonErr, errorText);
-            errorMessage = "Server returned malformed error. Contact support.";
-          }
-        } else {
-          errorMessage = `Server error: ${res.status} ${res.statusText}. Please try again.`;
-          console.error("Server returned non-JSON error:", errorText);
-        }
-
-        toast.error(errorMessage);
-        setEditedValues((prev) => ({ ...prev, [key]: originalValue }));
-      } else {
-        toast.success("Task updated successfully!");
-        await refetchTasks();
-        setEditedValues((prev) => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      }
-    } catch (err: any) {
-      console.error("❌ Network or unexpected error:", err);
-      toast.error(
-        err.message || "An unexpected error occurred while updating the task."
-      );
-      setEditedValues((prev) => ({ ...prev, [key]: originalValue }));
-    } finally {
-      setIsSaving(null);
+      return;
     }
-  } else {
-    setEditedValues((prev) => {
-      const newState = { ...prev };
-      delete newState[key];
-      return newState;
-    });
-  }
-};
+
+    const key = `${taskId}-${field}`;
+    const value = editedValues[key];
+
+    const originalTask = localTasks.find((t) => t.id === taskId);
+    const originalValue =
+      field === "amount"
+        ? Number(originalTask?.amount) || 0
+        : Number(originalTask?.received) || 0;
+
+    if (typeof value === "number" && !isNaN(value) && value !== originalValue) {
+      setIsSaving(key);
+      try {
+        const res = await fetch("/api/tasks/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId, field, value }),
+        });
+
+        if (!res.ok) {
+          const contentType = res.headers.get("content-type");
+          const errorText = await res.text();
+
+          let errorMessage = "Failed to update task.";
+          if (contentType && contentType.includes("application/json")) {
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.error || errorMessage;
+            } catch (jsonErr) {
+              console.error("Failed to parse error JSON:", jsonErr, errorText);
+              errorMessage = "Server returned malformed error. Contact support.";
+            }
+          } else {
+            errorMessage = `Server error: ${res.status} ${res.statusText}. Please try again.`;
+            console.error("Server returned non-JSON error:", errorText);
+          }
+
+          toast.error(errorMessage);
+          setEditedValues((prev) => ({ ...prev, [key]: originalValue }));
+        } else {
+          toast.success("Task updated successfully!");
+          await refetchTasks();
+          setEditedValues((prev) => {
+            const newState = { ...prev };
+            delete newState[key];
+            return newState;
+          });
+        }
+      } catch (err: any) {
+        console.error("❌ Network or unexpected error:", err);
+        toast.error(
+          err.message || "An unexpected error occurred while updating the task."
+        );
+        setEditedValues((prev) => ({ ...prev, [key]: originalValue }));
+      } finally {
+        setIsSaving(null);
+      }
+    } else {
+      setEditedValues((prev) => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+    }
+  };
 
 
 
@@ -6990,6 +7009,11 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
         onColumnVisibilityChange={handleColumnVisibilityChange}
         editMode={editMode}
         setEditMode={setEditMode}
+        // Controlled Props
+        query={query}
+        onQueryChange={onQueryChange}
+        status={status}
+        onStatusChange={onStatusChange}
       />
 
       <div className="overflow-x-auto">
@@ -7414,7 +7438,7 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
         <div className="flex items-center gap-2 text-sm text-gray-700">
           Rows per page:
           <select
-            value={tasksPerPage}
+            value={limit}
             onChange={handleTasksPerPageChange}
             className="p-1 border border-gray-300 rounded-md"
           >
@@ -7444,8 +7468,8 @@ export default function TaskTableView({ tasks, user, onTasksUpdate }: Props) {
               key={page}
               onClick={() => handlePageChange(page)}
               className={`px-3 py-1 rounded-md text-sm ${currentPage === page
-                  ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+                ? "bg-blue-600 text-white"
+                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
                 }`}
             >
               {page}

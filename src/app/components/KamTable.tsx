@@ -42,19 +42,19 @@ interface Task {
   shopName?: string;
   customerName?: string;
   packageAmount?: string;
-  startDate?: string; // ISO string
-  endDate?: string; // ISO string
+  startDate?: string;
+  endDate?: string;
   timeline?: string;
   assignerName?: string;
   assigneeName?: string;
-  createdAt: string; // ISO string - made mandatory as it's used for sorting/filtering
+  createdAt: string;
   assignees?: { name?: string; email?: string }[];
   amount?: number | null;
   received?: number | null;
   customFields?: Record<string, string | number>;
   highlightColor?: string;
   status?: "todo" | "inprogress" | "done" | "Archived";
-  notes?: string;
+  notes?: any; // Changed from string to any to handle Note[] objects from API
 }
 
 function stripEmojis(str: string): string {
@@ -76,6 +76,7 @@ export default function KamTableView() {
   const [allRawTasks, setAllRawTasks] = useState<Task[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -86,6 +87,7 @@ export default function KamTableView() {
     [key: string]: "todo" | "inprogress" | "done" | "Archived";
   }>({});
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [limit, setLimit] = useState(10);
   const [page, setPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
@@ -126,49 +128,45 @@ export default function KamTableView() {
     };
   }, []);
 
+  // ✅ DEBOUNCE SEARCH to prevent multiple API calls while typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const fetchAllTasks = useCallback(async () => {
     if (!isLoaded) return;
 
     setLoading(true);
     try {
-      const res = await fetch("/api/tasks");
+      // ✅ Pass all pagination and filter parameters to the API
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        query: debouncedQuery || "",
+        status: statusFilter || "",
+        sortKey: sortConfig?.key || "createdAt",
+        sortDir: sortConfig?.direction === "ascending" ? "asc" : "desc",
+      });
+
+      const res = await fetch(`/api/kam?${params.toString()}`);
       const data = await res.json();
 
-      const initialFilteredTasks = data.tasks
-        .filter((t: Task) => t.title === "📂 Account Handling")
-        .filter((t: Task) => {
-          const userEmail = user?.primaryEmailAddress?.emailAddress;
-          const userRole = user?.publicMetadata?.role as string | undefined;
-
-          if (!userRole || !userEmail) {
-            return false;
-          }
-
-          if (["admin", "master"].includes(userRole)) {
-            return true;
-          }
-
-          if (userRole === "seller") {
-            const isAssigner =
-              t.assignerName?.toLowerCase() === user?.fullName?.toLowerCase();
-            const isAssignee =
-              t.assignees?.some(
-                (a) => a.email?.toLowerCase() === userEmail.toLowerCase()
-              ) ||
-              t.assigneeName?.toLowerCase() === user?.fullName?.toLowerCase();
-
-            return isAssigner || isAssignee;
-          }
-          return false;
-        });
-      setAllRawTasks(initialFilteredTasks);
+      if (data.tasks) {
+        setAllRawTasks(data.tasks);
+        setTotalItems(data.pagination?.total || data.tasks.length);
+      }
     } catch (err) {
       console.error("Failed to fetch Kam tasks:", err);
       toast.error("Failed to load tasks. Please try again.");
     } finally {
       setLoading(false);
+      setIsFirstLoad(false);
     }
-  }, [user, isLoaded]);
+  }, [user, isLoaded, page, limit, debouncedQuery, statusFilter, sortConfig]);
 
   useEffect(() => {
     fetchAllTasks();
@@ -309,15 +307,16 @@ export default function KamTableView() {
   }, [allRawTasks, query, statusFilter, selectedCategories, selectedAssignees, dateFilter, sortConfig]);
 
   useEffect(() => {
-    setTotalItems(filteredAndSortedTasks.length);
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    setTasks(filteredAndSortedTasks.slice(startIndex, endIndex));
-  }, [filteredAndSortedTasks, page, limit]);
+    // Since API already handles pagination, we don't slice here anymore
+    setTasks(filteredAndSortedTasks);
+  }, [filteredAndSortedTasks]);
 
   useEffect(() => {
-    setPage(1);
-  }, [query, statusFilter, selectedCategories, selectedAssignees, dateFilter, sortConfig]);
+    // When filters change, go back to page 1
+    if (isLoaded) {
+      setPage(1);
+    }
+  }, [debouncedQuery, statusFilter, selectedCategories, selectedAssignees, dateFilter]);
 
   const handleInputChange = (
     taskId: string,
@@ -647,12 +646,12 @@ export default function KamTableView() {
     }
   };
 
-  if (!isLoaded || loading) {
+  if (loading && isFirstLoad) {
     return (
-      <div className="flex items-center justify-center min-h-[300px] bg-white rounded-2xl shadow-lg border border-gray-200">
+      <div className="flex flex-col items-center justify-center min-h-[400px] bg-white rounded-3xl shadow-xl border border-gray-100 p-12">
         <FaSpinner className="animate-spin text-indigo-500 text-5xl mr-4" />
-        <p className="text-xl text-gray-700 font-medium">
-          Loading user information and tasks...
+        <p className="text-xl text-gray-700 font-medium pt-4">
+          Loading Account Handling tasks...
         </p>
       </div>
     );
@@ -717,8 +716,11 @@ export default function KamTableView() {
               onChange={(e) => {
                 setQuery(e.target.value);
               }}
-              className="pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-base shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ease-in-out modern-input"
+              className="pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-base shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-200 ease-in-out modern-input w-64"
             />
+            {loading && !isFirstLoad && (
+              <FaSpinner className="absolute right-3 text-indigo-500 animate-spin" />
+            )}
           </div>
 
           <button
