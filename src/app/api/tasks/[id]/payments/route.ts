@@ -142,15 +142,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     });
 
     // 🚀 NEW: Notify ONLY Admin and Master
-    const client = await clerkClient();
-    const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
-    const adminMasterIds = clerkUsersResponse.data
-      .filter(u => {
-        const role = (u.publicMetadata?.role as string)?.toLowerCase();
-        return role === 'admin' || role === 'master';
-      })
-      .map(u => u.id)
-      .filter(id => id !== userId);
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
+      select: { clerkId: true }
+    });
+    const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
@@ -164,7 +160,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
           title: "💰 Payment Updated (Timeline)",
           content: `Payment Update: ₹${newReceived || 0} recorded for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
           taskId: originalTaskId
-        }
+        } as any
       }).catch(err => console.error("Payment alert error:", err))
     ));
 
@@ -231,15 +227,11 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     });
 
     // 🚀 NEW: Notify ONLY Admin and Master
-    const client = await clerkClient();
-    const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
-    const adminMasterIds = clerkUsersResponse.data
-      .filter(u => {
-        const role = (u.publicMetadata?.role as string)?.toLowerCase();
-        return role === 'admin' || role === 'master';
-      })
-      .map(u => u.id)
-      .filter(id => id !== userId);
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
+      select: { clerkId: true }
+    });
+    const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
@@ -253,7 +245,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           title: "⚠️ Payment Override (Timeline)",
           content: `Payment Override: Total ₹${updatedReceivedToSave} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
           taskId: originalTaskId
-        }
+        } as any
       }).catch(err => console.error("Payment alert error:", err))
     ));
 

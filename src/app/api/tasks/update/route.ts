@@ -282,15 +282,11 @@ export async function POST(req: NextRequest) {
       const user = await currentUser();
       const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
 
-      const client = await clerkClient();
-      const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
-      const adminMasterIds = clerkUsersResponse.data
-        .filter(u => {
-          const role = (u.publicMetadata?.role as string)?.toLowerCase();
-          return role === 'admin' || role === 'master';
-        })
-        .map(u => u.id)
-        .filter(id => id !== userId);
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
+        select: { clerkId: true }
+      });
+      const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
 
       const cf = (updatedTask.customFields as any) || {};
       const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
@@ -304,7 +300,7 @@ export async function POST(req: NextRequest) {
             title: "📂 Payment Update (Table Edit)",
             content: `Payment updated for ${taskDetails}. ${field.toUpperCase()}: ₹${value}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
             taskId: updatedTask.id
-          }
+          } as any
         }).catch(err => console.error("Update notification error:", err))
       ));
     } catch (e) {

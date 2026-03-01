@@ -926,7 +926,7 @@ export async function POST(req: NextRequest) {
             title: "📌 New Task Assigned",
             content: `You have been assigned a new task: "${task.title}" by ${creatorName}.`,
             taskId: task.id
-          }
+          } as any
         }).catch(err => console.error("Assignment notification error:", err));
       }
     }));

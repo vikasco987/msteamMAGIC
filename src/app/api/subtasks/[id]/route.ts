@@ -56,7 +56,7 @@ export async function PATCH(
             title: `🔄 Subtask ${updatedSubtask.completed ? "Done" : "Reopened"}`,
             content: `Subtask "${subtask.title}" in task "${task.title}" was ${updatedSubtask.completed ? "completed" : "set as incomplete"} by ${userName}.`,
             taskId: subtask.taskId
-          }
+          } as any
         }).catch(err => console.error("Subtask notification error:", err))
       ));
     }

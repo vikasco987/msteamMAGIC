@@ -147,15 +147,11 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     // 🚀 NEW: Notify ONLY Admin and Master for payment updates
     if (updateData.amount !== undefined || updateData.received !== undefined) {
-      const client = await clerkClient();
-      const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
-      const adminMasterIds = clerkUsersResponse.data
-        .filter(u => {
-          const role = (u.publicMetadata?.role as string)?.toLowerCase();
-          return role === 'admin' || role === 'master';
-        })
-        .map(u => u.id)
-        .filter(id => id !== userId);
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
+        select: { clerkId: true }
+      });
+      const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
 
       const cf = (updated.customFields as any) || {};
       const taskDetails = `[${cf.shopName || "N/A"}] - ${updated.title}`;
@@ -169,7 +165,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             title: "💳 Payment Update (Table)",
             content: `Payment Update: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
             taskId: updated.id
-          }
+          } as any
         }).catch(err => console.error("Payment alert error:", err))
       ));
     }
@@ -208,7 +204,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             title: notificationTitle,
             content: notificationContent,
             taskId: updated.id
-          }
+          } as any
         }).catch(err => console.error("Completion alert error:", err))
       ));
     }
