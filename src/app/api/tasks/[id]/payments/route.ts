@@ -58,7 +58,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     const existingTask = await prisma.task.findUnique({
       where: { id: originalTaskId },
-      select: { amount: true, received: true, paymentProofs: true, paymentHistory: true, assignerName: true },
+      select: { title: true, amount: true, received: true, paymentProofs: true, paymentHistory: true, assignerName: true, customFields: true },
     });
 
     if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -125,8 +125,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       assignerName: existingTask.assignerName || "Unknown",
     };
 
-    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as PaymentHistoryEntry[]) : [];
-    updateData.paymentHistory = [...existingHistory, paymentEntry] as Prisma.InputJsonValue;
+    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as any[]) : [];
+    updateData.paymentHistory = [...existingHistory, paymentEntry] as any;
 
     const updatedTask = await prisma.task.update({
       where: { id: originalTaskId },
@@ -141,18 +141,33 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       authorId: userId
     });
 
-    // 🚀 NEW: Notify ONLY Admin and Master from Database (More reliable than Clerk Metadata)
-    console.log("DEBUG: Fetching admins/masters from Prisma for payment notifications...");
-    const admins = await prisma.user.findMany({
+    // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk (Ensures consistency)
+    console.log("DEBUG: Discovering recipients (DB + Clerk)...");
+
+    const dbAdmins = await prisma.user.findMany({
       where: {
         role: { in: ["ADMIN", "MASTER", "admin", "master"] },
         clerkId: { not: userId }
       },
       select: { clerkId: true }
     });
-    const adminMasterIds = admins.map(u => u.clerkId);
 
-    console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from DB:`, adminMasterIds);
+    const clerkAdminsIds: string[] = [];
+    try {
+      const client = await clerkClient();
+      const clerkRes = await client.users.getUserList({ limit: 100 });
+      clerkRes.data.forEach((u: any) => {
+        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+        if ((role === "admin" || role === "master") && u.id !== userId) {
+          clerkAdminsIds.push(u.id);
+        }
+      });
+    } catch (err) {
+      console.error("DEBUG: Clerk lookup failed:", err);
+    }
+
+    const adminMasterIds = Array.from(new Set([...dbAdmins.map(u => u.clerkId), ...clerkAdminsIds]));
+    console.log(`DEBUG: Found ${adminMasterIds.length} unique recipients:`, adminMasterIds);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
@@ -196,7 +211,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     const existingTask = await prisma.task.findUnique({
       where: { id: originalTaskId },
-      select: { amount: true, received: true, paymentHistory: true, assignerName: true },
+      select: { title: true, amount: true, received: true, paymentHistory: true, assignerName: true, customFields: true },
     });
 
     if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
@@ -209,9 +224,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     let updatedReceivedToSave = existingTask.received ?? 0;
     if (newReceived !== undefined) {
-      // For PATCH, we might want to allow correcting the total, but let's stick to user's cumulative request if possible.
-      // Actually, standard PATCH usually sets the value. Let's make PATCH an "override" for corrections, 
-      // but POST is for the "add payment" flow.
       updatedReceivedToSave = newReceived;
     }
 
@@ -228,26 +240,40 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       assignerName: existingTask.assignerName || "Unknown",
     };
 
-    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as PaymentHistoryEntry[]) : [];
-    updateData.paymentHistory = [...existingHistory, paymentEntry] as Prisma.InputJsonValue;
+    const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as any[]) : [];
+    updateData.paymentHistory = [...existingHistory, paymentEntry] as any;
 
     const updatedTask = await prisma.task.update({
       where: { id: originalTaskId },
       data: updateData,
     });
 
-    // 🚀 NEW: Notify ONLY Admin and Master from Database
-    console.log("DEBUG: Fetching admins/masters from Prisma for payment override notifications...");
-    const adminsForPatch = await prisma.user.findMany({
+    // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk (Ensures consistency)
+    console.log("DEBUG: Discovering recipients for override (DB + Clerk)...");
+    const dbAdminsPatch = await prisma.user.findMany({
       where: {
         role: { in: ["ADMIN", "MASTER", "admin", "master"] },
         clerkId: { not: userId }
       },
       select: { clerkId: true }
     });
-    const adminMasterIdsForPatch = adminsForPatch.map(u => u.clerkId);
 
-    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} recipient admins from DB for override:`, adminMasterIdsForPatch);
+    const clerkAdminsIdsPatch: string[] = [];
+    try {
+      const clientPatch = await clerkClient();
+      const clerkResPatch = await clientPatch.users.getUserList({ limit: 100 });
+      clerkResPatch.data.forEach((u: any) => {
+        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+        if ((role === "admin" || role === "master") && u.id !== userId) {
+          clerkAdminsIdsPatch.push(u.id);
+        }
+      });
+    } catch (err) {
+      console.error("DEBUG: Clerk lookup (PATCH) failed:", err);
+    }
+
+    const adminMasterIdsForPatch = Array.from(new Set([...dbAdminsPatch.map(u => u.clerkId), ...clerkAdminsIdsPatch]));
+    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} unique recipients for override:`, adminMasterIdsForPatch);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
