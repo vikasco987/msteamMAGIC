@@ -146,8 +146,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     const dbAdmins = await prisma.user.findMany({
       where: {
-        role: { in: ["ADMIN", "MASTER", "admin", "master"] },
-        clerkId: { not: userId }
+        role: { in: ["ADMIN", "MASTER", "admin", "master"] }
       },
       select: { clerkId: true }
     });
@@ -158,7 +157,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       const clerkRes = await client.users.getUserList({ limit: 100 });
       clerkRes.data.forEach((u: any) => {
         const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if ((role === "admin" || role === "master") && u.id !== userId) {
+        if ((role === "admin" || role === "master")) {
           clerkAdminsIds.push(u.id);
         }
       });
@@ -183,7 +182,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
             taskId: originalTaskId
           } as any
         });
-        console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
+        console.log(`DEBUG: Notification ${notif.id} created for Recipient ${recipientId}`);
       } catch (err) {
         console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
       }
@@ -252,8 +251,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     console.log("DEBUG: Discovering recipients for override (DB + Clerk)...");
     const dbAdminsPatch = await prisma.user.findMany({
       where: {
-        role: { in: ["ADMIN", "MASTER", "admin", "master"] },
-        clerkId: { not: userId }
+        role: { in: ["ADMIN", "MASTER", "admin", "master"] }
       },
       select: { clerkId: true }
     });
@@ -264,7 +262,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       const clerkResPatch = await clientPatch.users.getUserList({ limit: 100 });
       clerkResPatch.data.forEach((u: any) => {
         const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if ((role === "admin" || role === "master") && u.id !== userId) {
+        if ((role === "admin" || role === "master")) {
           clerkAdminsIdsPatch.push(u.id);
         }
       });
@@ -289,7 +287,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             taskId: originalTaskId
           } as any
         });
-        console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
+        console.log(`DEBUG: Notification ${notif.id} created for Recipient ${recipientId}`);
       } catch (err) {
         console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
       }
