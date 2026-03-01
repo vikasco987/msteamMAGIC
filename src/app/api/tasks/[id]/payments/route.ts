@@ -153,14 +153,16 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       .filter(id => id !== userId);
 
     const cf = (updatedTask.customFields as any) || {};
-    const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+    const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
+    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
     await Promise.all(adminMasterIds.map(recipientId =>
       prisma.notification.create({
         data: {
           userId: recipientId,
           type: "PAYMENT_ADDED",
-          content: `Payment Alert: ₹${newReceived || 0} recorded for ${details}. User: ${userName}`,
+          title: "💰 Payment Updated (Timeline)",
+          content: `Payment Update: ₹${newReceived || 0} recorded for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
           taskId: originalTaskId
         }
       }).catch(err => console.error("Payment alert error:", err))
@@ -240,14 +242,16 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       .filter(id => id !== userId);
 
     const cf = (updatedTask.customFields as any) || {};
-    const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+    const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
+    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
     await Promise.all(adminMasterIds.map(recipientId =>
       prisma.notification.create({
         data: {
           userId: recipientId,
           type: "PAYMENT_ADDED",
-          content: `Payment Override: Total ₹${updatedReceivedToSave} for ${details}. User: ${userName}`,
+          title: "⚠️ Payment Override (Timeline)",
+          content: `Payment Override: Total ₹${updatedReceivedToSave} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
           taskId: originalTaskId
         }
       }).catch(err => console.error("Payment alert error:", err))

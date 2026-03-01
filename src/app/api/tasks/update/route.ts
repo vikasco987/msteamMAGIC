@@ -275,6 +275,42 @@ export async function POST(req: NextRequest) {
       data: dataToUpdate,
     });
 
+    // 🚀 NEW: Notify Admin/Master
+    try {
+      const { auth, clerkClient, currentUser } = await import("@clerk/nextjs/server");
+      const { userId } = await auth();
+      const user = await currentUser();
+      const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
+
+      const client = await clerkClient();
+      const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
+      const adminMasterIds = clerkUsersResponse.data
+        .filter(u => {
+          const role = (u.publicMetadata?.role as string)?.toLowerCase();
+          return role === 'admin' || role === 'master';
+        })
+        .map(u => u.id)
+        .filter(id => id !== userId);
+
+      const cf = (updatedTask.customFields as any) || {};
+      const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
+      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+      await Promise.all(adminMasterIds.map(recipientId =>
+        prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "PAYMENT_ADDED",
+            title: "📂 Payment Update (Table Edit)",
+            content: `Payment updated for ${taskDetails}. ${field.toUpperCase()}: ₹${value}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+            taskId: updatedTask.id
+          }
+        }).catch(err => console.error("Update notification error:", err))
+      ));
+    } catch (e) {
+      console.error("Failed to send notification for inline update:", e);
+    }
+
     return NextResponse.json({ success: true, task: updatedTask }, { status: 200 });
 
   } catch (err: unknown) { // FIX: Changed 'any' to 'unknown'

@@ -158,14 +158,16 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         .filter(id => id !== userId);
 
       const cf = (updated.customFields as any) || {};
-      const details = `[${cf.shopName || "N/A"}] - ${cf.phone || "N/A"}`;
+      const taskDetails = `[${cf.shopName || "N/A"}] - ${updated.title}`;
+      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
       await Promise.all(adminMasterIds.map(recipientId =>
         prisma.notification.create({
           data: {
             userId: recipientId,
             type: "PAYMENT_ADDED",
-            content: `Payment Update: ${details}. Total: ₹${updated.amount || 0}, Received: ₹${updated.received || 0}. By: ${userName}`,
+            title: "💳 Payment Update (Table)",
+            content: `Payment Update: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
             taskId: updated.id
           }
         }).catch(err => console.error("Payment alert error:", err))
