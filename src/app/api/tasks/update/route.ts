@@ -282,27 +282,48 @@ export async function POST(req: NextRequest) {
       const user = await currentUser();
       const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
 
-      const admins = await prisma.user.findMany({
+      // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk
+      const recipientIds = new Set<string>();
+
+      const dbAdmins = await prisma.user.findMany({
         where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
         select: { clerkId: true }
       });
-      const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
+      dbAdmins.forEach(u => recipientIds.add(u.clerkId));
 
+      try {
+        const client = await clerkClient();
+        const clerkRes = await client.users.getUserList({ limit: 100 });
+        clerkRes.data.forEach((u: any) => {
+          const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+          if (role === "admin" || role === "master") {
+            recipientIds.add(u.id);
+          }
+        });
+      } catch (e) {
+        console.error("Clerk discovery (inline) failed:", e);
+      }
+
+      const finalRecipients = Array.from(recipientIds);
       const cf = (updatedTask.customFields as any) || {};
       const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
-      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-      await Promise.all(adminMasterIds.map(recipientId =>
-        prisma.notification.create({
-          data: {
-            userId: recipientId,
-            type: "PAYMENT_ADDED",
-            title: "📂 Payment Update (Table Edit)",
-            content: `Payment updated for ${taskDetails}. ${field.toUpperCase()}: ₹${value}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
-            taskId: updatedTask.id
-          } as any
-        }).catch(err => console.error("Update notification error:", err))
-      ));
+      for (const recipientId of finalRecipients) {
+        try {
+          await prisma.notification.create({
+            data: {
+              userId: recipientId,
+              type: "PAYMENT_ADDED",
+              title: "📂 Payment Update (Table Edit)",
+              content: `Table Edit: ${field.toUpperCase()} set to ₹${value} for ${taskDetails}. By: ${userName}`,
+              taskId: updatedTask.id
+            } as any
+          });
+          console.log(`DEBUG: Table edit notif sent to ${recipientId}`);
+        } catch (err) {
+          console.error(`Notif failed for ${recipientId}:`, err);
+        }
+      }
     } catch (e) {
       console.error("Failed to send notification for inline update:", e);
     }

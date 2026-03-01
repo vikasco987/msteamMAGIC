@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) {
@@ -12,11 +14,13 @@ export async function GET(req: NextRequest) {
         const url = new URL(req.url);
         const showAll = url.searchParams.get("all") === "true";
 
+        console.log(`DEBUG: Fetching alerts for userId: ${userId}`);
         const notifications = await prisma.notification.findMany({
             where: { userId },
             orderBy: { createdAt: "desc" },
             take: showAll ? 1000 : 20,
         });
+        console.log(`DEBUG: Found ${notifications.length} alerts for ${userId}`);
 
         const unreadCount = await prisma.notification.count({
             where: { userId, isRead: false },
