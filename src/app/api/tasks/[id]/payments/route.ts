@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
+import { users as clerkUsers } from "@clerk/clerk-sdk-node";
 import cloudinary from "cloudinary";
 import { Readable } from "stream";
 import { Prisma } from "@prisma/client";
@@ -142,27 +143,41 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     });
 
     // 🚀 NEW: Notify ONLY Admin and Master
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
-      select: { clerkId: true }
-    });
-    const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
+    console.log("DEBUG: Fetching admins from Clerk for payment notifications...");
+    const allClerkUsers = await clerkUsers.getUserList({ limit: 500 });
+    const adminMasterIds = allClerkUsers
+      .filter(u => {
+        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+        return role === "admin" || role === "master";
+      })
+      .map(u => u.id)
+      .filter(id => id !== userId);
+
+    console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from Clerk:`, adminMasterIds);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    await Promise.all(adminMasterIds.map(recipientId =>
-      prisma.notification.create({
-        data: {
-          userId: recipientId,
-          type: "PAYMENT_ADDED",
-          title: "💰 Payment Updated (Timeline)",
-          content: `Payment Update: ₹${newReceived || 0} recorded for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
-          taskId: originalTaskId
-        } as any
-      }).catch(err => console.error("Payment alert error:", err))
-    ));
+    if (adminMasterIds.length === 0) {
+      console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
+    }
+
+    await Promise.all(adminMasterIds.map(async recipientId => {
+      try {
+        const notif = await prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "PAYMENT_ADDED",
+            content: `💰 PAYMENT UPDATE (Timeline): ₹${newReceived || 0} recorded for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+            taskId: originalTaskId
+          } as any
+        });
+        console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
+      } catch (err) {
+        console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
+      }
+    }));
 
     return NextResponse.json({ success: true, task: updatedTask, fileUrl: uploadedFileUrl });
   } catch (err: any) {
@@ -227,27 +242,41 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     });
 
     // 🚀 NEW: Notify ONLY Admin and Master
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
-      select: { clerkId: true }
-    });
-    const adminMasterIds = admins.map(u => u.clerkId).filter(id => id !== userId);
+    console.log("DEBUG: Fetching admins from Clerk for payment override notifications...");
+    const allClerkUsersForPatch = await clerkUsers.getUserList({ limit: 500 });
+    const adminMasterIdsForPatch = allClerkUsersForPatch
+      .filter(u => {
+        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+        return role === "admin" || role === "master";
+      })
+      .map(u => u.id)
+      .filter(id => id !== userId);
+
+    console.log(`DEBUG: Found ${adminMasterIdsForPatch.length} recipient admins from Clerk for override:`, adminMasterIdsForPatch);
 
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    await Promise.all(adminMasterIds.map(recipientId =>
-      prisma.notification.create({
-        data: {
-          userId: recipientId,
-          type: "PAYMENT_ADDED",
-          title: "⚠️ Payment Override (Timeline)",
-          content: `Payment Override: Total ₹${updatedReceivedToSave} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
-          taskId: originalTaskId
-        } as any
-      }).catch(err => console.error("Payment alert error:", err))
-    ));
+    if (adminMasterIdsForPatch.length === 0) {
+      console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
+    }
+
+    await Promise.all(adminMasterIdsForPatch.map(async recipientId => {
+      try {
+        const notif = await prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "PAYMENT_ADDED",
+            content: `⚠️ PAYMENT OVERRIDE (Timeline): Total ₹${updatedReceivedToSave} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+            taskId: originalTaskId
+          } as any
+        });
+        console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
+      } catch (err) {
+        console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
+      }
+    }));
 
     return NextResponse.json({ success: true, task: updatedTask });
   } catch (err: any) {

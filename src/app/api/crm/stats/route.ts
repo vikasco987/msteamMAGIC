@@ -9,25 +9,32 @@ export async function GET(req: NextRequest) {
         const endOfToday = endOfDay(today);
 
         // Count for Today
-        const todayCount = await prisma.formRemark.count({
-            where: {
-                nextFollowUpDate: {
-                    gte: startOfToday,
-                    lte: endOfToday
-                },
-                followUpStatus: { not: "Closed" }
-            }
-        });
+        let todayCount = 0;
+        let overdueCount = 0;
 
-        // Count for Overdue
-        const overdueCount = await prisma.formRemark.count({
-            where: {
-                nextFollowUpDate: {
-                    lt: startOfToday
-                },
-                followUpStatus: { not: "Closed" }
-            }
-        });
+        if ((prisma as any).formRemark) {
+            todayCount = await (prisma as any).formRemark.count({
+                where: {
+                    nextFollowUpDate: {
+                        gte: startOfToday,
+                        lte: endOfToday
+                    },
+                    followUpStatus: { not: "Closed" }
+                }
+            });
+
+            // Count for Overdue
+            overdueCount = await (prisma as any).formRemark.count({
+                where: {
+                    nextFollowUpDate: {
+                        lt: startOfToday
+                    },
+                    followUpStatus: { not: "Closed" }
+                }
+            });
+        } else {
+            console.warn("DEBUG: prisma.formRemark is undefined in stats route. Client might be out of sync.");
+        }
 
         return NextResponse.json({
             success: true,
