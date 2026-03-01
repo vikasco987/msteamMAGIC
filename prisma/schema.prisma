@@ -235,6 +235,8 @@ model Notification {
   formId          String?  @db.ObjectId
   responseId      String?  @db.ObjectId
   isRead          Boolean  @default(false)
+  isSystem        Boolean  @default(false) // For automated alerts
+  scheduledAt     DateTime @default(now()) // When this notification should become visible
   createdAt       DateTime @default(now())
 }
 

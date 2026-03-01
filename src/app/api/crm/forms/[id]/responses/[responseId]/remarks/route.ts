@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { processRemarkAutomation } from "@/lib/automation";
 
 export async function GET(
     req: NextRequest,
@@ -94,57 +95,15 @@ export async function POST(
             });
         }
 
-        // --- AUTOMATION ENGINE: Escalation & Event Triggers ---
-        const existingRemarks = await (prisma as any).formRemark.findMany({
-            where: { responseId },
-            orderBy: { createdAt: 'desc' },
-            take: 10
+        // 🚀 CENTRAL AUTOMATION ENGINE: Escalations & Trigger Events
+        await processRemarkAutomation({
+            responseId,
+            remark,
+            status: followUpStatus || "scheduled",
+            userId: user.id,
+            userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "Staff",
+            formId: id
         });
-
-        const missedCount = existingRemarks.filter((r: any) => r.followUpStatus === "Missed" || r.followUpStatus === "missed").length;
-
-        // Trigger: Status Alert
-        if (followUpStatus === "Missed") {
-            const adminUsers = await prisma.user.findMany({
-                where: { role: { in: ["ADMIN", "MASTER"] } },
-                select: { clerkId: true }
-            });
-
-            const adminIds = adminUsers.map(u => u.clerkId).filter(id => id !== user.id);
-
-            await prisma.notification.createMany({
-                data: adminIds.map(uid => ({
-                    userId: uid,
-                    type: "CRM_FOLLOWUP",
-                    title: `⚠️ Follow-up Missed: ${form?.title || 'Lead'}`,
-                    content: `${user.firstName || 'Staff'} marked a follow-up as MISSED. Urgent action may be required.`,
-                    formId: id,
-                    responseId: responseId
-                }))
-            });
-        }
-
-        // 🚀 Trigger: Auto Escalation (3 Missed = Red Alert)
-        if (missedCount >= 3) {
-            const masterUsers = await prisma.user.findMany({
-                where: { role: "MASTER" },
-                select: { clerkId: true }
-            });
-
-            const masterIds = masterUsers.map(u => u.clerkId);
-
-            await prisma.notification.createMany({
-                data: masterIds.map(uid => ({
-                    userId: uid,
-                    type: "CRM_FOLLOWUP",
-                    title: `🔥 CRITICAL ESCALATION: ${form?.title || 'Lead'}`,
-                    content: `This lead has MISSED follow-ups ${missedCount} times! Auto-escalated to Master Auth for recovery.`,
-                    formId: id,
-                    responseId: responseId
-                }))
-            });
-        }
-        // --- END AUTOMATION ENGINE ---
 
         // SYNC TO CRM TABLE (Update Internal Values)
         const remarkCols = await prisma.internalColumn.findMany({

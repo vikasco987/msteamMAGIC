@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bell, CheckCircle2, MessageSquare, CreditCard, CheckSquare } from "lucide-react";
+import { Bell, CheckCircle2, MessageSquare, CreditCard, CheckSquare, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 
@@ -140,6 +140,14 @@ export default function NotificationBell({ isCollapsed }: { isCollapsed: boolean
                                 </DropdownMenu.Item>
                             ))
                         )}
+                    </div>
+                    <div className="p-2 border-t border-violet-800 bg-white/5 text-center">
+                        <a
+                            href="/dashboard/notifications"
+                            className="text-[10px] font-black uppercase tracking-widest text-purple-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+                        >
+                            View All Alerts <ArrowRight size={10} />
+                        </a>
                     </div>
                     <DropdownMenu.Arrow className="fill-violet-800" />
                 </DropdownMenu.Content>

@@ -9,10 +9,13 @@ export async function GET(req: NextRequest) {
     }
 
     try {
+        const url = new URL(req.url);
+        const showAll = url.searchParams.get("all") === "true";
+
         const notifications = await prisma.notification.findMany({
             where: { userId },
             orderBy: { createdAt: "desc" },
-            take: 20,
+            take: showAll ? 100 : 20,
         });
 
         const unreadCount = await prisma.notification.count({
