@@ -64,6 +64,10 @@ export default function NotificationsPage() {
     useEffect(() => {
         fetchNotifications();
         fetchDigest();
+
+        // Auto-refresh hub data on production to stay in-sync with Bell
+        const interval = setInterval(fetchNotifications, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     const markRead = async (id: string) => {
@@ -97,14 +101,12 @@ export default function NotificationsPage() {
         } else if (filter === "all") {
             // Show everything in 'All' - both past and future
             list = notifications;
-        } else {
-            // Category filters also show past items (default)
-            if (filter === "team") list = list.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type));
-            if (filter === "payments") list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
-            if (filter === "crm") list = list.filter(n => n.type === "CRM_FOLLOWUP");
-
-            // Only filter out deep future items (> 1 hour) to avoid hiding "just now" items
-            list = list.filter(n => !isFuture(new Date(new Date(n.scheduledAt || n.createdAt).getTime() - 3600000)));
+        } else if (filter === "payments") {
+            list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
+        } else if (filter === "team") {
+            list = list.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type));
+        } else if (filter === "crm") {
+            list = list.filter(n => n.type === "CRM_FOLLOWUP");
         }
 
         // Filter by Search
