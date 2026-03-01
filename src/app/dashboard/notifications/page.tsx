@@ -31,7 +31,7 @@ export default function NotificationsPage() {
     const [loading, setLoading] = useState(true);
     const [digest, setDigest] = useState<{ summary: string, priority: string, isPositive: boolean } | null>(null);
     const [loadingDigest, setLoadingDigest] = useState(true);
-    const [filter, setFilter] = useState<"all" | "unread" | "scheduled" | "team" | "payments">("all");
+    const [filter, setFilter] = useState<"all" | "unread" | "scheduled" | "team" | "payments" | "crm">("all");
     const [search, setSearch] = useState("");
 
     const fetchNotifications = async () => {
@@ -39,6 +39,7 @@ export default function NotificationsPage() {
             const res = await fetch("/api/notifications?all=true");
             if (res.ok) {
                 const data = await res.json();
+                // Ensure we have a valid array
                 setNotifications(data.notifications || []);
             }
         } catch (error) {
@@ -91,9 +92,20 @@ export default function NotificationsPage() {
 
         // Filter by Tab
         if (filter === "unread") list = list.filter(n => !n.isRead);
-        if (filter === "scheduled") list = list.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt)));
-        if (filter === "team") list = list.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type));
-        if (filter === "payments") list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
+        if (filter === "scheduled") {
+            list = list.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt)));
+        } else if (filter === "all") {
+            // Show everything in 'All' - both past and future
+            list = notifications;
+        } else {
+            // Category filters also show past items (default)
+            if (filter === "team") list = list.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type));
+            if (filter === "payments") list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
+            if (filter === "crm") list = list.filter(n => n.type === "CRM_FOLLOWUP");
+
+            // For category tabs, hide things that are deep in the future (> 1 min)
+            list = list.filter(n => !isFuture(new Date(new Date(n.scheduledAt || n.createdAt).getTime() - 60000)));
+        }
 
         // Filter by Search
         if (search) {
@@ -109,8 +121,9 @@ export default function NotificationsPage() {
     const stats = useMemo(() => ({
         unread: notifications.filter(n => !n.isRead).length,
         scheduled: notifications.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt))).length,
-        team: notifications.filter(n => ["MENTION", "TASK_COMPLETED"].includes(n.type)).length,
-        payments: notifications.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER"].includes(n.type)).length
+        team: notifications.filter(n => ["MENTION", "TASK_COMPLETED", "SUBTASK_TOGGLED"].includes(n.type)).length,
+        payments: notifications.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type)).length,
+        crm: notifications.filter(n => n.type === "CRM_FOLLOWUP").length
     }), [notifications]);
 
     const getIcon = (type: string, title: string) => {
@@ -163,18 +176,19 @@ export default function NotificationsPage() {
                     {/* Navigation Pills */}
                     <div className="flex flex-wrap items-center mt-10 gap-2">
                         {[
-                            { id: "all", label: "All Activity", icon: Bell },
+                            { id: "all", label: "History", icon: Bell },
                             { id: "unread", label: "Unread", icon: Clock, count: stats.unread },
                             { id: "scheduled", label: "Upcoming", icon: Calendar, count: stats.scheduled },
                             { id: "team", label: "Team & Tasks", icon: CheckSquare, count: stats.team },
                             { id: "payments", label: "Payments", icon: CreditCard, count: stats.payments },
+                            { id: "crm", label: "CRM & Leads", icon: User, count: stats.crm },
                         ].map(tab => (
                             <button
                                 key={tab.id}
                                 onClick={() => setFilter(tab.id as any)}
                                 className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border-2 ${filter === tab.id
-                                        ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200"
-                                        : "bg-white text-slate-400 border-white hover:border-slate-100 hover:bg-slate-50"
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200"
+                                    : "bg-white text-slate-400 border-white hover:border-slate-100 hover:bg-slate-50"
                                     }`}
                             >
                                 <tab.icon size={14} />
@@ -265,10 +279,10 @@ export default function NotificationsPage() {
                                         transition={{ delay: idx * 0.05 }}
                                         onClick={() => markRead(notif.id)}
                                         className={`p-6 rounded-[32px] border-2 transition-all cursor-pointer relative group ${notif.isRead
-                                                ? "bg-white/50 border-white text-slate-400 grayscale-[0.5]"
-                                                : isFutureNotif
-                                                    ? "bg-amber-50/30 border-amber-100 shadow-[inset_4px_0_0_#f59e0b]"
-                                                    : "bg-white border-white hover:border-indigo-100 shadow-sm hover:shadow-xl hover:-translate-y-1"
+                                            ? "bg-white/50 border-white text-slate-400 grayscale-[0.5]"
+                                            : isFutureNotif
+                                                ? "bg-amber-50/30 border-amber-100 shadow-[inset_4px_0_0_#f59e0b]"
+                                                : "bg-white border-white hover:border-indigo-100 shadow-sm hover:shadow-xl hover:-translate-y-1"
                                             }`}
                                     >
                                         <div className="flex gap-6 items-start">
