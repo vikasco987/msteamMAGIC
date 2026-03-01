@@ -21,12 +21,46 @@ interface PaymentHistoryEntry {
   assignerName?: string;
 }
 
+// Get parent task ID if exists
 async function getEffectiveTaskId(taskId: string): Promise<string> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: { parentTaskId: true },
   });
   return task?.parentTaskId || taskId;
+}
+
+// 🚀 Helper to find all admins and masters
+async function getNotificationRecipients(currentUserId: string): Promise<string[]> {
+  const recipientIds = new Set<string>();
+
+  // 1. From Database
+  try {
+    const dbAdmins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
+      select: { clerkId: true }
+    });
+    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
+  } catch (e) {
+    console.error("DB Recipient Discovery Error:", e);
+  }
+
+  // 2. From Clerk (Fallback)
+  try {
+    const client = await clerkClient();
+    const clerkRes = await client.users.getUserList({ limit: 100 });
+    clerkRes.data.forEach((u: any) => {
+      const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+      if (role === "admin" || role === "master") {
+        recipientIds.add(u.id);
+      }
+    });
+  } catch (e) {
+    console.error("Clerk Recipient Discovery Error:", e);
+  }
+
+  // Ensure we send to everyone including the person who updated (as requested)
+  return Array.from(recipientIds);
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -74,22 +108,20 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       updatedAmountToSave = newAmount;
     }
 
-    let currentTotalReceived = existingTask.received ?? 0;
-    let updatedReceivedToSave = currentTotalReceived;
-    if (newReceived !== undefined) {
-      updatedReceivedToSave += newReceived;
-    }
+    let updatedReceivedToSave = (existingTask.received ?? 0) + (newReceived ?? 0);
 
-    const updateData: Prisma.TaskUpdateInput = { updatedAt: new Date() };
-    if (updatedAmountToSave !== existingTask.amount) updateData.amount = updatedAmountToSave;
-    if (updatedReceivedToSave !== existingTask.received) updateData.received = updatedReceivedToSave;
+    const updateData: Prisma.TaskUpdateInput = {
+      amount: updatedAmountToSave,
+      received: updatedReceivedToSave,
+      updatedAt: new Date()
+    };
 
     if (uploadedFileUrl) {
       const currentProofs = Array.isArray(existingTask.paymentProofs) ? (existingTask.paymentProofs as string[]) : [];
       updateData.paymentProofs = [...currentProofs, uploadedFileUrl];
     }
 
-    const paymentEntry: PaymentHistoryEntry = {
+    const paymentEntry = {
       amount: updatedAmountToSave ?? 0,
       received: updatedReceivedToSave,
       fileUrl: uploadedFileUrl || null,
@@ -114,51 +146,25 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       authorId: userId
     });
 
-    // 🚀 ROBUST RECIPIENT DISCOVERY
-    const recipientIds = new Set<string>();
-
-    // 1. From DB
-    const dbAdmins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
-      select: { clerkId: true }
-    });
-    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
-
-    // 2. From Clerk
-    try {
-      const client = await clerkClient();
-      const clerkRes = await client.users.getUserList({ limit: 100 });
-      clerkRes.data.forEach((u: any) => {
-        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if (role === "admin" || role === "master") {
-          recipientIds.add(u.id);
-        }
-      });
-    } catch (e) {
-      console.error("DEBUG: Clerk discovery failed", e);
-    }
-
-    const finalRecipients = Array.from(recipientIds);
-    console.log(`DEBUG: Sending notifications to ${finalRecipients.length} users:`, finalRecipients);
-
+    // 🚀 Send Notifications with Title
+    const recipients = await getNotificationRecipients(userId);
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
     const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    // Sequential creation for better tracking
-    for (const recipientId of finalRecipients) {
+    for (const recipientId of recipients) {
       try {
         await prisma.notification.create({
           data: {
             userId: recipientId,
             type: "PAYMENT_ADDED",
-            content: `💰 PAYMENT UPDATE: ₹${newReceived || 0} recorded for ${taskDetails}. \nBy: ${userName} \nDate: ${timestamp}`,
+            title: "💰 New Payment Added",
+            content: `Payment of ₹${newReceived || 0} recorded for ${taskDetails}. Updated By: ${userName} at ${timestamp}`,
             taskId: originalTaskId
           } as any
         });
-        console.log(`DEBUG: ✅ Notified ${recipientId}`);
       } catch (err) {
-        console.error(`DEBUG: ❌ Failed for ${recipientId}`, err);
+        console.error(`Notification failed for ${recipientId}:`, err);
       }
     }
 
@@ -189,58 +195,39 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const updatedAmountToSave = (existingTask.amount === null || existingTask.amount === 0) ? (amount ?? existingTask.amount) : existingTask.amount;
     const updatedReceivedToSave = received ?? existingTask.received;
 
-    const updateData: Prisma.TaskUpdateInput = {
-      updatedAt: new Date(),
-      amount: updatedAmountToSave,
-      received: updatedReceivedToSave
-    };
-
     const paymentEntry = {
       amount: updatedAmountToSave ?? 0,
       received: updatedReceivedToSave,
       fileUrl: null,
       updatedAt: new Date(),
       updatedBy: userName,
-      assignerName: existingTask.assignerName || "Unknown",
     };
 
     const existingHistory = Array.isArray(existingTask.paymentHistory) ? (existingTask.paymentHistory as any[]) : [];
-    updateData.paymentHistory = [...existingHistory, paymentEntry] as any;
 
     const updatedTask = await prisma.task.update({
       where: { id: originalTaskId },
-      data: updateData,
+      data: {
+        amount: updatedAmountToSave,
+        received: updatedReceivedToSave,
+        paymentHistory: [...existingHistory, paymentEntry] as any,
+        updatedAt: new Date(),
+      },
     });
 
-    // ROBUST RECIPIENT DISCOVERY (Duplicate for PATCH)
-    const recipientIds = new Set<string>();
-    const dbAdmins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
-      select: { clerkId: true }
-    });
-    dbAdmins.forEach(u => recipientIds.add(u.clerkId));
-
-    try {
-      const client = await clerkClient();
-      const clerkRes = await client.users.getUserList({ limit: 100 });
-      clerkRes.data.forEach((u: any) => {
-        const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-        if (role === "admin" || role === "master") recipientIds.add(u.id);
-      });
-    } catch (e) { }
-
-    const finalRecipients = Array.from(recipientIds);
+    // 🚀 Send Overridden Notifications
+    const recipients = await getNotificationRecipients(userId);
     const cf = (updatedTask.customFields as any) || {};
     const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
-    const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-    for (const rid of finalRecipients) {
+    for (const rid of recipients) {
       try {
         await prisma.notification.create({
           data: {
             userId: rid,
             type: "PAYMENT_ADDED",
-            content: `⚠️ PAYMENT OVERRIDE: Total ₹${updatedReceivedToSave} for ${taskDetails}. \nBy: ${userName}`,
+            title: "⚠️ Payment Overridden",
+            content: `Payment details updated for ${taskDetails}. New Total: ₹${updatedReceivedToSave}. By: ${userName}`,
             taskId: originalTaskId
           } as any
         });
