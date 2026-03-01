@@ -97,9 +97,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           updateData.assigneeIds = newIds;
           logs.push(`reassigned the task to ${newIds.length > 0 ? newIds.join(", ") : "nobody"}`);
         } else if (value !== oldValue) {
-          updateData[field as any] = value;
+          (updateData as any)[field] = value;
           if (field === "status") {
-            // Find when it entered current status
             const lastChange = await prisma.activity.findFirst({
               where: {
                 taskId,
@@ -115,7 +114,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
               const minutes = Math.floor((diffMs / (1000 * 60)) % 60);
               timeInfo = ` (Duration: ${hours}h ${minutes}m)`;
             }
-
             logs.push(`Status changed from ${oldValue || 'None'} to ${value}${timeInfo}`);
           } else if (field === "title") {
             logs.push(`Title changed to "${value}"`);
@@ -176,18 +174,33 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     // Trigger notification if status becomes "done"
     if (updateData.status === "done" && currentTask.status !== "done") {
-      const recipientIds = new Set([
-        ...(updated.assigneeIds || []),
-        updated.assigneeId,
-        updated.createdByClerkId
-      ].filter(id => id && id !== userId));
+      const recipientIds = new Set<string>();
+
+      // 1. Add assignee(s)
+      if (updated.assigneeIds && updated.assigneeIds.length > 0) {
+        updated.assigneeIds.forEach(id => { if (id) recipientIds.add(id); });
+      } else if (updated.assigneeId) {
+        recipientIds.add(updated.assigneeId);
+      }
+
+      // 2. Add creator/assigner
+      if (updated.createdByClerkId) {
+        recipientIds.add(updated.createdByClerkId);
+      }
+
+      // 3. Remove the person who performed the action
+      recipientIds.delete(userId);
+
+      const notificationTitle = "✅ Task Completed";
+      const notificationContent = `Task "${updated.title}" was completed by ${userName}.`;
 
       await Promise.all(Array.from(recipientIds).map(recipientId =>
         prisma.notification.create({
           data: {
-            userId: recipientId as string,
+            userId: recipientId,
             type: "TASK_COMPLETED",
-            content: `Task "${updated.title}" was completed by ${userName}.`,
+            title: notificationTitle,
+            content: notificationContent,
             taskId: updated.id
           }
         }).catch(err => console.error("Completion alert error:", err))

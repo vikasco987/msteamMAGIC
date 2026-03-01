@@ -915,6 +915,22 @@ export async function POST(req: NextRequest) {
       authorId: userId
     });
 
+    // 🚀 NEW: Notify the Assignees
+    const assigneeIds = Array.isArray(body.assigneeIds) ? body.assigneeIds : [body.assigneeId];
+    await Promise.all(assigneeIds.map(async (recipientId: string) => {
+      if (recipientId && recipientId !== userId) {
+        await prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "MENTION", // Using MENTION or could add TASK_ASSIGNED
+            title: "📌 New Task Assigned",
+            content: `You have been assigned a new task: "${task.title}" by ${creatorName}.`,
+            taskId: task.id
+          }
+        }).catch(err => console.error("Assignment notification error:", err));
+      }
+    }));
+
     return NextResponse.json({ success: true, task }, { status: 201 });
 
   } catch (err: unknown) {

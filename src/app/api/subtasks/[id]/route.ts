@@ -36,6 +36,31 @@ export async function PATCH(
       authorId: userId
     });
 
+    // Notify relevant users
+    const task = await prisma.task.findUnique({
+      where: { id: subtask.taskId },
+      select: { createdByClerkId: true, assigneeIds: true, title: true }
+    });
+
+    if (task) {
+      const recipientIds = new Set<string>();
+      if (task.createdByClerkId) recipientIds.add(task.createdByClerkId);
+      if (task.assigneeIds) task.assigneeIds.forEach(id => recipientIds.add(id));
+      recipientIds.delete(userId);
+
+      await Promise.all(Array.from(recipientIds).map(recipientId =>
+        prisma.notification.create({
+          data: {
+            userId: recipientId,
+            type: "SUBTASK_TOGGLED",
+            title: `🔄 Subtask ${updatedSubtask.completed ? "Done" : "Reopened"}`,
+            content: `Subtask "${subtask.title}" in task "${task.title}" was ${updatedSubtask.completed ? "completed" : "set as incomplete"} by ${userName}.`,
+            taskId: subtask.taskId
+          }
+        }).catch(err => console.error("Subtask notification error:", err))
+      ));
+    }
+
     return NextResponse.json(updatedSubtask);
   } catch (err) {
     console.error("Subtask Update Error:", err);
