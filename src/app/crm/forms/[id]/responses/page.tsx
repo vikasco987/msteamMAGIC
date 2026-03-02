@@ -2445,7 +2445,7 @@ export default function CRMSpreadsheetPage() {
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div className="absolute left-full ml-2 top-0 bg-white shadow-2xl rounded-xl p-2 border border-slate-100 z-[100] flex gap-2 animate-in fade-in slide-in-from-left-2">
+                                                                            <div className="absolute top-full left-0 mt-2 bg-white shadow-2xl rounded-xl p-2 border border-slate-200 z-[100] flex gap-2 animate-in fade-in zoom-in-95 duration-200">
                                                                                 {["#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9"].map(c => (
                                                                                     <button
                                                                                         key={c}
