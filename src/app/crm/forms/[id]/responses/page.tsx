@@ -58,6 +58,8 @@ import {
     Sparkles,
     Bot,
     RefreshCw,
+    Palette,
+    Send,
     BarChart3,
     CloudOff,
     Wifi
@@ -153,6 +155,7 @@ interface FormResponse {
     values: ResponseValue[];
     submittedBy?: string; // Added for __assigned logic
     remarks?: any[]; // Added for __followup logic
+    rowColor?: string; // Enhanced: custom highlight color
 }
 
 interface MasterData {
@@ -249,6 +252,7 @@ export default function CRMSpreadsheetPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
     const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
+    const [openColorPicker, setOpenColorPicker] = useState<string | null>(null);
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -1398,6 +1402,33 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleUpdateRowColor = async (responseId: string, color: string | null) => {
+        const previousData = data;
+        setData(prev => {
+            if (!prev) return prev;
+            const newResponses = [...prev.responses];
+            const idx = newResponses.findIndex(r => r.id === responseId);
+            if (idx > -1) {
+                newResponses[idx] = { ...newResponses[idx], rowColor: color || undefined };
+            }
+            return { ...prev, responses: newResponses };
+        });
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ responseId, rowColor: color || "", formId: params.id })
+            });
+            if (!res.ok) {
+                toast.error("Color sync failed");
+                setData(previousData);
+            }
+        } catch (err) {
+            console.error("Row color error", err);
+            setData(previousData);
+        }
+    };
+
     const handleConvertToLead = async (res: FormResponse) => {
         const name = res.submittedByName || "Public User";
         const phoneField = data?.form?.fields?.find(f => f.label.toLowerCase().includes("phone") || f.type === "number");
@@ -2332,7 +2363,9 @@ export default function CRMSpreadsheetPage() {
                                                 transition={{ duration: 0.2, delay: rIdx * 0.03 }}
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
-                                                className={`group cursor-pointer transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${highlightedRowId === res.id ? 'bg-[#fffbeb] ring-2 ring-inset ring-amber-200 z-10' : 'hover:bg-indigo-50/30'} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
+                                                data-row-color={res.rowColor || ""}
+                                                className={`group cursor-pointer transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${highlightedRowId === res.id ? 'ring-2 ring-inset ring-amber-200 z-10' : 'hover:bg-indigo-50/10'} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
+                                                    if (res.rowColor) return `has-[td]:bg-[${res.rowColor}]`; // This is handled by data-attribute for sticky cells
                                                     const remarks = res.remarks || [];
                                                     const latestRemark = remarks[0];
                                                     if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -2395,12 +2428,42 @@ export default function CRMSpreadsheetPage() {
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
                                                             >
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
-                                                                    className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
-                                                                >
-                                                                    <Maximize2 size={14} />
-                                                                </button>
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
+                                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                                                    >
+                                                                        <Maximize2 size={14} />
+                                                                    </button>
+
+                                                                    <div className="relative">
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
+                                                                            className={`p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                                                                        >
+                                                                            <Palette size={14} />
+                                                                        </button>
+                                                                        {openColorPicker === res.id && (
+                                                                            <div className="absolute left-full ml-2 top-0 bg-white shadow-2xl rounded-xl p-2 border border-slate-100 z-[100] flex gap-2 animate-in fade-in slide-in-from-left-2">
+                                                                                {["#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9"].map(c => (
+                                                                                    <button
+                                                                                        key={c}
+                                                                                        onClick={(e) => { e.stopPropagation(); handleUpdateRowColor(res.id, c); setOpenColorPicker(null); }}
+                                                                                        className="w-6 h-6 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm"
+                                                                                        style={{ backgroundColor: c }}
+                                                                                    />
+                                                                                ))}
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); handleUpdateRowColor(res.id, null); setOpenColorPicker(null); }}
+                                                                                    className="w-6 h-6 rounded-full border border-slate-200 hover:scale-110 transition-transform shadow-sm bg-white flex items-center justify-center"
+                                                                                    title="Clear Color"
+                                                                                >
+                                                                                    <X size={10} className="text-slate-400" />
+                                                                                </button>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </td>
                                                         );
                                                     }
@@ -2858,7 +2921,8 @@ export default function CRMSpreadsheetPage() {
                                                 key={item.id}
                                                 layoutId={item.id}
                                                 onClick={() => { setSelectedResponse(item); setHighlightedRowId(item.id); }}
-                                                className={`p-5 transition-all cursor-pointer group rounded-xl border-2 ${highlightedRowId === item.id ? 'bg-[#fffbeb] border-amber-300 shadow-md ring-1 ring-amber-200' : 'bg-white border-[#EAECF0] shadow-sm hover:shadow-md hover:border-[#D6BBFB]'}`}
+                                                className={`p-5 transition-all cursor-pointer group rounded-xl border-2 ${highlightedRowId === item.id ? 'bg-[#fffbeb] border-amber-300 shadow-md ring-1 ring-amber-200' : (item.rowColor ? `bg-[${item.rowColor}]` : 'bg-white')} border-[#EAECF0] shadow-sm hover:shadow-md hover:border-[#D6BBFB]`}
+                                                style={item.rowColor && highlightedRowId !== item.id ? { backgroundColor: item.rowColor } : {}}
                                             >
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="relative">
@@ -4135,10 +4199,24 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
                 tr[data-highlighted="true"] td {
                     background-color: #fffbeb !important;
+                    position: relative;
                 }
-                tr[data-highlighted="true"] {
-                    box-shadow: inset 0 0 0 1px #fde68a !important;
+                tr[data-highlighted="true"]::after {
+                    content: '';
+                    position: absolute;
+                    left: 0;
+                    right: 0;
+                    top: 0;
+                    bottom: 0;
+                    pointer-events: none;
+                    border: 2px solid #fbbf24;
+                    z-index: 40;
                 }
+                tr[data-row-color="#fffbeb"] td { background-color: #fffbeb !important; }
+                tr[data-row-color="#f0fdf4"] td { background-color: #f0fdf4 !important; }
+                tr[data-row-color="#eff6ff"] td { background-color: #eff6ff !important; }
+                tr[data-row-color="#fdf2f8"] td { background-color: #fdf2f8 !important; }
+                tr[data-row-color="#fafaf9"] td { background-color: #fafaf9 !important; }
             ` }} />
             {
                 openFollowUpModal && (

@@ -294,6 +294,7 @@ model FormResponse {
   visibleToRoles  String[]    @default([])
   visibleToUsers  String[]    @default([])
   assignedTo      String[]    @default([]) // Array of Clerk User IDs assigned to this lead/response
+  rowColor        String?     // Custom highlight color for the row
 
   submittedAt     DateTime    @default(now())
 }

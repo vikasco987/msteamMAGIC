@@ -250,8 +250,17 @@ export async function PATCH(
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { responseId, columnId, value, isInternal, formId } = await req.json();
+        const { responseId, columnId, value, isInternal, formId, rowColor } = await req.json();
         const userName = `${user.firstName} ${user.lastName}`;
+
+        // 🟢 ROW LEVEL UPDATE (Like Background Color)
+        if (rowColor !== undefined) {
+            await prisma.formResponse.update({
+                where: { id: responseId },
+                data: { rowColor: rowColor === "" ? null : rowColor }
+            });
+            return NextResponse.json({ success: true, message: "Row color updated" });
+        }
 
         // Permissions Check
         const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
