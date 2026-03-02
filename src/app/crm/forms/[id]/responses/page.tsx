@@ -2357,7 +2357,6 @@ export default function CRMSpreadsheetPage() {
                                         {paginatedResponses.map((res, rIdx) => (
                                             <motion.tr
                                                 key={res.id}
-                                                layout
                                                 initial={{ opacity: 0, x: -20 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95 }}
@@ -2365,8 +2364,7 @@ export default function CRMSpreadsheetPage() {
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${highlightedRowId === res.id ? 'ring-2 ring-inset ring-amber-200 z-10' : 'hover:bg-indigo-50/10'} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
-                                                    if (res.rowColor) return `has-[td]:bg-[${res.rowColor}]`; // This is handled by data-attribute for sticky cells
+                                                className={`group cursor-pointer transition-colors ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
                                                     const remarks = res.remarks || [];
                                                     const latestRemark = remarks[0];
                                                     if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -2380,7 +2378,7 @@ export default function CRMSpreadsheetPage() {
                                                     return '';
                                                 })()}`}
                                             >
-                                                <td className={`px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'}`}>
+                                                <td className={`px-3 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 ${isPureMaster ? 'w-[70px]' : 'w-[50px]'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} overflow-visible`}>
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">
                                                         <div
                                                             onClick={(e) => { e.stopPropagation(); toggleRowSelection(res.id); }}
@@ -2445,7 +2443,7 @@ export default function CRMSpreadsheetPage() {
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div className="absolute top-full left-0 mt-2 bg-white shadow-2xl rounded-xl p-2 border border-slate-200 z-[100] flex gap-2 animate-in fade-in zoom-in-95 duration-200">
+                                                                            <div className="absolute top-1/2 left-full ml-1 -translate-y-1/2 bg-white shadow-2xl rounded-xl p-2 border border-slate-200 z-[99999] flex gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
                                                                                 {["#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9"].map(c => (
                                                                                     <button
                                                                                         key={c}
@@ -4200,24 +4198,25 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
                 tr[data-highlighted="true"] td {
                     background-color: #fffbeb !important;
-                    position: relative;
+                    box-shadow: inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
+                    z-index: 10;
                 }
-                tr[data-highlighted="true"]::after {
-                    content: '';
-                    position: absolute;
-                    left: 0;
-                    right: 0;
-                    top: 0;
-                    bottom: 0;
-                    pointer-events: none;
-                    border: 2px solid #fbbf24;
-                    z-index: 40;
+                tr[data-highlighted="true"] td:first-child {
+                    box-shadow: inset 4px 0 0 0 #fbbf24, inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
                 }
+                
+                /* Custom Row Colors */
                 tr[data-row-color="#fffbeb"] td { background-color: #fffbeb !important; }
                 tr[data-row-color="#f0fdf4"] td { background-color: #f0fdf4 !important; }
                 tr[data-row-color="#eff6ff"] td { background-color: #eff6ff !important; }
                 tr[data-row-color="#fdf2f8"] td { background-color: #fdf2f8 !important; }
                 tr[data-row-color="#fafaf9"] td { background-color: #fafaf9 !important; }
+                
+                /* Selection state shadow */
+                tr.bg-indigo-50\/50 td {
+                    background-color: rgba(238, 242, 255, 0.5) !important;
+                    box-shadow: inset 4px 0 0 0 #4f46e5;
+                }
             ` }} />
             {
                 openFollowUpModal && (
