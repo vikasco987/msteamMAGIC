@@ -739,14 +739,35 @@ export async function GET(req: NextRequest) {
     const endOfDay = new Date(baseDate);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
-    // Fetch tasks including customFields for phone/shopName
+    // 🚀 STEP 1: Find Activity logs for payments on this date to get Task IDs
+    // This is MUCH faster than fetching ALL tasks.
+    const activities = await prisma.activity.findMany({
+      where: {
+        type: "PAYMENT_ADDED",
+        createdAt: {
+          gte: startOfDay,
+          lte: endOfDay,
+        }
+      },
+      select: {
+        taskId: true,
+      }
+    });
+
+    const taskIds = activities.map(a => a.taskId);
+    const uniqueTaskIds = Array.from(new Set(taskIds));
+
+    // 🚀 STEP 2: Fetch ONLY those tasks
     const tasks = await prisma.task.findMany({
+      where: {
+        id: { in: uniqueTaskIds }
+      },
       select: {
         id: true,
         title: true,
         assignerName: true,
         paymentHistory: true,
-        customFields: true, // 🔥 Include customFields
+        customFields: true,
       },
     });
 

@@ -29,8 +29,6 @@ interface Notification {
 export default function NotificationsPage() {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
-    const [digest, setDigest] = useState<{ summary: string, priority: string, isPositive: boolean } | null>(null);
-    const [loadingDigest, setLoadingDigest] = useState(true);
     const [filter, setFilter] = useState<"all" | "unread" | "scheduled" | "team" | "payments" | "crm">("all");
     const [search, setSearch] = useState("");
 
@@ -51,21 +49,9 @@ export default function NotificationsPage() {
         }
     };
 
-    const fetchDigest = async () => {
-        try {
-            const res = await fetch("/api/notifications/ai-digest");
-            if (res.ok) {
-                const data = await res.json();
-                setDigest(data);
-            }
-        } catch (e) { } finally {
-            setLoadingDigest(false);
-        }
-    };
 
     useEffect(() => {
         fetchNotifications();
-        fetchDigest();
 
         // Auto-refresh hub data on production to stay in-sync with Bell
         const interval = setInterval(fetchNotifications, 30000);
@@ -223,37 +209,6 @@ export default function NotificationsPage() {
 
             {/* Content Area */}
             <div className="max-w-5xl mx-auto px-6 mt-10">
-                {/* AI DAILY DIGEST */}
-                {!loadingDigest && digest && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[40px] p-8 text-white shadow-2xl shadow-indigo-200 mb-10 overflow-hidden relative"
-                    >
-                        <div className="absolute top-0 right-0 p-8 opacity-10">
-                            <Sparkles size={120} />
-                        </div>
-                        <div className="relative z-10">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md">
-                                    <Stars className="text-white" size={20} />
-                                </div>
-                                <h3 className="text-sm font-black uppercase tracking-widest">AI Performance Intelligence</h3>
-                            </div>
-                            <p className="text-xl md:text-2xl font-black mb-4 leading-tight max-w-2xl">
-                                {digest.summary}
-                            </p>
-                            <div className="flex flex-col md:flex-row md:items-center gap-4 mt-6 pt-6 border-t border-white/10">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Today's Mission:</span>
-                                    <span className="bg-white text-indigo-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
-                                        {digest.priority}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
 
                 {loading ? (
                     <div className="py-20 flex flex-col items-center justify-center opacity-50">
