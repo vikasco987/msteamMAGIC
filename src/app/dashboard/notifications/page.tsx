@@ -36,9 +36,11 @@ export default function NotificationsPage() {
 
     const fetchNotifications = async () => {
         try {
-            const res = await fetch("/api/notifications?all=true");
+            // Add cache busting timestamp to ensure we get fresh data
+            const res = await fetch(`/api/notifications?all=true&_=${Date.now()}`);
             if (res.ok) {
                 const data = await res.json();
+                console.log(`HUB DEBUG: Found ${data.notifications?.length || 0} alerts`);
                 // Ensure we have a valid array
                 setNotifications(data.notifications || []);
             }
@@ -92,15 +94,14 @@ export default function NotificationsPage() {
     };
 
     const filtered = useMemo(() => {
-        let list = notifications;
+        if (!notifications) return [];
+        let list = [...notifications];
 
         // Filter by Tab
-        if (filter === "unread") list = list.filter(n => !n.isRead);
-        if (filter === "scheduled") {
+        if (filter === "unread") {
+            list = list.filter(n => !n.isRead);
+        } else if (filter === "scheduled") {
             list = list.filter(n => isFuture(new Date(n.scheduledAt || n.createdAt)));
-        } else if (filter === "all") {
-            // Show everything in 'All' - both past and future
-            list = notifications;
         } else if (filter === "payments") {
             list = list.filter(n => ["PAYMENT_ADDED", "COLLECTION_REMINDER", "COLLECTION_FOLLOWUP"].includes(n.type));
         } else if (filter === "team") {
@@ -108,6 +109,7 @@ export default function NotificationsPage() {
         } else if (filter === "crm") {
             list = list.filter(n => n.type === "CRM_FOLLOWUP");
         }
+        // If filter is 'all', we don't apply any type/read filter
 
         // Filter by Search
         if (search) {
