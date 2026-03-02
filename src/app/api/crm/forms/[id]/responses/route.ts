@@ -255,7 +255,7 @@ export async function PATCH(
 
         // 🟢 ROW LEVEL UPDATE (Like Background Color)
         if (rowColor !== undefined) {
-            await prisma.formResponse.update({
+            await (prisma.formResponse as any).update({
                 where: { id: responseId },
                 data: { rowColor: rowColor === "" ? null : rowColor }
             });

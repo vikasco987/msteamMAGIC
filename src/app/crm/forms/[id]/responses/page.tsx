@@ -166,6 +166,7 @@ interface MasterData {
         visibleToUsers?: string[];
         visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
         id?: string; // Added for FormRemarkModal
+        columnPermissions?: any; // Added for GAC logic
     };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
