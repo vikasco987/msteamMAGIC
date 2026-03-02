@@ -41,6 +41,11 @@ export default function FollowUpBoard() {
     const [activeTab, setActiveTab] = useState<"today" | "overdue" | "upcoming" | "closed">("today");
     const [userRole, setUserRole] = useState("GUEST");
 
+    // NEW ADVANCED FILTERS
+    const [filterForm, setFilterForm] = useState("all");
+    const [filterAuthor, setFilterAuthor] = useState("all");
+    const [filterInteractionStatus, setFilterInteractionStatus] = useState("all");
+
     const [openModal, setOpenModal] = useState<{ formId: string; responseId: string } | null>(null);
 
     const fetchData = async () => {
@@ -98,6 +103,13 @@ export default function FollowUpBoard() {
         return val?.value || "-";
     };
 
+    const forms = useMemo(() => [...new Set(data.map(d => d.form.title))].sort(), [data]);
+    const authors = useMemo(() => {
+        const set = new Set<string>();
+        data.forEach(d => d.remarks.forEach(r => { if (r.authorName) set.add(r.authorName) }));
+        return [...set].sort();
+    }, [data]);
+
     const filteredData = useMemo(() => {
         const now = startOfDay(new Date());
 
@@ -105,7 +117,7 @@ export default function FollowUpBoard() {
             const latest = res.remarks[0];
             if (!latest) return false;
 
-            // Search Filter
+            // 1. Search Filter
             const name = getFieldValue(res, "name");
             const phone = getFieldValue(res, "phone");
             const matchesSearch = name.toLowerCase().includes(search.toLowerCase()) ||
@@ -114,6 +126,12 @@ export default function FollowUpBoard() {
 
             if (!matchesSearch) return false;
 
+            // 2. Advanced Filters
+            if (filterForm !== "all" && res.form.title !== filterForm) return false;
+            if (filterAuthor !== "all" && latest.authorName !== filterAuthor) return false;
+            if (filterInteractionStatus !== "all" && latest.followUpStatus !== filterInteractionStatus) return false;
+
+            // 3. Tab Filtering
             if (latest.followUpStatus === "Closed") {
                 return activeTab === "closed";
             }
@@ -128,7 +146,7 @@ export default function FollowUpBoard() {
 
             return false;
         });
-    }, [data, activeTab, search]);
+    }, [data, activeTab, search, filterForm, filterAuthor, filterInteractionStatus]);
 
     const stats = useMemo(() => {
         const now = startOfDay(new Date());
@@ -188,6 +206,59 @@ export default function FollowUpBoard() {
                         >
                             <Clock size={18} />
                         </button>
+                    </div>
+                </div>
+
+                {/* ADVANCED FILTER BAR */}
+                <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Origin Form</label>
+                        <select
+                            value={filterForm}
+                            onChange={e => setFilterForm(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        >
+                            <option value="all">All Forms</option>
+                            {forms.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Handled By</label>
+                        <select
+                            value={filterAuthor}
+                            onChange={e => setFilterAuthor(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        >
+                            <option value="all">Everyone</option>
+                            {authors.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Interaction Status</label>
+                        <select
+                            value={filterInteractionStatus}
+                            onChange={e => setFilterInteractionStatus(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        >
+                            <option value="all">All Statuses</option>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="Missed">Missed</option>
+                            <option value="Closed">Closed</option>
+                        </select>
+                    </div>
+                    <div className="flex items-end justify-between px-2">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Matching Results</span>
+                            <span className="text-2xl font-black text-indigo-600">{filteredData.length}</span>
+                        </div>
+                        {(filterForm !== "all" || filterAuthor !== "all" || filterInteractionStatus !== "all" || search) && (
+                            <button
+                                onClick={() => { setFilterForm("all"); setFilterAuthor("all"); setFilterInteractionStatus("all"); setSearch(""); }}
+                                className="text-[10px] font-black text-rose-500 uppercase tracking-widest hover:text-rose-600 transition-colors"
+                            >
+                                Reset
+                            </button>
+                        )}
                     </div>
                 </div>
 

@@ -120,6 +120,8 @@ interface TeamMember {
     role?: string;
     firstName?: string;
     lastName?: string;
+    name?: string;
+    imageUrl?: string;
 }
 
 const safeFormat = (dateStr: string, formatStr: string) => {
@@ -1934,7 +1936,10 @@ export default function CRMSpreadsheetPage() {
                         <div className="flex items-center gap-4 py-1">
                             {todayFollowUps.slice(0, 10).map((res) => {
                                 // Smart Search for Number
-                                const phone = res.values?.find(v => v.fieldId.toLowerCase().includes("phone") || v.fieldId.toLowerCase().includes("number"))?.value || "—";
+                                const phoneField = data?.form?.fields?.find(f =>
+                                    f.label.toLowerCase().includes("phone") || f.label.toLowerCase().includes("number") || f.label.toLowerCase().includes("contact")
+                                );
+                                const phone = res.values?.find(v => v.fieldId === phoneField?.id)?.value || "—";
                                 const latestRemarkFull = res.remarks?.[0];
                                 const latestRemark = latestRemarkFull?.remark || "Waiting for interaction protocol...";
                                 const followUpCount = res.remarks?.length || 0;
@@ -2854,11 +2859,11 @@ export default function CRMSpreadsheetPage() {
                                             >
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="relative">
-                                                        <div className="w-10 h-10 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold uppercase border border-[#EAECF0] overflow-hidden shadow-inner">
+                                                        <div className="w-10 h-10 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold uppercase border border-[#EAECF0] overflow-hidden shadow-inner font-black">
                                                             {(() => {
                                                                 const latestRemark = item.remarks?.[0];
                                                                 const author = teamMembers.find(m => m.clerkId === latestRemark?.createdById);
-                                                                if (author?.imageUrl) return <img src={author.imageUrl} className="w-full h-full object-cover" />;
+                                                                if (author?.imageUrl) return <img src={author.imageUrl} title={author.name} className="w-full h-full object-cover" />;
                                                                 return latestRemark?.authorName?.[0] || item.submittedByName?.[0] || "?";
                                                             })()}
                                                         </div>
@@ -2868,7 +2873,17 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] font-medium text-[#667085]">{safeFormat(item.submittedAt, "MMM dd")}</span>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-black text-[#667085] uppercase tracking-widest block">{safeFormat(item.submittedAt, "MMM dd")}</span>
+                                                        {(() => {
+                                                            const phoneField = data?.form?.fields?.find(f =>
+                                                                f.label.toLowerCase().includes("phone") || f.label.toLowerCase().includes("number")
+                                                            );
+                                                            const phoneVal = item.values?.find(v => v.fieldId === phoneField?.id)?.value;
+                                                            if (phoneVal) return <span className="text-[9px] font-black text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-md mt-1 inline-flex items-center gap-1"><Phone size={8} /> {phoneVal}</span>;
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                 </div>
                                                 <h4 className="text-sm font-black text-[#101828] mb-3 uppercase tracking-tight truncate">{item.submittedByName || "Public User"}</h4>
 
