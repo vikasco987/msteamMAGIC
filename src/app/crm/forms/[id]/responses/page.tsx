@@ -2364,7 +2364,7 @@ export default function CRMSpreadsheetPage() {
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-colors ${(res as any).isOptimistic ? 'opacity-50' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
+                                                className={`group cursor-pointer transition-colors relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${openColorPicker === res.id ? 'z-[100]' : 'z-10'} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
                                                     const remarks = res.remarks || [];
                                                     const latestRemark = remarks[0];
                                                     if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -2443,7 +2443,8 @@ export default function CRMSpreadsheetPage() {
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div className="absolute top-1/2 left-full ml-1 -translate-y-1/2 bg-white shadow-2xl rounded-xl p-2 border border-slate-200 z-[99999] flex gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
+                                                                            <div className="absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                                                <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-white border-b border-r border-slate-200 rotate-45" />
                                                                                 {["#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9"].map(c => (
                                                                                     <button
                                                                                         key={c}
