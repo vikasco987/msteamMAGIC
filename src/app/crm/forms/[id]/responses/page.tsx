@@ -248,6 +248,7 @@ export default function CRMSpreadsheetPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
+    const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -2329,7 +2330,9 @@ export default function CRMSpreadsheetPage() {
                                                 animate={{ opacity: 1, x: 0 }}
                                                 exit={{ opacity: 0, scale: 0.95 }}
                                                 transition={{ duration: 0.2, delay: rIdx * 0.03 }}
-                                                className={`group cursor-pointer hover:bg-indigo-50/50 transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
+                                                onClick={() => setHighlightedRowId(res.id)}
+                                                data-highlighted={highlightedRowId === res.id}
+                                                className={`group cursor-pointer transition-all relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${highlightedRowId === res.id ? 'bg-[#fffbeb] ring-2 ring-inset ring-amber-200 z-10' : 'hover:bg-indigo-50/30'} ${selectedRows.includes(res.id) ? 'bg-indigo-50 border-y border-indigo-100 shadow-[inset_4px_0_0_#4f46e5]' : ''} ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[72px]' : 'h-[54px]'} ${(() => {
                                                     const remarks = res.remarks || [];
                                                     const latestRemark = remarks[0];
                                                     if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -2393,7 +2396,7 @@ export default function CRMSpreadsheetPage() {
                                                                 className={`px-3 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30' : ''}`}
                                                             >
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); }}
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
                                                                     className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
                                                                 >
                                                                     <Maximize2 size={14} />
@@ -2854,8 +2857,8 @@ export default function CRMSpreadsheetPage() {
                                             <motion.div
                                                 key={item.id}
                                                 layoutId={item.id}
-                                                onClick={() => setSelectedResponse(item)}
-                                                className="p-5 bg-white border border-[#EAECF0] rounded-xl shadow-sm hover:shadow-md hover:border-[#D6BBFB] transition-all cursor-pointer group"
+                                                onClick={() => { setSelectedResponse(item); setHighlightedRowId(item.id); }}
+                                                className={`p-5 transition-all cursor-pointer group rounded-xl border-2 ${highlightedRowId === item.id ? 'bg-[#fffbeb] border-amber-300 shadow-md ring-1 ring-amber-200' : 'bg-white border-[#EAECF0] shadow-sm hover:shadow-md hover:border-[#D6BBFB]'}`}
                                             >
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="relative">
@@ -4130,6 +4133,12 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+                tr[data-highlighted="true"] td {
+                    background-color: #fffbeb !important;
+                }
+                tr[data-highlighted="true"] {
+                    box-shadow: inset 0 0 0 1px #fde68a !important;
+                }
             ` }} />
             {
                 openFollowUpModal && (
