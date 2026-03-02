@@ -176,6 +176,11 @@ interface MasterData {
     userRole?: string; // Added for permission logic
     isMaster?: boolean; // Added for permission logic
     isPureMaster?: boolean; // Added for permission logic
+    totalCount?: number;
+    filteredCount?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
 }
 
 const COLUMN_TYPES = [
@@ -445,16 +450,8 @@ export default function CRMSpreadsheetPage() {
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     useEffect(() => {
-        const fetchTeam = async () => {
-            try {
-                // Fetch more users to ensure 'All' are available for selection
-                const res = await fetch('/api/crm/users?limit=1000');
-                const json = await res.json();
-                setTeamMembers(json);
-            } catch (err) { console.error("Team sync failure", err); }
-        };
-        fetchTeam();
-    }, []);
+        fetchData(currentPage, rowsPerPage, searchTerm);
+    }, [currentPage, rowsPerPage, searchTerm, params.id]);
 
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
@@ -490,7 +487,7 @@ export default function CRMSpreadsheetPage() {
     }>({ start: null, end: null });
     const [isSelecting, setIsSelecting] = useState(false);
 
-    const fetchData = async () => {
+    const fetchData = async (page = 1, limit = 10, search = "") => {
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -532,7 +529,7 @@ export default function CRMSpreadsheetPage() {
 
         try {
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
             ]);
@@ -1172,9 +1169,12 @@ export default function CRMSpreadsheetPage() {
     }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
 
     const paginatedResponses = useMemo(() => {
+        // If server provided pagination, it's already sliced
+        if (data?.responses && data.totalPages !== undefined) return filteredResponses;
+
         const start = (currentPage - 1) * rowsPerPage;
         return filteredResponses.slice(start, start + rowsPerPage);
-    }, [filteredResponses, currentPage, rowsPerPage]);
+    }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
 
     useEffect(() => { setCurrentPage(1); }, [searchTerm, conditions]);
 
@@ -2445,7 +2445,10 @@ export default function CRMSpreadsheetPage() {
                                                                         {openColorPicker === res.id && (
                                                                             <div className="absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                                                                 <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-white border-b border-r border-slate-200 rotate-45" />
-                                                                                {["#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9"].map(c => (
+                                                                                {[
+                                                                                    "#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9", "#fff1f2",
+                                                                                    "#f5f3ff", "#fff7ed", "#eef2ff", "#fefce8", "#ecfdf5", "#ecfeff"
+                                                                                ].map(c => (
                                                                                     <button
                                                                                         key={c}
                                                                                         onClick={(e) => { e.stopPropagation(); handleUpdateRowColor(res.id, c); setOpenColorPicker(null); }}
@@ -2855,7 +2858,7 @@ export default function CRMSpreadsheetPage() {
                                         </select>
                                     </div>
                                     <div className="text-sm text-[#475467]">
-                                        Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{filteredResponses.length}</span> responses
+                                        Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{data?.filteredCount || filteredResponses.length}</span> responses
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -2868,28 +2871,30 @@ export default function CRMSpreadsheetPage() {
                                     </button>
 
                                     <div className="flex items-center gap-1">
-                                        {Array.from({ length: Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
-                                            const page = i + 1;
+                                        {Array.from({ length: data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
+                                            const pageNum = i + 1;
+                                            const totalPages = data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage);
+
                                             // Only show a few pages if too many
-                                            if (Math.abs(page - currentPage) > 2 && page !== 1 && page !== Math.ceil(filteredResponses.length / rowsPerPage)) {
-                                                if (Math.abs(page - currentPage) === 3) return <span key={page} className="px-2">...</span>;
+                                            if (Math.abs(pageNum - currentPage) > 2 && pageNum !== 1 && pageNum !== totalPages) {
+                                                if (Math.abs(pageNum - currentPage) === 3) return <span key={pageNum} className="px-2 text-slate-300">...</span>;
                                                 return null;
                                             }
                                             return (
                                                 <button
-                                                    key={page}
-                                                    onClick={() => setCurrentPage(page)}
-                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === page ? 'bg-[#F9F5FF] text-[#7F56D9] border border-[#7F56D9]' : 'text-[#667085] hover:bg-[#F9FAFB]'}`}
+                                                    key={pageNum}
+                                                    onClick={() => setCurrentPage(pageNum)}
+                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === pageNum ? 'bg-[#F9F5FF] text-[#7F56D9] border border-[#7F56D9]' : 'text-[#667085] hover:bg-[#F9FAFB]'}`}
                                                 >
-                                                    {page}
+                                                    {pageNum}
                                                 </button>
                                             );
                                         })}
                                     </div>
 
                                     <button
-                                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredResponses.length / rowsPerPage), prev + 1))}
-                                        disabled={currentPage === Math.ceil(filteredResponses.length / rowsPerPage)}
+                                        onClick={() => setCurrentPage(prev => Math.min(data?.totalPages || 1, prev + 1))}
+                                        disabled={currentPage === (data?.totalPages || 1)}
                                         className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                                     >
                                         Next <ChevronRight size={16} />
@@ -4212,6 +4217,13 @@ export default function CRMSpreadsheetPage() {
                 tr[data-row-color="#eff6ff"] td { background-color: #eff6ff !important; }
                 tr[data-row-color="#fdf2f8"] td { background-color: #fdf2f8 !important; }
                 tr[data-row-color="#fafaf9"] td { background-color: #fafaf9 !important; }
+                tr[data-row-color="#fff1f2"] td { background-color: #fff1f2 !important; }
+                tr[data-row-color="#f5f3ff"] td { background-color: #f5f3ff !important; }
+                tr[data-row-color="#fff7ed"] td { background-color: #fff7ed !important; }
+                tr[data-row-color="#eef2ff"] td { background-color: #eef2ff !important; }
+                tr[data-row-color="#fefce8"] td { background-color: #fefce8 !important; }
+                tr[data-row-color="#ecfdf5"] td { background-color: #ecfdf5 !important; }
+                tr[data-row-color="#ecfeff"] td { background-color: #ecfeff !important; }
                 
                 /* Selection state shadow */
                 tr.bg-indigo-50\/50 td {

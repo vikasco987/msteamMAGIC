@@ -73,24 +73,58 @@ export async function GET(
         const isMasterRole = userRole === "MASTER"; // Ultimate Authority
         const isMaster = isMasterRole || userRole === "ADMIN" || isFormOwner;
 
-        // Granular Access Control (GAC)
+        const { searchParams } = new URL(req.url);
+        const page = parseInt(searchParams.get("page") || "1");
+        const limit = parseInt(searchParams.get("limit") || "20");
+        const skip = (page - 1) * limit;
+        const search = searchParams.get("search") || "";
+
         const gac: any = form.columnPermissions || { roles: {}, users: {} };
         const rolePerms = gac.roles?.[userRole] || {};
         const userPerms = gac.users?.[userId] || {};
         const colAccess = { ...rolePerms, ...userPerms };
-        const allResponses = await prisma.formResponse.findMany({
-            where: { formId },
-            include: {
-                values: true,
-                // @ts-ignore - Prisma types might need generation
-                remarks: { orderBy: { createdAt: "desc" } }
-            },
-            orderBy: { submittedAt: "asc" }
-        });
 
-        const isAssignedToAny = allResponses.some(r => ((r as any).assignedTo || []).includes(userId));
+        // Construct where clause for filtering based on permissions
+        const permissionWhere: any = isMaster ? {} : {
+            OR: [
+                { submittedBy: userId },
+                { assignedTo: { has: userId } },
+                { visibleToRoles: { has: userRole } },
+                { visibleToUsers: { has: userId } }
+            ]
+        };
 
-        // Form Level Access Control
+        const whereFilter = {
+            formId,
+            ...permissionWhere,
+            ...(search ? {
+                OR: [
+                    { submittedByName: { contains: search, mode: 'insensitive' } },
+                    { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                ]
+            } : {})
+        };
+
+        const [totalResponses, responses] = await Promise.all([
+            prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
+            prisma.formResponse.findMany({
+                where: whereFilter,
+                include: {
+                    values: true,
+                    // @ts-ignore
+                    remarks: { orderBy: { createdAt: "desc" } }
+                },
+                orderBy: { submittedAt: "desc" },
+                skip,
+                take: limit
+            })
+        ]);
+
+        const filteredTotalCount = search ? await prisma.formResponse.count({ where: whereFilter }) : totalResponses;
+
+        const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
+
+        // Form Level Access Control (Simplified check based on the first few entries or overall flags)
         const hasFormAccess = isMasterRole || isMaster ||
             form.visibleToRoles.includes(userRole) ||
             form.visibleToUsers.includes(userId) ||
@@ -102,25 +136,6 @@ export async function GET(
         }
 
         console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
-
-        // Filter responses: Admins, Masters, and Owners bypass all row-level checks.
-        // Others only see rows they submitted, are assigned to, or are explicitly shared with them.
-        const responses = isMaster ? allResponses : allResponses.filter(res => {
-            const roles = res.visibleToRoles || [];
-            const users = res.visibleToUsers || [];
-            const assignees = (res as any).assignedTo || [];
-
-            // Condition 1: Submitter/Creator always sees their own record
-            if (res.submittedBy === userId) return true;
-
-            // Condition 2: Explicitly Assigned users can see it
-            if (assignees.includes(userId)) return true;
-
-            // Condition 3: Legacy or explicit visibility permissions
-            if (roles.includes(userRole) || users.includes(userId)) return true;
-
-            return false;
-        });
 
         // We also need the internal columns for the form
         let internalColumns = await prisma.internalColumn.findMany({
@@ -226,6 +241,11 @@ export async function GET(
 
         return NextResponse.json({
             responses,
+            totalCount: totalResponses,
+            filteredCount: filteredTotalCount,
+            page,
+            limit,
+            totalPages: Math.ceil(filteredTotalCount / limit),
             form: enrichedForm,
             internalColumns,
             internalValues,
