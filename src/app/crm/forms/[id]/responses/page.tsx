@@ -1935,7 +1935,15 @@ export default function CRMSpreadsheetPage() {
                             {todayFollowUps.slice(0, 10).map((res) => {
                                 // Smart Search for Number
                                 const phone = res.values?.find(v => v.fieldId.toLowerCase().includes("phone") || v.fieldId.toLowerCase().includes("number"))?.value || "—";
-                                const latestRemark = res.remarks?.[0]?.remark || "Waiting for interaction protocol...";
+                                const latestRemarkFull = res.remarks?.[0];
+                                const latestRemark = latestRemarkFull?.remark || "Waiting for interaction protocol...";
+                                const followUpCount = res.remarks?.length || 0;
+
+                                // Find author image from teamMembers
+                                const author = teamMembers.find(m => m.clerkId === latestRemarkFull?.createdById);
+                                const authorImage = author?.imageUrl;
+                                const authorName = author?.name || latestRemarkFull?.authorName || res.submittedByName || "Lead";
+
                                 return (
                                     <motion.div
                                         key={`flash-${res.id}`}
@@ -1946,8 +1954,21 @@ export default function CRMSpreadsheetPage() {
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2.5">
-                                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 border-2 border-white shadow-md flex items-center justify-center text-white font-black text-xs">
-                                                    {res.submittedByName ? res.submittedByName[0].toUpperCase() : "C"}
+                                                <div className="relative">
+                                                    <div className="relative w-10 h-10 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white font-black text-xs overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500">
+                                                        {authorImage ? (
+                                                            <img src={authorImage} alt="author" className="w-full h-full object-cover" title={authorName} />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center">
+                                                                {authorName[0].toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {followUpCount > 0 && (
+                                                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Total interaction count">
+                                                            {followUpCount}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <div className="min-w-0">
                                                     <p className="text-[11px] font-black uppercase text-slate-900 truncate tracking-tight">{res.submittedByName || "Lead Contact"}</p>
@@ -1959,6 +1980,10 @@ export default function CRMSpreadsheetPage() {
                                             </div>
                                         </div>
                                         <div className="px-3 py-2.5 bg-slate-50/50 rounded-2xl border border-slate-100 group-hover:bg-white group-hover:border-indigo-100 transition-colors">
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <div className="w-1 h-1 rounded-full bg-indigo-400" />
+                                                <span className="text-[8px] font-black uppercase text-indigo-400">Latest Pulse</span>
+                                            </div>
                                             <p className="text-[10px] font-bold text-slate-600 line-clamp-2 leading-relaxed italic">“{latestRemark}”</p>
                                         </div>
                                     </motion.div>
@@ -2828,26 +2853,49 @@ export default function CRMSpreadsheetPage() {
                                                 className="p-5 bg-white border border-[#EAECF0] rounded-xl shadow-sm hover:shadow-md hover:border-[#D6BBFB] transition-all cursor-pointer group"
                                             >
                                                 <div className="flex items-start justify-between mb-4">
-                                                    <div className="w-8 h-8 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold uppercase border border-[#EAECF0]">
-                                                        {item.submittedByName ? item.submittedByName[0] : "?"}
+                                                    <div className="relative">
+                                                        <div className="w-10 h-10 rounded-full bg-[#F2F4F7] text-[#344054] flex items-center justify-center text-xs font-semibold uppercase border border-[#EAECF0] overflow-hidden shadow-inner">
+                                                            {(() => {
+                                                                const latestRemark = item.remarks?.[0];
+                                                                const author = teamMembers.find(m => m.clerkId === latestRemark?.createdById);
+                                                                if (author?.imageUrl) return <img src={author.imageUrl} className="w-full h-full object-cover" />;
+                                                                return latestRemark?.authorName?.[0] || item.submittedByName?.[0] || "?";
+                                                            })()}
+                                                        </div>
+                                                        {item.remarks?.length > 0 && (
+                                                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Interactions">
+                                                                {item.remarks.length}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <span className="text-[10px] font-medium text-[#667085]">{safeFormat(item.submittedAt, "MMM dd")}</span>
                                                 </div>
-                                                <h4 className="text-sm font-semibold text-[#101828] mb-3 truncate">{item.submittedByName || "Public User"}</h4>
-                                                <div className="space-y-2 mt-4">
+                                                <h4 className="text-sm font-black text-[#101828] mb-3 uppercase tracking-tight truncate">{item.submittedByName || "Public User"}</h4>
+
+                                                <div className="space-y-2.5 mt-4">
                                                     {data?.form?.fields?.slice(0, 3).map(f => (
-                                                        <div key={f.id} className="flex items-center justify-between text-xs font-medium">
-                                                            <span className="text-[#667085]">{f.label}:</span>
-                                                            <span className="text-[#344054] truncate ml-4">{getCellValue(item.id, f.id, false) || "—"}</span>
+                                                        <div key={f.id} className="flex flex-col gap-0.5">
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{f.label}</span>
+                                                            <span className="text-xs font-bold text-slate-700 truncate">{getCellValue(item.id, f.id, false) || "—"}</span>
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="mt-5 pt-3 border-t border-[#EAECF0] flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <div className="flex -space-x-1">
-                                                        <div className="w-5 h-5 rounded-full bg-[#F9F5FF] border border-white flex items-center justify-center text-[#7F56D9]"><History size={10} /></div>
+
+                                                {item.remarks?.[0] && (
+                                                    <div className="mt-5 pt-4 border-t border-slate-50">
+                                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+                                                            <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">Latest Feedback</span>
+                                                        </div>
+                                                        <p className="text-[10px] font-medium text-slate-500 line-clamp-2 italic leading-relaxed">
+                                                            "{item.remarks[0].remark}"
+                                                        </p>
                                                     </div>
-                                                    <div className="p-1 px-2 text-xs font-semibold text-[#7F56D9] bg-[#F9F5FF] rounded-md flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                                                        View <ArrowUpRight size={14} />
+                                                )}
+
+                                                <div className="mt-5 opacity-0 group-hover:opacity-100 transition-all transform translate-y-1 group-hover:translate-y-0 text-right">
+                                                    <div className="inline-flex items-center gap-1.5 text-indigo-600 text-[10px] font-black uppercase tracking-widest">
+                                                        Inspect Details <ArrowUpRight size={12} />
                                                     </div>
                                                 </div>
                                             </motion.div>
