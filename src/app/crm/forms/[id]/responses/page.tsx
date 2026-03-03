@@ -450,6 +450,22 @@ export default function CRMSpreadsheetPage() {
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     useEffect(() => {
+        // Fetch all potential team members for assignment mapping
+        const fetchInitialTeam = async () => {
+            try {
+                const res = await fetch('/api/crm/users?limit=500');
+                if (res.ok) {
+                    const json = await res.json();
+                    setTeamMembers(json);
+                }
+            } catch (err) {
+                console.error("Initial team sync failure", err);
+            }
+        };
+        fetchInitialTeam();
+    }, []);
+
+    useEffect(() => {
         fetchData(currentPage, rowsPerPage, searchTerm);
     }, [currentPage, rowsPerPage, searchTerm, params.id]);
 
