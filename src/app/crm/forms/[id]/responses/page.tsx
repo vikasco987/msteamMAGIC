@@ -54,6 +54,7 @@ import {
     Lock,
     ArrowUp,
     ArrowDown,
+    ArrowUpDown,
     Minimize2,
     Sparkles,
     Bot,
@@ -433,6 +434,8 @@ export default function CRMSpreadsheetPage() {
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("standard");
+    const [sortBy, setSortBy] = useState<string>("__submittedAt");
+    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
     // New Column Advanced State
     const [newColLabel, setNewColLabel] = useState("");
@@ -450,8 +453,8 @@ export default function CRMSpreadsheetPage() {
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     useEffect(() => {
-        fetchData(currentPage, rowsPerPage, searchTerm);
-    }, [currentPage, rowsPerPage, searchTerm, params.id]);
+        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+    }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id]);
 
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
@@ -487,7 +490,7 @@ export default function CRMSpreadsheetPage() {
     }>({ start: null, end: null });
     const [isSelecting, setIsSelecting] = useState(false);
 
-    const fetchData = async (page = 1, limit = 10, search = "") => {
+    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction) => {
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -528,8 +531,9 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
+            const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
             ]);
@@ -706,6 +710,22 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => {
         if (isLoaded && user) fetchData();
     }, [params.id, isLoaded, user]);
+
+    useEffect(() => {
+        if (!isLoaded || !user) return;
+        const fetchMembers = async () => {
+            try {
+                const res = await fetch("/api/crm/users?limit=500");
+                if (res.ok) {
+                    const data = await res.json();
+                    setTeamMembers(data);
+                }
+            } catch (err) {
+                console.error("Error fetching team members:", err);
+            }
+        };
+        fetchMembers();
+    }, [isLoaded, user]);
 
     // Check offline status and pending count on mount
     useEffect(() => {
@@ -2193,8 +2213,23 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
 
                                                         {col.id !== "__profile" && (
-                                                            <div className="relative isolate shrink-0">
+                                                            <div className="flex items-center gap-0.5 isolate shrink-0 relative">
                                                                 <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (sortBy === col.id) {
+                                                                            setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+                                                                        } else {
+                                                                            setSortBy(col.id);
+                                                                            setSortOrder("asc");
+                                                                        }
+                                                                    }}
+                                                                    className={`p-1 rounded transition-colors ${sortBy === col.id ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
+                                                                    title="Sort"
+                                                                >
+                                                                    {sortBy === col.id ? (sortOrder === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} />}
+                                                                </button>
+                                                                <button title="Filter"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
@@ -2479,8 +2514,14 @@ export default function CRMSpreadsheetPage() {
                                                                 className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100">
-                                                                        {res.submittedByName ? (res.submittedByName[0]?.toUpperCase() || 'U') : 'U'}
+                                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
+                                                                        {(() => {
+                                                                            const m = teamMembers.find(t => t.clerkId === res.submittedBy);
+                                                                            if (m?.imageUrl) {
+                                                                                return <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />;
+                                                                            }
+                                                                            return res.submittedByName ? (res.submittedByName[0]?.toUpperCase() || 'U') : 'U';
+                                                                        })()}
                                                                     </div>
                                                                     <div className="min-w-0">
                                                                         <p className="text-[11px] font-black text-slate-900 truncate uppercase tracking-tighter">{res.submittedByName || "Guest User"}</p>

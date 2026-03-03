@@ -78,6 +78,17 @@ export async function GET(
         const limit = parseInt(searchParams.get("limit") || "20");
         const skip = (page - 1) * limit;
         const search = searchParams.get("search") || "";
+        const sortBy = searchParams.get("sortBy") || "__submittedAt";
+        const sortOrder = (searchParams.get("sortOrder") || "desc") as "asc" | "desc";
+        const conditionsStr = searchParams.get("conditions") || "[]";
+        let conditions: any[] = [];
+        try {
+            conditions = JSON.parse(conditionsStr);
+        } catch (e) {
+            console.error("Failed to parse conditions:", e);
+        }
+
+        const conjunction = searchParams.get("conjunction") || "AND";
 
         const gac: any = form.columnPermissions || { roles: {}, users: {} };
         const rolePerms = gac.roles?.[userRole] || {};
@@ -94,16 +105,103 @@ export async function GET(
             ]
         };
 
-        const whereFilter = {
+        // Group conditions by colId for OR logic within columns
+        const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {
+            if (!acc[cond.colId]) acc[cond.colId] = [];
+            acc[cond.colId].push(cond);
+            return acc;
+        }, {});
+
+        const advancedFilters: any[] = [];
+        Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
+            const columnFilters: any[] = [];
+
+            conds.forEach((cond: any) => {
+                const { op, val, val2 } = cond;
+                if (!op) return;
+
+                const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
+                    switch (operator) {
+                        case "equals": return { equals: value, mode: 'insensitive' };
+                        case "not_equals": return { not: value };
+                        case "contains": return { contains: value, mode: 'insensitive' };
+                        case "starts_with": return { startsWith: value, mode: 'insensitive' };
+                        case "ends_with": return { endsWith: value, mode: 'insensitive' };
+                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' };
+                        case "is_empty": return { equals: "" };
+                        case "is_not_empty": return { not: "" };
+                        case "eq": return { equals: value };
+                        case "gt": return { gt: value };
+                        case "lt": return { lt: value };
+                        case "gte": return { gte: value };
+                        case "lte": return { lte: value };
+                        case "between": return { gte: value, lte: secondValue };
+                        default: return { contains: value, mode: 'insensitive' };
+                    }
+                };
+
+                if (colId === "__submittedAt") {
+                    // Proper date filtering for submittedAt
+                    if (op === "today") {
+                        const start = new Date(); start.setHours(0, 0, 0, 0);
+                        const end = new Date(); end.setHours(23, 59, 59, 999);
+                        columnFilters.push({ submittedAt: { gte: start, lte: end } });
+                    } else if (op === "this_week") {
+                        const now = new Date();
+                        const start = new Date(now.setDate(now.getDate() - now.getDay()));
+                        start.setHours(0, 0, 0, 0);
+                        columnFilters.push({ submittedAt: { gte: start } });
+                    } else if (op === "before" && val) {
+                        columnFilters.push({ submittedAt: { lt: new Date(val) } });
+                    } else if (op === "after" && val) {
+                        columnFilters.push({ submittedAt: { gt: new Date(val) } });
+                    } else if (op === "exact_date" && val) {
+                        const start = new Date(val); start.setHours(0, 0, 0, 0);
+                        const end = new Date(val); end.setHours(23, 59, 59, 999);
+                        columnFilters.push({ submittedAt: { gte: start, lte: end } });
+                    }
+                } else if (colId === "__contributor") {
+                    const c = getPrismaOp(op, val, val2);
+                    columnFilters.push({ submittedByName: c });
+                } else {
+                    const c = getPrismaOp(op, val, val2);
+                    columnFilters.push({
+                        OR: [
+                            { values: { some: { fieldId: colId, value: c } } },
+                            { internalValues: { some: { columnId: colId, value: c } } }
+                        ]
+                    });
+                }
+            });
+
+            if (columnFilters.length > 0) {
+                advancedFilters.push({ OR: columnFilters });
+            }
+        });
+
+        const whereFilter: any = {
             formId,
             ...permissionWhere,
-            ...(search ? {
-                OR: [
-                    { submittedByName: { contains: search, mode: 'insensitive' } },
-                    { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
-                ]
-            } : {})
+            AND: [
+                ...(search ? [{
+                    OR: [
+                        { submittedByName: { contains: search, mode: 'insensitive' } },
+                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                    ]
+                }] : []),
+                ...(conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }])
+            ]
         };
+
+        // Resolve OrderBy
+        let orderBy: any = { submittedAt: "desc" };
+        if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
+        else if (sortBy === "__contributor") orderBy = { submittedByName: sortOrder };
+        else {
+            // Sorting by dynamic values is extremely hard in Prisma (requires raw SQL or many-to-many join sorting)
+            // We'll keep default for now
+            orderBy = { submittedAt: sortOrder };
+        }
 
         const [totalResponses, responses] = await Promise.all([
             prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
@@ -114,13 +212,13 @@ export async function GET(
                     // @ts-ignore
                     remarks: { orderBy: { createdAt: "desc" } }
                 },
-                orderBy: { submittedAt: "desc" },
+                orderBy,
                 skip,
                 take: limit
             })
         ]);
 
-        const filteredTotalCount = search ? await prisma.formResponse.count({ where: whereFilter }) : totalResponses;
+        const filteredTotalCount = await prisma.formResponse.count({ where: whereFilter });
 
         const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
 
