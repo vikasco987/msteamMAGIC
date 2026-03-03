@@ -203,7 +203,7 @@ export async function GET(
             orderBy = { submittedAt: sortOrder };
         }
 
-        const [totalResponses, responses] = await Promise.all([
+        const [totalResponses, responses, filteredTotalCount, internalColumns] = await Promise.all([
             prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
             prisma.formResponse.findMany({
                 where: whereFilter,
@@ -215,10 +215,13 @@ export async function GET(
                 orderBy,
                 skip,
                 take: limit
+            }),
+            prisma.formResponse.count({ where: whereFilter }),
+            prisma.internalColumn.findMany({
+                where: { formId },
+                orderBy: { order: "asc" }
             })
         ]);
-
-        const filteredTotalCount = await prisma.formResponse.count({ where: whereFilter });
 
         const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
 
@@ -235,15 +238,12 @@ export async function GET(
 
         console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
 
-        // We also need the internal columns for the form
-        let internalColumns = await prisma.internalColumn.findMany({
-            where: { formId },
-            orderBy: { order: "asc" }
-        });
+        // We also need the internal columns for the form (Done in Promise.all above)
+        let processedInternalColumns = [...internalColumns];
 
         // Ensure Default Columns (Recent Remark & Next Follow-up)
-        const hasRemarkCol = internalColumns.some(c => c.label === "Recent Remark");
-        const hasFollowUpCol = internalColumns.some(c => c.label === "Next Follow-up Date");
+        const hasRemarkCol = processedInternalColumns.some(c => c.label === "Recent Remark");
+        const hasFollowUpCol = processedInternalColumns.some(c => c.label === "Next Follow-up Date");
 
         if (!hasRemarkCol || !hasFollowUpCol) {
             const newCols = [];
@@ -254,7 +254,7 @@ export async function GET(
                         label: "Recent Remark",
                         type: "text",
                         options: {},
-                        order: internalColumns.length
+                        order: processedInternalColumns.length
                     }
                 });
                 newCols.push(col);
@@ -266,18 +266,18 @@ export async function GET(
                         label: "Next Follow-up Date",
                         type: "date",
                         options: {},
-                        order: internalColumns.length + (hasRemarkCol ? 0 : 1)
+                        order: processedInternalColumns.length + (hasRemarkCol ? 0 : 1)
                     }
                 });
                 newCols.push(col);
             }
-            internalColumns = [...internalColumns, ...newCols].sort((a, b) => (a.order || 0) - (b.order || 0));
+            processedInternalColumns = [...processedInternalColumns, ...newCols].sort((a, b) => (a.order || 0) - (b.order || 0));
         }
 
         // Filter columns by GAC for non-masters
         if (!isMasterRole) {
             // Filter internal columns
-            internalColumns = internalColumns.filter(col => {
+            processedInternalColumns = processedInternalColumns.filter(col => {
                 const perm = colAccess[col.id];
                 if (perm === "hide") return false;
 
@@ -295,19 +295,19 @@ export async function GET(
             });
         }
 
-        // And all internal values for these responses
-        const internalValues = await prisma.internalValue.findMany({
-            where: {
-                responseId: { in: responses.map(r => r.id) },
-                columnId: { in: internalColumns.map(c => c.id) }
-            }
-        });
-
-        // And all activities (Audit Trail)
-        const activities = await prisma.formActivity.findMany({
-            where: { responseId: { in: responses.map(r => r.id) } },
-            orderBy: { createdAt: "desc" }
-        });
+        // Parallelize all remaining data fetches
+        const [internalValues, activities] = await Promise.all([
+            prisma.internalValue.findMany({
+                where: {
+                    responseId: { in: responses.map(r => r.id) },
+                    columnId: { in: processedInternalColumns.map(c => c.id) }
+                }
+            }),
+            prisma.formActivity.findMany({
+                where: { responseId: { in: responses.map(r => r.id) } },
+                orderBy: { createdAt: "desc" }
+            })
+        ]);
 
         // Resolve user data for UI mapping
         const allUserIds = form.visibleToUsers || [];
@@ -345,7 +345,7 @@ export async function GET(
             limit,
             totalPages: Math.ceil(filteredTotalCount / limit),
             form: enrichedForm,
-            internalColumns,
+            internalColumns: processedInternalColumns,
             internalValues,
             activities,
             userRole,

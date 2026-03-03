@@ -297,6 +297,10 @@ model FormResponse {
   rowColor        String?     // Custom highlight color for the row
 
   submittedAt     DateTime    @default(now())
+
+  @@index([formId])
+  @@index([submittedAt])
+  @@index([submittedBy])
 }
 
 model ResponseValue {
@@ -309,6 +313,10 @@ model ResponseValue {
   field       FormField   @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   
   value       String      // Store as string
+
+  @@index([responseId])
+  @@index([fieldId])
+  @@index([value])
 }
 
 model InternalColumn {
@@ -335,6 +343,8 @@ model InternalColumn {
   form            DynamicForm @relation(fields: [formId], references: [id], onDelete: Cascade)
   
   values          InternalValue[]
+
+  @@index([formId])
 }
 
 model InternalValue {
@@ -351,6 +361,9 @@ model InternalValue {
   updatedAt       DateTime    @updatedAt
 
   @@unique([responseId, columnId])
+  @@index([responseId])
+  @@index([columnId])
+  @@index([value])
 }
 
 model FormActivity {
