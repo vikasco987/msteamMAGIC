@@ -2518,7 +2518,8 @@ export default function CRMSpreadsheetPage() {
                                                             return r === "ADMIN" || r === "MASTER";
                                                         }).map(m => m.clerkId);
 
-                                                        const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+                                                        const assignedUsers = rawAssigned; // ONLY show truly assigned persons in the list view
+                                                        const accessUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds])); // Full access list for the tooltip
                                                         const isCellOpen = openAssignedCell === res.id;
                                                         return (
                                                             <td
@@ -2536,8 +2537,8 @@ export default function CRMSpreadsheetPage() {
                                                                 ) : (
                                                                     <div className="flex -space-x-1.5 overflow-visible py-1">
                                                                         {assignedUsers.slice(0, 5).map((uid) => {
-                                                                            const m = teamMembers.find(t => t.clerkId === uid);
-                                                                            const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
+                                                                            const m = teamMembers.find(t => (t.clerkId || (t as any).id) === uid) || (data?.form?.visibleToUsersData || []).find((u: any) => u.id === uid);
+                                                                            const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : (m?.name ? m.name[0]?.toUpperCase() : (m?.email ? (m.email[0]?.toUpperCase() || '?') : '?'));
                                                                             return (
                                                                                 <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
                                                                                     {m?.imageUrl ? (
@@ -2573,11 +2574,11 @@ export default function CRMSpreadsheetPage() {
                                                                                     <X size={12} />
                                                                                 </button>
                                                                             </div>
-                                                                            {assignedUsers.length === 0 ? (
+                                                                            {accessUsers.length === 0 ? (
                                                                                 <div className="p-4 text-center text-[10px] font-bold text-slate-400">No users assigned.</div>
                                                                             ) : (
-                                                                                assignedUsers.map(uid => {
-                                                                                    const m = teamMembers.find(t => t.clerkId === uid);
+                                                                                accessUsers.map(uid => {
+                                                                                    const m = teamMembers.find(t => (t.clerkId || (t as any).id) === uid) || (data?.form?.visibleToUsersData || []).find((u: any) => u.id === uid);
                                                                                     let badgeText = "Viewer";
                                                                                     let badgeColor = "bg-slate-100 text-slate-500 border-slate-200";
 
