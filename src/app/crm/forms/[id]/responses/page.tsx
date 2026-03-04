@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
     Database,
+    UploadCloud,
     ArrowLeft,
     Download,
     ChevronLeft,
@@ -68,6 +69,7 @@ import {
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
 import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
+import BulkImportModal from "@/app/components/BulkImportModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -278,6 +280,7 @@ export default function CRMSpreadsheetPage() {
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
 
@@ -1947,6 +1950,13 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <IndianRupee size={12} />
                                 Payment Hub
+                            </button>
+                            <button
+                                onClick={() => setIsBulkImportOpen(true)}
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg"
+                            >
+                                <UploadCloud size={12} />
+                                Smart Update
                             </button>
 
                             <button
