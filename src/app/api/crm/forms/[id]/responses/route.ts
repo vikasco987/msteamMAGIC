@@ -243,36 +243,45 @@ export async function GET(
         // We also need the internal columns for the form (Done in Promise.all above)
         let processedInternalColumns = [...internalColumns];
 
-        // Ensure Default Columns (Recent Remark & Next Follow-up)
+        // Ensure Default Columns (Recent Remark, Next Follow-up & Payment Columns)
         const hasRemarkCol = processedInternalColumns.some(c => c.label === "Recent Remark");
         const hasFollowUpCol = processedInternalColumns.some(c => c.label === "Next Follow-up Date");
+        const hasAmountCol = processedInternalColumns.some(c => c.label === "Amount");
+        const hasReceivedCol = processedInternalColumns.some(c => c.label === "Received");
+        const hasPendingCol = processedInternalColumns.some(c => c.label === "Pending");
 
-        if (!hasRemarkCol || !hasFollowUpCol) {
-            const newCols = [];
-            if (!hasRemarkCol) {
-                const col = await prisma.internalColumn.create({
-                    data: {
-                        formId,
-                        label: "Recent Remark",
-                        type: "text",
-                        options: {},
-                        order: processedInternalColumns.length
-                    }
-                });
-                newCols.push(col);
-            }
-            if (!hasFollowUpCol) {
-                const col = await prisma.internalColumn.create({
-                    data: {
-                        formId,
-                        label: "Next Follow-up Date",
-                        type: "date",
-                        options: {},
-                        order: processedInternalColumns.length + (hasRemarkCol ? 0 : 1)
-                    }
-                });
-                newCols.push(col);
-            }
+        const newCols = [];
+        let colOrder = processedInternalColumns.length;
+
+        if (!hasRemarkCol) {
+            newCols.push(await prisma.internalColumn.create({
+                data: { formId, label: "Recent Remark", type: "text", options: {}, order: colOrder++ }
+            }));
+        }
+        if (!hasFollowUpCol) {
+            newCols.push(await prisma.internalColumn.create({
+                data: { formId, label: "Next Follow-up Date", type: "date", options: {}, order: colOrder++ }
+            }));
+        }
+
+        // Auto-create Payment Hub columns if missing
+        if (!hasAmountCol) {
+            newCols.push(await prisma.internalColumn.create({
+                data: { formId, label: "Amount", type: "currency", options: {}, order: colOrder++ }
+            }));
+        }
+        if (!hasReceivedCol) {
+            newCols.push(await prisma.internalColumn.create({
+                data: { formId, label: "Received", type: "currency", options: {}, order: colOrder++ }
+            }));
+        }
+        if (!hasPendingCol) {
+            newCols.push(await prisma.internalColumn.create({
+                data: { formId, label: "Pending", type: "formula", defaultValue: "Amount - Received", options: {}, order: colOrder++ }
+            }));
+        }
+
+        if (newCols.length > 0) {
             processedInternalColumns = [...processedInternalColumns, ...newCols].sort((a, b) => (a.order || 0) - (b.order || 0));
         }
 
