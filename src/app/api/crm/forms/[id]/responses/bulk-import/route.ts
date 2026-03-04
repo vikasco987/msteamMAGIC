@@ -22,9 +22,10 @@ export async function POST(
         }
 
         const body = await req.json();
-        const { data, matchColumnId, updateColumnMap, isInternalMatch } = body as {
+        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch } = body as {
             data: Record<string, string>[];
             matchColumnId: string;
+            matchExcelHeader: string;
             updateColumnMap: Record<string, { id: string; isInternal: boolean }>;
             isInternalMatch: boolean;
         };
@@ -43,7 +44,7 @@ export async function POST(
 
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
-            const matchValue = row[matchColumnId]?.toString().trim();
+            const matchValue = row[matchExcelHeader]?.toString().trim();
             if (!matchValue) {
                 errors.push(`Row ${i + 1}: Missing match value`);
                 continue;
@@ -83,7 +84,7 @@ export async function POST(
                 // Apply Updates via Transaction
                 await prisma.$transaction(async (tx) => {
                     for (const headerKey in updateColumnMap) {
-                        if (headerKey === matchColumnId) continue;
+                        if (headerKey === matchExcelHeader) continue;
 
                         const mapping = updateColumnMap[headerKey];
                         if (!mapping) continue;

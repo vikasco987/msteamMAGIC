@@ -20,7 +20,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     const [headerMapping, setHeaderMapping] = useState<Record<string, string>>({});
     const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Upload, 2: Map & Preview, 3: Processing
     const [loading, setLoading] = useState(false);
-    
+
     // Status tracking per row for preview
     const [previewLimit] = useState(10);
 
@@ -36,12 +36,12 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
             const wsname = wb.SheetNames[0];
             const ws = wb.Sheets[wsname];
             const data = XLSX.utils.sheet_to_json(ws) as Record<string, string>[];
-            
+
             if (data.length > 0) {
                 const excelHeaders = Object.keys(data[0]);
                 setHeaders(excelHeaders);
                 setParsedData(data);
-                
+
                 // Auto-map logic
                 const autoMap: Record<string, string> = {};
                 excelHeaders.forEach(h => {
@@ -49,7 +49,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                     if (exactMatch) autoMap[h] = exactMatch.id;
                 });
                 setHeaderMapping(autoMap);
-                
+
                 // Auto-select match column (e.g., Phone or Email)
                 const phoneMatch = availableColumns.find(c => c.label.toLowerCase().includes("phone"));
                 if (phoneMatch) setMatchColumnId(phoneMatch.id);
@@ -73,10 +73,15 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
         if (!matchColumnId) {
             return toast.error("Please select a Key Column to match records (e.g., Phone Number)");
         }
-        
+
         // Find if match column is internal
         const matchColDef = availableColumns.find(c => c.id === matchColumnId);
         const isInternalMatch = matchColDef?.isInternal ?? false;
+
+        const matchExcelHeader = Object.keys(headerMapping).find(h => headerMapping[h] === matchColumnId);
+        if (!matchExcelHeader) {
+            return toast.error("You must map an Excel column to your selected Key Column!");
+        }
 
         // Flatten mappings for API
         const updateColumnMap: Record<string, { id: string; isInternal: boolean }> = {};
@@ -102,6 +107,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                 body: JSON.stringify({
                     data: parsedData,
                     matchColumnId,
+                    matchExcelHeader,
                     updateColumnMap,
                     isInternalMatch
                 })
@@ -131,7 +137,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4">
             <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                
+
                 {/* Header */}
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 shrink-0 text-white flex justify-between items-center">
                     <div>
@@ -157,15 +163,15 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                             <p className="text-sm text-slate-500 mb-6 text-center max-w-md">
                                 Upload a file containing the records you want to update. Ensure you have a unique column like Phone or Email to match existing records.
                             </p>
-                            
+
                             <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md flex items-center gap-2">
                                 <UploadCloud size={18} />
                                 Choose File
                                 <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleFileUpload} />
                             </label>
-                            
+
                             <div className="mt-8 bg-amber-50 border border-amber-200 p-4 rounded-xl text-xs text-amber-800 max-w-md">
-                                <span className="font-bold flex items-center gap-1 mb-1"><AlertCircle size={14}/> Important:</span>
+                                <span className="font-bold flex items-center gap-1 mb-1"><AlertCircle size={14} /> Important:</span>
                                 Only existing records will be updated. Records that do not match the selected Key Column will be skipped.
                             </div>
                         </div>
@@ -175,15 +181,15 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                         <div className="space-y-6">
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                 <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs">1</span> 
+                                    <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs">1</span>
                                     Select Key Column (To Match Records)
                                 </h4>
                                 <div className="flex items-center gap-4">
                                     <p className="text-xs text-slate-500 flex-1">
                                         Which column in the database should we use to match the rows from your Excel file? (Usually Phone or Email)
                                     </p>
-                                    <select 
-                                        value={matchColumnId} 
+                                    <select
+                                        value={matchColumnId}
                                         onChange={(e) => setMatchColumnId(e.target.value)}
                                         className="w-1/2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                                     >
@@ -197,10 +203,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
 
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                 <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">2</span> 
+                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">2</span>
                                     Map Excel Columns to Database Columns
                                 </h4>
-                                
+
                                 <div className="space-y-3">
                                     {headers.map(h => (
                                         <div key={h} className="flex items-center gap-4 p-2 bg-slate-50 rounded-xl border border-slate-100">
@@ -208,18 +214,17 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                 {h} <span className="text-[10px] text-slate-400 font-normal ml-1">(Excel)</span>
                                             </div>
                                             <div className="text-slate-400">→</div>
-                                            <select 
+                                            <select
                                                 value={headerMapping[h] || "SKIP"}
                                                 onChange={(e) => handleMapChange(h, e.target.value)}
-                                                className={`flex-1 p-2 bg-white border rounded-lg text-xs font-bold outline-none ${
-                                                    headerMapping[h] && headerMapping[h] !== "SKIP" 
-                                                        ? 'border-emerald-200 text-emerald-700 bg-emerald-50' 
+                                                className={`flex-1 p-2 bg-white border rounded-lg text-xs font-bold outline-none ${headerMapping[h] && headerMapping[h] !== "SKIP"
+                                                        ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
                                                         : 'border-slate-200 text-slate-500'
-                                                }`}
+                                                    }`}
                                             >
                                                 <option value="SKIP">-- Do Not Update (Skip) --</option>
                                                 {availableColumns.map(c => (
-                                                    <option disabled={c.id === matchColumnId} key={c.id} value={c.id}>
+                                                    <option key={c.id} value={c.id}>
                                                         {c.label} {c.id === matchColumnId ? "(Used for Key)" : ""}
                                                     </option>
                                                 ))}
@@ -231,7 +236,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
 
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm overflow-hidden">
                                 <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">3</span> 
+                                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">3</span>
                                     Preview ({Math.min(parsedData.length, previewLimit)} of {parsedData.length} rows)
                                 </h4>
                                 <div className="overflow-x-auto">
@@ -242,8 +247,8 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                     <th key={h} className="p-2 border-b border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-wider">
                                                         {h}
                                                         <div className="text-[9px] text-blue-500 mt-0.5">
-                                                            {headerMapping[h] && headerMapping[h] !== "SKIP" 
-                                                                ? availableColumns.find(c => c.id === headerMapping[h])?.label 
+                                                            {headerMapping[h] && headerMapping[h] !== "SKIP"
+                                                                ? availableColumns.find(c => c.id === headerMapping[h])?.label
                                                                 : "Skipped"}
                                                         </div>
                                                     </th>
@@ -254,9 +259,8 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             {parsedData.slice(0, previewLimit).map((row, i) => (
                                                 <tr key={i} className="hover:bg-slate-50">
                                                     {headers.map(h => (
-                                                        <td key={h} className={`p-2 border-b border-slate-100 text-xs ${
-                                                            headerMapping[h] && headerMapping[h] !== "SKIP" ? 'font-bold text-slate-700' : 'text-slate-400'
-                                                        }`}>
+                                                        <td key={h} className={`p-2 border-b border-slate-100 text-xs ${headerMapping[h] && headerMapping[h] !== "SKIP" ? 'font-bold text-slate-700' : 'text-slate-400'
+                                                            }`}>
                                                             {row[h]?.toString().substring(0, 30) || "—"}
                                                         </td>
                                                     ))}
@@ -282,13 +286,13 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                 {/* Footer Controls */}
                 {step === 2 && (
                     <div className="p-4 border-t border-slate-100 bg-white flex justify-between shrink-0">
-                        <button 
+                        <button
                             onClick={() => { setStep(1); setFile(null); setParsedData([]); }}
                             className="px-5 py-2.5 text-slate-500 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all"
                         >
                             Cancel & Restart
                         </button>
-                        <button 
+                        <button
                             onClick={handleConfirm}
                             disabled={loading || !matchColumnId || Object.values(headerMapping).filter(v => v && v !== "SKIP").length === 0}
                             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
