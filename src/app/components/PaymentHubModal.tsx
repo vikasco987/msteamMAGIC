@@ -165,7 +165,15 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
                             {/* Add Form */}
                             {!isAdding ? (
                                 <button
-                                    onClick={() => setIsAdding(true)}
+                                    onClick={() => {
+                                        setForm({
+                                            amount: payments.length > 0 ? "0" : "",
+                                            received: payments.length > 0 && totals.pending > 0 ? totals.pending.toString() : "",
+                                            note: "",
+                                            paymentDate: new Date().toISOString().split("T")[0]
+                                        });
+                                        setIsAdding(true);
+                                    }}
                                     className="w-full py-3 border-2 border-dashed border-slate-200 hover:border-emerald-300 text-slate-400 hover:text-emerald-600 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white"
                                 >
                                     <Plus size={14} /> Add Payment Entry
@@ -176,7 +184,9 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Amount (₹) *</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">
+                                                {payments.length === 0 ? "Total Bill Amount (₹) *" : "Additional Bill Amount (₹)"}
+                                            </label>
                                             <input
                                                 autoFocus
                                                 type="number"
@@ -251,7 +261,10 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
                                     </div>
                                     <h4 className="text-sm font-bold text-slate-700">No Payments Yet</h4>
                                     <p className="text-xs text-slate-500 mt-1 mb-4">Add the first payment entry for this response.</p>
-                                    <button onClick={() => setIsAdding(true)}
+                                    <button onClick={() => {
+                                        setForm({ amount: "", received: "", note: "", paymentDate: new Date().toISOString().split("T")[0] });
+                                        setIsAdding(true);
+                                    }}
                                         className="px-4 py-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-2">
                                         <Plus size={12} /> Add First Payment
                                     </button>
