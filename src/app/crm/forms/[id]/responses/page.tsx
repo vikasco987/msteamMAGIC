@@ -271,6 +271,7 @@ export default function CRMSpreadsheetPage() {
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+    const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
@@ -1725,6 +1726,30 @@ export default function CRMSpreadsheetPage() {
         setFilterConjunction(view.conjunction as any);
         setActiveViewId(view.id);
         toast.success(`Matrix calibrated: ${view.name}`);
+    };
+
+
+    const addHubColumns = async (type: 'sales'|'remarks') => {
+        setIsAddingHubCols(true);
+        const tid = toast.loading(`Generating ${type} columns...`);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/columns/hub`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type })
+            });
+            if (res.ok) {
+                toast.success(`${type} columns initialized!`, { id: tid });
+                fetchData();
+            } else {
+                const json = await res.json();
+                toast.error(json.error || `Failed to create ${type} columns`, { id: tid });
+            }
+        } catch {
+            toast.error("Network error", { id: tid });
+        } finally {
+            setIsAddingHubCols(false);
+        }
     };
 
     const handleClearFilters = () => {
@@ -3769,14 +3794,36 @@ export default function CRMSpreadsheetPage() {
                                         })}
                                     </div>
                                 </div>
-                                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                                    <button
-                                        onClick={() => setIsColumnManagerOpen(false)}
-                                        className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
-                                    >
-                                        Apply Configuration
-                                    </button>
+
+                                <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+                                    {isMaster && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => addHubColumns('sales')}
+                                                disabled={isAddingHubCols}
+                                                className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                            >
+                                                + Sales Hub
+                                            </button>
+                                            <button
+                                                onClick={() => addHubColumns('remarks')}
+                                                disabled={isAddingHubCols}
+                                                className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
+                                            >
+                                                + Remark Hub
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={() => setIsColumnManagerOpen(false)}
+                                            className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                                        >
+                                            Apply Configuration
+                                        </button>
+                                    </div>
                                 </div>
+
                             </motion.div>
                         </div>
                     )
