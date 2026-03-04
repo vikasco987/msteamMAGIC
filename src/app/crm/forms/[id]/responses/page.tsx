@@ -1871,10 +1871,10 @@ export default function CRMSpreadsheetPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 -mb-2 scrollbar-none scroll-smooth">
                         {/* Integrated Search & Actions */}
-                        <div className="flex items-center gap-2">
-                            <div className="relative group">
+                        <div className="flex flex-nowrap items-center gap-2 w-max shrink-0 pr-4">
+                            <div className="relative group shrink-0">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
                                 <input
                                     value={searchTerm}
