@@ -963,7 +963,11 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__payment")) baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+
+        const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
+        if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
+            baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+        }
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -1024,7 +1028,11 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
-        if (!deletedSystemCols.includes("__payment")) baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+
+        const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
+        if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
+            baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+        }
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -1729,7 +1737,7 @@ export default function CRMSpreadsheetPage() {
     };
 
 
-    const addHubColumns = async (type: 'sales'|'remarks') => {
+    const addHubColumns = async (type: 'sales' | 'remarks') => {
         setIsAddingHubCols(true);
         const tid = toast.loading(`Generating ${type} columns...`);
         try {
