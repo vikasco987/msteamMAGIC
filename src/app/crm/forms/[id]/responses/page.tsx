@@ -4501,6 +4501,21 @@ export default function CRMSpreadsheetPage() {
                     />
                 )
             }
+            {/* BULK IMPORT MODAL */}
+            {isBulkImportOpen && (
+                <BulkImportModal
+                    formId={params.id as string}
+                    onClose={() => setIsBulkImportOpen(false)}
+                    onSuccess={() => {
+                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+                        setIsBulkImportOpen(false);
+                    }}
+                    availableColumns={[
+                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false })),
+                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true }))
+                    ]}
+                />
+            )}
         </div >
     );
 }
