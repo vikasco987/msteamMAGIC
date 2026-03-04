@@ -13,11 +13,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         const { type } = await req.json(); // "remarks" or "sales"
 
         // Verify write access
-        const collaborator = await prisma.formCollaborator.findUnique({
-            where: { formId_clerkId: { formId, clerkId: userId } }
-        });
+        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const form = await prisma.dynamicForm.findUnique({ where: { id: formId } });
 
-        const isMaster = collaborator?.role === 'MASTER' || collaborator?.role === 'PURE_MASTER';
+        if (!form) {
+            return NextResponse.json({ error: "Form not found" }, { status: 404 });
+        }
+
+        const isFormOwner = form.createdBy === userId;
+        const userRole = (user?.role || "GUEST").toUpperCase();
+        const isMaster = userRole === "MASTER" || userRole === "ADMIN" || isFormOwner || userRole === "PURE_MASTER";
+
         if (!isMaster) {
             return NextResponse.json({ error: "Only admins can manage system columns" }, { status: 403 });
         }
