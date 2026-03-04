@@ -42,6 +42,22 @@ export async function POST(
         // For faster mapping
         const processedInternalColumns = await prisma.internalColumn.findMany({ where: { formId } });
 
+        // Pre-fetch all target values for matching to avoid N queries and support fuzzy matching
+        let allCurrentValues: { responseId: string; value: string }[] = [];
+        if (isInternalMatch) {
+            const recs = await prisma.internalValue.findMany({
+                where: { columnId: matchColumnId, response: { formId } },
+                select: { responseId: true, value: true }
+            });
+            allCurrentValues = recs;
+        } else {
+            const recs = await prisma.responseValue.findMany({
+                where: { fieldId: matchColumnId, response: { formId } },
+                select: { responseId: true, value: true }
+            });
+            allCurrentValues = recs;
+        }
+
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             const matchValue = row[matchExcelHeader]?.toString().trim();
@@ -51,29 +67,30 @@ export async function POST(
             }
 
             try {
-                // Find response by matchColumn
+                // Smart Fuzzy Matching logic for Phone/Emails with spaces
                 let responseIdToUpdate: string | null = null;
+                const searchValLower = matchValue.toLowerCase();
+                const searchNorm = searchValLower.replace(/[^a-z0-9]/g, "");
 
-                if (isInternalMatch) {
-                    const matchRec = await prisma.internalValue.findFirst({
-                        where: {
-                            columnId: matchColumnId,
-                            value: { equals: matchValue, mode: 'insensitive' },
-                            response: { formId: formId }
-                        },
-                        select: { responseId: true }
+                // 1. Exact match (ignoring case and outer spaces)
+                let matched = allCurrentValues.find(v => (v.value || "").trim().toLowerCase() === searchValLower);
+
+                // 2. Normalised match (no spaces/symbols)
+                if (!matched && searchNorm) {
+                    matched = allCurrentValues.find(v => (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase() === searchNorm);
+                }
+
+                // 3. Fallback for Phone Numbers (if at least 10 digits, match last 10 digits precisely, ignoring +91 etc)
+                if (!matched && searchNorm.length >= 10 && /^\d+$/.test(searchNorm)) {
+                    const last10 = searchNorm.slice(-10);
+                    matched = allCurrentValues.find(v => {
+                        const vNorm = (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase();
+                        return /^\d+$/.test(vNorm) && vNorm.length >= 10 && vNorm.slice(-10) === last10;
                     });
-                    if (matchRec) responseIdToUpdate = matchRec.responseId;
-                } else {
-                    const matchRec = await prisma.responseValue.findFirst({
-                        where: {
-                            fieldId: matchColumnId,
-                            value: { equals: matchValue, mode: 'insensitive' },
-                            response: { formId: formId }
-                        },
-                        select: { responseId: true }
-                    });
-                    if (matchRec) responseIdToUpdate = matchRec.responseId;
+                }
+
+                if (matched) {
+                    responseIdToUpdate = matched.responseId;
                 }
 
                 if (!responseIdToUpdate) {
