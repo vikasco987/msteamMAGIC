@@ -37,7 +37,7 @@ export async function POST(
         const body = await req.json();
         const { amount, received, note, paymentDate } = body;
 
-        if (!amount || isNaN(Number(amount))) {
+        if (amount === undefined || amount === null || isNaN(Number(amount))) {
             return NextResponse.json({ error: "Valid amount is required" }, { status: 400 });
         }
 
@@ -56,8 +56,13 @@ export async function POST(
             }
         });
 
+        // Recalculate totals after addition
+        const allPayments = await (prisma as any).formPayment.findMany({ where: { responseId } });
+        const totalAmount = allPayments.reduce((s: number, p: any) => s + p.amount, 0);
+        const totalReceived = allPayments.reduce((s: number, p: any) => s + p.received, 0);
+
         // Sync to internal columns: Amount, Received, Pending
-        await syncPaymentColumns(formId, responseId, payment.amount, payment.received);
+        await syncPaymentColumns(formId, responseId, totalAmount, totalReceived);
 
         return NextResponse.json({ success: true, payment });
     } catch (error) {
