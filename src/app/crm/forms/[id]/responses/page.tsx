@@ -273,6 +273,8 @@ export default function CRMSpreadsheetPage() {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
+    // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
+    const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
@@ -717,6 +719,27 @@ export default function CRMSpreadsheetPage() {
         if (isLoaded && user) fetchData();
     }, [params.id, isLoaded, user]);
 
+    // Background mein saare responses fetch karo sirf Today Follow-ups ke liye
+    // Yeh paginated table se alag hai — pagination se affect nahi hoga
+    useEffect(() => {
+        if (!isLoaded || !user) return;
+        const fetchAllForFollowUps = async () => {
+            try {
+                const res = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=99999&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    { cache: 'no-store' }
+                );
+                if (res.ok) {
+                    const json = await res.json();
+                    setAllResponsesForFollowUps(json.responses || []);
+                }
+            } catch (err) {
+                console.error('Follow-up background fetch failed:', err);
+            }
+        };
+        fetchAllForFollowUps();
+    }, [params.id, isLoaded, user]);
+
     useEffect(() => {
         if (!isLoaded || !user) return;
         const fetchMembers = async () => {
@@ -904,11 +927,12 @@ export default function CRMSpreadsheetPage() {
 
     // ⚡ Flash Recovery Engine: Identify items needing attention TODAY
     const todayFollowUps = useMemo(() => {
-        if (!data?.responses) return [];
+        // allResponsesForFollowUps use karo (saare records) — sirf data.responses (paginated) pe nahi
+        const source = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        return data.responses.filter(res => {
+        return source.filter(res => {
             const remarks = res.remarks || [];
             const latestRemark = remarks?.[0];
             if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -918,7 +942,7 @@ export default function CRMSpreadsheetPage() {
             }
             return false;
         });
-    }, [data?.responses]);
+    }, [allResponsesForFollowUps, data?.responses]);
 
     const getColumns = useMemo(() => {
         if (!data) return [];
