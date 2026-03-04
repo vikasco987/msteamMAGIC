@@ -533,9 +533,12 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
+            // 🔑 KEY FIX: Agar filters active hain to SAARE records fetch karo
+            // Warna sirf current page ke rows filter honge (Today, This Week sab miss hoga)
+            const effectiveLimit = conds.length > 0 ? 99999 : limit;
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
             ]);
@@ -1201,19 +1204,19 @@ export default function CRMSpreadsheetPage() {
 
     useEffect(() => {
         setCurrentPage(1);
-        // When filters are applied, fetch ALL data from server so filters like
-        // "Today", "This Week" work across ALL records, not just current page
-        if (isLoaded && user) {
-            if (conditions.length > 0) {
-                // Fetch all records with filters applied server-side
-                fetchData(1, 99999, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-            } else {
-                // No filters — go back to normal paginated mode
-                fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, [], filterConjunction);
-            }
-        }
-    }, [conditions, filterConjunction]);
+        // searchTerm change pe bhi page 1 pe jaao
+    }, [searchTerm]);
 
+    useEffect(() => {
+        // Conditions/filterConjunction change pe saara data refetch karo
+        // IMPORTANT: yeh rowsPerPage se independent hai
+        // Jab filter active hai to fetchData khud hi limit=99999 use karega (see fetchData)
+        setCurrentPage(1);
+        if (isLoaded && user) {
+            fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [conditions, filterConjunction]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
