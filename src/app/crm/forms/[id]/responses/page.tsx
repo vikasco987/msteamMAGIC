@@ -66,6 +66,8 @@ import {
     Wifi
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
+import PaymentHubModal from "@/app/components/PaymentHubModal";
+import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -273,6 +275,8 @@ export default function CRMSpreadsheetPage() {
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
+    const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
+    const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
 
@@ -958,6 +962,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__payment")) baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -1018,6 +1023,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__payment")) baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -1900,6 +1906,14 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <Calendar size={12} />
                                 Follow-up Board
+                            </button>
+
+                            <button
+                                onClick={() => setIsPaymentHubOpen(true)}
+                                className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-emerald-200 shadow-sm"
+                            >
+                                <IndianRupee size={12} />
+                                Payment Hub
                             </button>
 
                             <button
@@ -2799,6 +2813,40 @@ export default function CRMSpreadsheetPage() {
                                                             </td>
                                                         );
                                                     }
+
+                                                    if (col.id === "__payment") {
+                                                        const payments = (res as any).payments || [];
+                                                        const totalAmount = payments.reduce((s: number, p: any) => s + p.amount, 0);
+                                                        const totalReceived = payments.reduce((s: number, p: any) => s + p.received, 0);
+                                                        const pending = totalAmount - totalReceived;
+                                                        const fmt = (n: number) => n > 0 ? `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+                                                        return (
+                                                            <td
+                                                                key={col.id}
+                                                                style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
+                                                                }}
+                                                            >
+                                                                {totalAmount > 0 ? (
+                                                                    <div className="flex flex-col items-center gap-0.5">
+                                                                        <span className="text-[10px] font-black text-blue-700">{fmt(totalAmount)}</span>
+                                                                        <div className="flex gap-1">
+                                                                            <span className="text-[9px] font-bold text-emerald-600">✓{fmt(totalReceived)}</span>
+                                                                            {pending > 0 && <span className="text-[9px] font-bold text-rose-500">⏳{fmt(pending)}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
+                                                                        <span>₹</span> Add
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    }
+
 
                                                     const isInternal = col.isInternal;
                                                     const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
@@ -4348,8 +4396,30 @@ export default function CRMSpreadsheetPage() {
                         userRole={userRole || 'GUEST'}
                         onClose={() => {
                             setOpenFollowUpModal(null);
-                            fetchData(); // Refresh to update count if changed
+                            fetchData();
                         }}
+                    />
+                )
+            }
+            {
+                openPaymentModal && (
+                    <PaymentHubModal
+                        formId={openPaymentModal.formId}
+                        responseId={openPaymentModal.responseId}
+                        userRole={userRole || 'GUEST'}
+                        onClose={() => {
+                            setOpenPaymentModal(null);
+                            fetchData();
+                        }}
+                        onSave={() => fetchData()}
+                    />
+                )
+            }
+            {
+                isPaymentHubOpen && (
+                    <PaymentHubDashboard
+                        formId={params.id as string}
+                        onClose={() => setIsPaymentHubOpen(false)}
                     />
                 )
             }

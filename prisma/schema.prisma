@@ -289,6 +289,7 @@ model FormResponse {
   values          ResponseValue[]
   internalValues  InternalValue[]
   remarks         FormRemark[]
+  payments        FormPayment[]
 
   // Permission Controls
   visibleToRoles  String[]    @default([])
@@ -416,4 +417,28 @@ model FormRemark {
 
   responseId        String    @db.ObjectId
   response          FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+}
+
+model FormPayment {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  responseId  String    @db.ObjectId
+  response    FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  formId      String    @db.ObjectId
+
+  amount      Float     // Total amount (entered by user)
+  received    Float     @default(0) // Amount received
+  // pending = amount - received (calculated on client)
+
+  note        String?   // Optional payment note
+  paymentDate DateTime  @default(now()) // Date of payment entry
+
+  createdById   String?  // Clerk userId
+  createdByName String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([responseId])
+  @@index([formId])
+  @@index([paymentDate])
 }

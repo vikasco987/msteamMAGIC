@@ -210,7 +210,9 @@ export async function GET(
                 include: {
                     values: true,
                     // @ts-ignore
-                    remarks: { orderBy: { createdAt: "desc" } }
+                    remarks: { orderBy: { createdAt: "desc" } },
+                    // @ts-ignore
+                    payments: { orderBy: { paymentDate: "desc" } }
                 },
                 orderBy,
                 skip,
