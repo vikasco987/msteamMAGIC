@@ -35,7 +35,7 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
         paymentDate: new Date().toISOString().split("T")[0]
     });
 
-    const canDelete = userRole === "MASTER" || userRole === "ADMIN";
+    const canDelete = userRole === "MASTER" || userRole === "ADMIN" || userRole === "PURE_MASTER";
 
     const fetchPayments = async () => {
         setFetching(true);
@@ -290,7 +290,7 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
                                                     </div>
                                                     {canDelete && (
                                                         <button onClick={() => handleDelete(p.id)}
-                                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                                                            className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
                                                             <Trash2 size={12} />
                                                         </button>
                                                     )}
