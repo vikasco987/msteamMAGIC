@@ -18,8 +18,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     const [headers, setHeaders] = useState<string[]>([]);
     const [matchColumnId, setMatchColumnId] = useState<string>("");
     const [headerMapping, setHeaderMapping] = useState<Record<string, string>>({});
-    const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Upload, 2: Map & Preview, 3: Processing
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1); // 1: Upload, 2: Map & Preview, 3: Processing, 4: Results
     const [loading, setLoading] = useState(false);
+    const [importErrors, setImportErrors] = useState<string[]>([]);
+    const [successCount, setSuccessCount] = useState<number>(0);
 
     // Status tracking per row for preview
     const [previewLimit] = useState(10);
@@ -116,12 +118,14 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
             const result = await res.json();
             if (res.ok && result.success) {
                 toast.success(`Updated ${result.successCount} records!`);
+                setSuccessCount(result.successCount);
                 if (result.errorCount > 0) {
-                    console.log("Import Errors:", result.errors);
-                    toast.error(`${result.errorCount} records failed (see console)`);
+                    setImportErrors(result.errors || []);
+                    setStep(4);
+                } else {
+                    onSuccess();
+                    onClose();
                 }
-                onSuccess();
-                onClose();
             } else {
                 toast.error(result.error || "Failed to bulk update");
                 setStep(2);
@@ -218,8 +222,8 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                 value={headerMapping[h] || "SKIP"}
                                                 onChange={(e) => handleMapChange(h, e.target.value)}
                                                 className={`flex-1 p-2 bg-white border rounded-lg text-xs font-bold outline-none ${headerMapping[h] && headerMapping[h] !== "SKIP"
-                                                        ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
-                                                        : 'border-slate-200 text-slate-500'
+                                                    ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                                                    : 'border-slate-200 text-slate-500'
                                                     }`}
                                             >
                                                 <option value="SKIP">-- Do Not Update (Skip) --</option>
@@ -281,6 +285,31 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                             <p className="text-sm text-slate-500 mt-2">Processing {parsedData.length} rows. Please do not close this window.</p>
                         </div>
                     )}
+
+                    {step === 4 && (
+                        <div className="space-y-6">
+                            <div className="bg-white border border-rose-200 p-6 rounded-2xl shadow-sm">
+                                <div className="flex items-center gap-4 mb-4 pb-4 border-b border-rose-100">
+                                    <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center">
+                                        <AlertCircle size={24} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-lg font-black text-rose-600">Action Required: Data Missmatch</h4>
+                                        <p className="text-sm text-slate-500 font-bold mt-1">
+                                            {successCount} rows updated successfully • {importErrors.length} rows failed mapping.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                                    {importErrors.map((err, idx) => (
+                                        <div key={idx} className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-800 font-mono tracking-tight leading-relaxed">
+                                            {err}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer Controls */}
@@ -298,6 +327,20 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
                         >
                             <CheckCircle2 size={16} /> Confirm & Update ({parsedData.length} records)
+                        </button>
+                    </div>
+                )}
+
+                {step === 4 && (
+                    <div className="p-4 border-t border-slate-100 bg-white flex justify-end shrink-0">
+                        <button
+                            onClick={() => {
+                                onSuccess();
+                                onClose();
+                            }}
+                            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                        >
+                            <CheckCircle2 size={16} /> Finish & Close
                         </button>
                     </div>
                 )}
