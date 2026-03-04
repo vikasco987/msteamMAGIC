@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, TrendingUp, IndianRupee, Calendar, Clock, CheckCircle2, BarChart2, ChevronDown } from "lucide-react";
+import { X, TrendingUp, Users, IndianRupee, Calendar, Clock, CheckCircle2, BarChart2, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
 
@@ -33,6 +33,7 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
     const [to, setTo] = useState("");
     const [data, setData] = useState<HubData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [selectedUser, setSelectedUser] = useState("All");
 
     const fetchHub = async () => {
         setLoading(true);
@@ -61,7 +62,29 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
 
     const fmt = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-    const maxAmount = data ? Math.max(...Object.values(data.byDay).map(d => d.amount), 1) : 1;
+    /* computed inline */
+
+
+    const uniqueUsers = data ? Array.from(new Set(data.payments.map(p => p.response?.submittedByName || "Unknown"))).sort() : [];
+    const filteredPayments = data?.payments.filter(p => selectedUser === "All" || (p.response?.submittedByName || "Unknown") === selectedUser) || [];
+
+    const computedSummary = {
+        totalAmount: filteredPayments.reduce((s, p) => s + p.amount, 0),
+        totalReceived: filteredPayments.reduce((s, p) => s + p.received, 0),
+        totalPending: filteredPayments.reduce((s, p) => s + (p.amount - p.received), 0),
+        count: filteredPayments.length
+    };
+
+    const computedByDay: Record<string, { amount: number; received: number; count: number }> = {};
+    filteredPayments.forEach(p => {
+        const day = new Date(p.paymentDate).toISOString().split("T")[0];
+        if (!computedByDay[day]) computedByDay[day] = { amount: 0, received: 0, count: 0 };
+        computedByDay[day].amount += p.amount;
+        computedByDay[day].received += p.received;
+        computedByDay[day].count++;
+    });
+
+    const maxAmount = Math.max(...Object.values(computedByDay).map(d => d.amount), 1);
 
     return (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[10001] p-4">
@@ -95,6 +118,25 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
                             {r.label}
                         </button>
                     ))}
+                </div>
+
+
+                {/* User Filter */}
+                <div className="px-5 pt-3 pb-0 shrink-0">
+                    <div className="inline-flex items-center bg-slate-100 rounded-xl p-1 relative hover:bg-slate-200 transition-colors">
+                        <Users size={14} className="text-slate-500 absolute left-3 pointer-events-none" />
+                        <select
+                            value={selectedUser}
+                            onChange={(e) => setSelectedUser(e.target.value)}
+                            className="bg-transparent text-xs font-bold text-slate-700 outline-none pl-8 pr-8 py-1.5 cursor-pointer appearance-none min-w-[150px]"
+                        >
+                            <option value="All">All Team Members</option>
+                            {uniqueUsers.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} className="text-slate-500 absolute right-3 pointer-events-none" />
+                    </div>
                 </div>
 
                 {/* Custom date picker */}
@@ -142,35 +184,35 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-blue-100 mb-2">Total Amount</p>
-                                    <p className="text-2xl font-black">{fmt(data.summary.totalAmount)}</p>
-                                    <p className="text-[10px] text-blue-200 mt-1">{data.summary.count} entries</p>
+                                    <p className="text-2xl font-black">{fmt(computedSummary.totalAmount)}</p>
+                                    <p className="text-[10px] text-blue-200 mt-1">{computedSummary.count} entries</p>
                                 </div>
                                 <div className="bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-4 text-white shadow-lg">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-2">Received</p>
-                                    <p className="text-2xl font-black">{fmt(data.summary.totalReceived)}</p>
+                                    <p className="text-2xl font-black">{fmt(computedSummary.totalReceived)}</p>
                                     <p className="text-[10px] text-emerald-200 mt-1">
-                                        {data.summary.totalAmount > 0
-                                            ? `${Math.round((data.summary.totalReceived / data.summary.totalAmount) * 100)}% collected`
+                                        {computedSummary.totalAmount > 0
+                                            ? `${Math.round((computedSummary.totalReceived / computedSummary.totalAmount) * 100)}% collected`
                                             : "—"}
                                     </p>
                                 </div>
-                                <div className={`rounded-2xl p-4 text-white shadow-lg ${data.summary.totalPending > 0
+                                <div className={`rounded-2xl p-4 text-white shadow-lg ${computedSummary.totalPending > 0
                                     ? "bg-gradient-to-br from-rose-500 to-rose-600"
                                     : "bg-gradient-to-br from-slate-400 to-slate-500"}`}>
                                     <p className="text-[10px] font-black uppercase tracking-widest text-rose-100 mb-2">Pending</p>
-                                    <p className="text-2xl font-black">{fmt(data.summary.totalPending)}</p>
+                                    <p className="text-2xl font-black">{fmt(computedSummary.totalPending)}</p>
                                     <p className="text-[10px] text-rose-100 mt-1">
-                                        {data.summary.totalPending > 0 ? "Outstanding balance" : "Fully cleared ✅"}
+                                        {computedSummary.totalPending > 0 ? "Outstanding balance" : "Fully cleared ✅"}
                                     </p>
                                 </div>
                             </div>
 
                             {/* Bar Chart */}
-                            {Object.keys(data.byDay).length > 0 && (
+                            {Object.keys(computedByDay).length > 0 && (
                                 <div className="bg-slate-50 rounded-2xl p-4">
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Day-wise Breakdown</p>
                                     <div className="space-y-3">
-                                        {Object.entries(data.byDay)
+                                        {Object.entries(computedByDay)
                                             .sort(([a], [b]) => a.localeCompare(b))
                                             .map(([day, d]) => (
                                                 <div key={day}>
@@ -199,11 +241,11 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
                             )}
 
                             {/* Payments List */}
-                            {data.payments.length > 0 && (
+                            {filteredPayments.length > 0 && (
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">All Entries</p>
                                     <div className="space-y-2">
-                                        {data.payments.map((p: any) => {
+                                        {filteredPayments.map((p: any) => {
                                             const pend = p.amount - p.received;
                                             return (
                                                 <div key={p.id} className="bg-white border border-slate-100 rounded-2xl p-3 flex justify-between items-center hover:shadow-sm transition-shadow">
@@ -240,7 +282,7 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
                                 </div>
                             )}
 
-                            {data.payments.length === 0 && (
+                            {filteredPayments.length === 0 && (
                                 <div className="text-center py-10 bg-slate-50 rounded-2xl">
                                     <IndianRupee className="mx-auto text-slate-200 mb-3" size={36} />
                                     <p className="text-sm font-bold text-slate-400">No payments in this period</p>
