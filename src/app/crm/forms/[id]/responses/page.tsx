@@ -1199,7 +1199,21 @@ export default function CRMSpreadsheetPage() {
         return filteredResponses.slice(start, start + rowsPerPage);
     }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
 
-    useEffect(() => { setCurrentPage(1); }, [searchTerm, conditions]);
+    useEffect(() => {
+        setCurrentPage(1);
+        // When filters are applied, fetch ALL data from server so filters like
+        // "Today", "This Week" work across ALL records, not just current page
+        if (isLoaded && user) {
+            if (conditions.length > 0) {
+                // Fetch all records with filters applied server-side
+                fetchData(1, 99999, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+            } else {
+                // No filters — go back to normal paginated mode
+                fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, [], filterConjunction);
+            }
+        }
+    }, [conditions, filterConjunction]);
+
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
