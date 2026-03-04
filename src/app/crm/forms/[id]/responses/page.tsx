@@ -2857,14 +2857,27 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
+                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors hover:bg-slate-50 relative text-center group/paymentcel ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
                                                                 }}
                                                             >
+                                                                {(isMaster || isPureMaster) && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setIsPaymentHubOpen(true);
+                                                                        }}
+                                                                        className="absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 bg-white hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-slate-300 hover:text-emerald-600 rounded transition-all shadow-sm"
+                                                                        title="Open Full Payment Hub Dashboard"
+                                                                    >
+                                                                        <ExternalLink size={10} />
+                                                                    </button>
+                                                                )}
+
                                                                 {totalAmount > 0 ? (
-                                                                    <div className="flex flex-col items-center gap-0.5">
+                                                                    <div className="flex flex-col items-center gap-0.5 mt-1">
                                                                         <span className="text-[10px] font-black text-blue-700">{fmt(totalAmount)}</span>
                                                                         <div className="flex gap-1">
                                                                             <span className="text-[9px] font-bold text-emerald-600">✓{fmt(totalReceived)}</span>
