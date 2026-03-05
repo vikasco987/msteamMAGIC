@@ -70,6 +70,7 @@ import FormRemarkModal from "@/app/components/FormRemarkModal";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
 import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
 import BulkImportModal from "@/app/components/BulkImportModal";
+import LeadAssignHub from "@/app/components/LeadAssignHub";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -281,6 +282,7 @@ export default function CRMSpreadsheetPage() {
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+    const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
 
@@ -1957,6 +1959,15 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <UploadCloud size={12} />
                                 Smart Update
+                            </button>
+
+                            <button
+                                onClick={() => setIsLeadAssignHubOpen(true)}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+                                title="Rapid Lead Distribution Hub"
+                            >
+                                <Sparkles size={12} />
+                                Lead Distribute
                             </button>
 
                             <button
@@ -4511,9 +4522,20 @@ export default function CRMSpreadsheetPage() {
                         setIsBulkImportOpen(false);
                     }}
                     availableColumns={[
+                        { id: "__assigned", label: "Assigned To", isInternal: false },
                         ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false })),
                         ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true }))
                     ]}
+                />
+            )}
+
+            {isLeadAssignHubOpen && (
+                <LeadAssignHub
+                    formId={params.id as string}
+                    onClose={() => setIsLeadAssignHubOpen(false)}
+                    responses={data?.responses || []}
+                    teamMembers={teamMembers}
+                    onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
             )}
         </div >

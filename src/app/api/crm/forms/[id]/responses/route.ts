@@ -338,7 +338,7 @@ export async function PATCH(
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { responseId, columnId, value, isInternal, formId, rowColor } = await req.json();
+        const { responseId, columnId, value, isInternal, formId, rowColor, assignedTo } = await req.json();
         const userName = `${user.firstName} ${user.lastName}`;
 
         // 🟢 ROW LEVEL UPDATE (Like Background Color)
@@ -348,6 +348,32 @@ export async function PATCH(
                 data: { rowColor: rowColor === "" ? null : rowColor }
             });
             return NextResponse.json({ success: true, message: "Row color updated" });
+        }
+
+        // 🟢 ASSIGNED TO UPDATE (System Column)
+        if (assignedTo !== undefined) {
+            const resp = await prisma.formResponse.findUnique({ where: { id: responseId } });
+            if (!resp) return NextResponse.json({ error: "Response not found" }, { status: 404 });
+
+            await prisma.formResponse.update({
+                where: { id: responseId },
+                data: { assignedTo: { set: assignedTo } }
+            });
+
+            // Activity Log
+            await prisma.formActivity.create({
+                data: {
+                    responseId,
+                    userId: user.id,
+                    userName: userName,
+                    type: "ASSIGNMENT_CHANGE",
+                    columnName: "Assigned Users",
+                    oldValue: (resp.assignedTo || []).join(", "),
+                    newValue: (assignedTo as string[]).join(", ")
+                }
+            });
+
+            return NextResponse.json({ success: true, message: "Assignments updated" });
         }
 
         // Permissions Check
