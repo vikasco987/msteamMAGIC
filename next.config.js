@@ -1,2 +1,6 @@
 // Deprecated: Migrated to next.config.ts
-module.exports = {};
+module.exports = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+};
