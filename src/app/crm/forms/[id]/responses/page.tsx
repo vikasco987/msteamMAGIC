@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
     Database,
+    UploadCloud,
     ArrowLeft,
     Download,
     ChevronLeft,
@@ -66,6 +67,10 @@ import {
     Wifi
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
+import PaymentHubModal from "@/app/components/PaymentHubModal";
+import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
+import BulkImportModal from "@/app/components/BulkImportModal";
+import LeadAssignHub from "@/app/components/LeadAssignHub";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -269,10 +274,17 @@ export default function CRMSpreadsheetPage() {
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+    const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
+    const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
+    const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
+    const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+    const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
+    // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
+    const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
@@ -533,9 +545,12 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
+            // 🔑 KEY FIX: Agar filters active hain to SAARE records fetch karo
+            // Warna sirf current page ke rows filter honge (Today, This Week sab miss hoga)
+            const effectiveLimit = conds.length > 0 ? 99999 : limit;
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
             ]);
@@ -712,6 +727,27 @@ export default function CRMSpreadsheetPage() {
 
     useEffect(() => {
         if (isLoaded && user) fetchData();
+    }, [params.id, isLoaded, user]);
+
+    // Background mein saare responses fetch karo sirf Today Follow-ups ke liye
+    // Yeh paginated table se alag hai — pagination se affect nahi hoga
+    useEffect(() => {
+        if (!isLoaded || !user) return;
+        const fetchAllForFollowUps = async () => {
+            try {
+                const res = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=99999&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    { cache: 'no-store' }
+                );
+                if (res.ok) {
+                    const json = await res.json();
+                    setAllResponsesForFollowUps(json.responses || []);
+                }
+            } catch (err) {
+                console.error('Follow-up background fetch failed:', err);
+            }
+        };
+        fetchAllForFollowUps();
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
@@ -901,11 +937,12 @@ export default function CRMSpreadsheetPage() {
 
     // ⚡ Flash Recovery Engine: Identify items needing attention TODAY
     const todayFollowUps = useMemo(() => {
-        if (!data?.responses) return [];
+        // allResponsesForFollowUps use karo (saare records) — sirf data.responses (paginated) pe nahi
+        const source = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        return data.responses.filter(res => {
+        return source.filter(res => {
             const remarks = res.remarks || [];
             const latestRemark = remarks?.[0];
             if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -915,7 +952,7 @@ export default function CRMSpreadsheetPage() {
             }
             return false;
         });
-    }, [data?.responses]);
+    }, [allResponsesForFollowUps, data?.responses]);
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -931,6 +968,11 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+
+        const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
+        if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
+            baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+        }
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -991,6 +1033,11 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
         if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+
+        const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
+        if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
+            baseCols.push({ id: "__payment", label: "💰 Payment", isPublic: false, type: "static" });
+        }
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
@@ -1199,7 +1246,21 @@ export default function CRMSpreadsheetPage() {
         return filteredResponses.slice(start, start + rowsPerPage);
     }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
 
-    useEffect(() => { setCurrentPage(1); }, [searchTerm, conditions]);
+    useEffect(() => {
+        setCurrentPage(1);
+        // searchTerm change pe bhi page 1 pe jaao
+    }, [searchTerm]);
+
+    useEffect(() => {
+        // Conditions/filterConjunction change pe saara data refetch karo
+        // IMPORTANT: yeh rowsPerPage se independent hai
+        // Jab filter active hai to fetchData khud hi limit=99999 use karega (see fetchData)
+        setCurrentPage(1);
+        if (isLoaded && user) {
+            fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [conditions, filterConjunction]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
@@ -1680,6 +1741,30 @@ export default function CRMSpreadsheetPage() {
         toast.success(`Matrix calibrated: ${view.name}`);
     };
 
+
+    const addHubColumns = async (type: 'sales' | 'remarks') => {
+        setIsAddingHubCols(true);
+        const tid = toast.loading(`Generating ${type} columns...`);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/columns/hub`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type })
+            });
+            if (res.ok) {
+                toast.success(`${type} columns initialized!`, { id: tid });
+                fetchData();
+            } else {
+                const json = await res.json();
+                toast.error(json.error || `Failed to create ${type} columns`, { id: tid });
+            }
+        } catch {
+            toast.error("Network error", { id: tid });
+        } finally {
+            setIsAddingHubCols(false);
+        }
+    };
+
     const handleClearFilters = () => {
         setConditions([]);
         setActiveViewId(null);
@@ -1824,10 +1909,10 @@ export default function CRMSpreadsheetPage() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 -mb-2 scrollbar-none scroll-smooth">
                         {/* Integrated Search & Actions */}
-                        <div className="flex items-center gap-2">
-                            <div className="relative group">
+                        <div className="flex flex-nowrap items-center gap-2 w-max shrink-0 pr-4">
+                            <div className="relative group shrink-0">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
                                 <input
                                     value={searchTerm}
@@ -1859,6 +1944,30 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <Calendar size={12} />
                                 Follow-up Board
+                            </button>
+
+                            <button
+                                onClick={() => setIsPaymentHubOpen(true)}
+                                className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-emerald-200 shadow-sm"
+                            >
+                                <IndianRupee size={12} />
+                                Payment Hub
+                            </button>
+                            <button
+                                onClick={() => setIsBulkImportOpen(true)}
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg"
+                            >
+                                <UploadCloud size={12} />
+                                Smart Update
+                            </button>
+
+                            <button
+                                onClick={() => setIsLeadAssignHubOpen(true)}
+                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
+                                title="Rapid Lead Distribution Hub"
+                            >
+                                <Sparkles size={12} />
+                                Lead Distribute
                             </button>
 
                             <button
@@ -2758,6 +2867,53 @@ export default function CRMSpreadsheetPage() {
                                                             </td>
                                                         );
                                                     }
+
+                                                    if (col.id === "__payment") {
+                                                        const payments = (res as any).payments || [];
+                                                        const totalAmount = payments.reduce((s: number, p: any) => s + p.amount, 0);
+                                                        const totalReceived = payments.reduce((s: number, p: any) => s + p.received, 0);
+                                                        const pending = totalAmount - totalReceived;
+                                                        const fmt = (n: number) => n > 0 ? `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}` : "—";
+                                                        return (
+                                                            <td
+                                                                key={col.id}
+                                                                style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors hover:bg-slate-50 relative text-center group/paymentcel ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
+                                                                }}
+                                                            >
+                                                                {(isMaster || isPureMaster) && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setIsPaymentHubOpen(true);
+                                                                        }}
+                                                                        className="absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 bg-white hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-slate-300 hover:text-emerald-600 rounded transition-all shadow-sm"
+                                                                        title="Open Full Payment Hub Dashboard"
+                                                                    >
+                                                                        <ExternalLink size={10} />
+                                                                    </button>
+                                                                )}
+
+                                                                {totalAmount > 0 ? (
+                                                                    <div className="flex flex-col items-center gap-0.5 mt-1">
+                                                                        <span className="text-[10px] font-black text-blue-700">{fmt(totalAmount)}</span>
+                                                                        <div className="flex gap-1">
+                                                                            <span className="text-[9px] font-bold text-emerald-600">✓{fmt(totalReceived)}</span>
+                                                                            {pending > 0 && <span className="text-[9px] font-bold text-rose-500">⏳{fmt(pending)}</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <button className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
+                                                                        <span>₹</span> Add
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    }
+
 
                                                     const isInternal = col.isInternal;
                                                     const isEditing = editingCell?.rowId === res.id && editingCell?.colId === col.id;
@@ -3680,14 +3836,36 @@ export default function CRMSpreadsheetPage() {
                                         })}
                                     </div>
                                 </div>
-                                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                                    <button
-                                        onClick={() => setIsColumnManagerOpen(false)}
-                                        className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
-                                    >
-                                        Apply Configuration
-                                    </button>
+
+                                <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+                                    {isMaster && (
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => addHubColumns('sales')}
+                                                disabled={isAddingHubCols}
+                                                className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                            >
+                                                + Sales Hub
+                                            </button>
+                                            <button
+                                                onClick={() => addHubColumns('remarks')}
+                                                disabled={isAddingHubCols}
+                                                className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
+                                            >
+                                                + Remark Hub
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end">
+                                        <button
+                                            onClick={() => setIsColumnManagerOpen(false)}
+                                            className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                                        >
+                                            Apply Configuration
+                                        </button>
+                                    </div>
                                 </div>
+
                             </motion.div>
                         </div>
                     )
@@ -4307,11 +4485,59 @@ export default function CRMSpreadsheetPage() {
                         userRole={userRole || 'GUEST'}
                         onClose={() => {
                             setOpenFollowUpModal(null);
-                            fetchData(); // Refresh to update count if changed
+                            fetchData();
                         }}
                     />
                 )
             }
+            {
+                openPaymentModal && (
+                    <PaymentHubModal
+                        formId={openPaymentModal.formId}
+                        responseId={openPaymentModal.responseId}
+                        userRole={userRole || 'GUEST'}
+                        onClose={() => {
+                            setOpenPaymentModal(null);
+                            fetchData();
+                        }}
+                        onSave={() => fetchData()}
+                    />
+                )
+            }
+            {
+                isPaymentHubOpen && (
+                    <PaymentHubDashboard
+                        formId={params.id as string}
+                        onClose={() => setIsPaymentHubOpen(false)}
+                    />
+                )
+            }
+            {/* BULK IMPORT MODAL */}
+            {isBulkImportOpen && (
+                <BulkImportModal
+                    formId={params.id as string}
+                    onClose={() => setIsBulkImportOpen(false)}
+                    onSuccess={() => {
+                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
+                        setIsBulkImportOpen(false);
+                    }}
+                    availableColumns={[
+                        { id: "__assigned", label: "Assigned To", isInternal: false },
+                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false })),
+                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true }))
+                    ]}
+                />
+            )}
+
+            {isLeadAssignHubOpen && (
+                <LeadAssignHub
+                    formId={params.id as string}
+                    onClose={() => setIsLeadAssignHubOpen(false)}
+                    responses={data?.responses || []}
+                    teamMembers={teamMembers}
+                    onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
+                />
+            )}
         </div >
     );
 }

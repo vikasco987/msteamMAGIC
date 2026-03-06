@@ -210,7 +210,9 @@ export async function GET(
                 include: {
                     values: true,
                     // @ts-ignore
-                    remarks: { orderBy: { createdAt: "desc" } }
+                    remarks: { orderBy: { createdAt: "desc" } },
+                    // @ts-ignore
+                    payments: { orderBy: { paymentDate: "desc" } }
                 },
                 orderBy,
                 skip,
@@ -241,38 +243,6 @@ export async function GET(
         // We also need the internal columns for the form (Done in Promise.all above)
         let processedInternalColumns = [...internalColumns];
 
-        // Ensure Default Columns (Recent Remark & Next Follow-up)
-        const hasRemarkCol = processedInternalColumns.some(c => c.label === "Recent Remark");
-        const hasFollowUpCol = processedInternalColumns.some(c => c.label === "Next Follow-up Date");
-
-        if (!hasRemarkCol || !hasFollowUpCol) {
-            const newCols = [];
-            if (!hasRemarkCol) {
-                const col = await prisma.internalColumn.create({
-                    data: {
-                        formId,
-                        label: "Recent Remark",
-                        type: "text",
-                        options: {},
-                        order: processedInternalColumns.length
-                    }
-                });
-                newCols.push(col);
-            }
-            if (!hasFollowUpCol) {
-                const col = await prisma.internalColumn.create({
-                    data: {
-                        formId,
-                        label: "Next Follow-up Date",
-                        type: "date",
-                        options: {},
-                        order: processedInternalColumns.length + (hasRemarkCol ? 0 : 1)
-                    }
-                });
-                newCols.push(col);
-            }
-            processedInternalColumns = [...processedInternalColumns, ...newCols].sort((a, b) => (a.order || 0) - (b.order || 0));
-        }
 
         // Filter columns by GAC for non-masters
         if (!isMasterRole) {
@@ -368,7 +338,7 @@ export async function PATCH(
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const { responseId, columnId, value, isInternal, formId, rowColor } = await req.json();
+        const { responseId, columnId, value, isInternal, formId, rowColor, assignedTo } = await req.json();
         const userName = `${user.firstName} ${user.lastName}`;
 
         // 🟢 ROW LEVEL UPDATE (Like Background Color)
@@ -378,6 +348,32 @@ export async function PATCH(
                 data: { rowColor: rowColor === "" ? null : rowColor }
             });
             return NextResponse.json({ success: true, message: "Row color updated" });
+        }
+
+        // 🟢 ASSIGNED TO UPDATE (System Column)
+        if (assignedTo !== undefined) {
+            const resp = await prisma.formResponse.findUnique({ where: { id: responseId } });
+            if (!resp) return NextResponse.json({ error: "Response not found" }, { status: 404 });
+
+            await prisma.formResponse.update({
+                where: { id: responseId },
+                data: { assignedTo: { set: assignedTo } }
+            });
+
+            // Activity Log
+            await prisma.formActivity.create({
+                data: {
+                    responseId,
+                    userId: user.id,
+                    userName: userName,
+                    type: "ASSIGNMENT_CHANGE",
+                    columnName: "Assigned Users",
+                    oldValue: (resp.assignedTo || []).join(", "),
+                    newValue: (assignedTo as string[]).join(", ")
+                }
+            });
+
+            return NextResponse.json({ success: true, message: "Assignments updated" });
         }
 
         // Permissions Check

@@ -4,14 +4,15 @@ import { currentUser } from "@clerk/nextjs/server";
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await params;
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const views = await prisma.savedView.findMany({
-            where: { formId: params.id },
+            where: { formId },
             orderBy: { createdAt: "desc" }
         });
 
@@ -24,9 +25,10 @@ export async function GET(
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await params;
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -35,7 +37,7 @@ export async function POST(
         const view = await prisma.savedView.create({
             data: {
                 name,
-                formId: params.id,
+                formId,
                 conditions,
                 conjunction,
                 createdBy: user.id
@@ -51,9 +53,10 @@ export async function POST(
 
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await params;
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
