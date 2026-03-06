@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
 
@@ -285,18 +285,25 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                             </div>
 
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm overflow-hidden">
-                                <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">{importMode === 'update' ? '4' : '3'}</span>
-                                    Preview ({Math.min(parsedData.length, previewLimit)} of {parsedData.length} rows)
-                                </h4>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full min-w-max text-left border-collapse">
-                                        <thead>
-                                            <tr>
+                                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                                    <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                                        <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">{importMode === 'update' ? '4' : '3'}</span>
+                                        Data Preview ({parsedData.length} records)
+                                    </h4>
+                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                                        You can delete rows before confirming
+                                    </p>
+                                </div>
+                                <div className="overflow-x-auto max-h-[400px]">
+                                    <table className="w-full min-w-max text-left border-separate border-spacing-0">
+                                        <thead className="sticky top-0 z-10">
+                                            <tr className="bg-slate-50">
+                                                <th className="p-3 border-b border-r border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">#</th>
+                                                <th className="p-3 border-b border-r border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider">Action</th>
                                                 {headers.map(h => (
-                                                    <th key={h} className="p-2 border-b border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                                    <th key={h} className="p-3 border-b border-r border-slate-200 text-[10px] font-black uppercase text-slate-500 tracking-wider min-w-[120px]">
                                                         {h}
-                                                        <div className="text-[9px] text-blue-500 mt-0.5">
+                                                        <div className={`text-[9px] mt-0.5 px-1.5 py-0.5 rounded inline-block ${headerMapping[h] && headerMapping[h] !== "SKIP" ? 'bg-indigo-100 text-indigo-700 font-black' : 'bg-slate-200 text-slate-500 font-bold'}`}>
                                                             {headerMapping[h] && headerMapping[h] !== "SKIP"
                                                                 ? availableColumns.find(c => c.id === headerMapping[h])?.label
                                                                 : "Skipped"}
@@ -306,16 +313,40 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {parsedData.slice(0, previewLimit).map((row, i) => (
-                                                <tr key={i} className="hover:bg-slate-50">
+                                            {parsedData.slice(0, 100).map((row, i) => (
+                                                <tr key={i} className="hover:bg-blue-50/30 transition-colors group">
+                                                    <td className="p-3 border-b border-r border-slate-100 text-[10px] font-bold text-slate-400 text-center">
+                                                        {i + 1}
+                                                    </td>
+                                                    <td className="p-3 border-b border-r border-slate-100 text-center">
+                                                        <button
+                                                            onClick={() => {
+                                                                const newData = [...parsedData];
+                                                                newData.splice(i, 1);
+                                                                setParsedData(newData);
+                                                                toast.success("Row removed from import", { id: 'row-del' });
+                                                            }}
+                                                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                            title="Remove row from this import"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </td>
                                                     {headers.map(h => (
-                                                        <td key={h} className={`p-2 border-b border-slate-100 text-xs ${headerMapping[h] && headerMapping[h] !== "SKIP" ? 'font-bold text-slate-700' : 'text-slate-400'
+                                                        <td key={h} className={`p-3 border-b border-r border-slate-100 text-xs ${headerMapping[h] && headerMapping[h] !== "SKIP" ? 'font-black text-slate-800' : 'text-slate-400 italic'
                                                             }`}>
-                                                            {row[h]?.toString().substring(0, 30) || "—"}
+                                                            {row[h]?.toString().substring(0, 50) || "—"}
                                                         </td>
                                                     ))}
                                                 </tr>
                                             ))}
+                                            {parsedData.length > 100 && (
+                                                <tr>
+                                                    <td colSpan={headers.length + 2} className="p-4 text-center bg-slate-50 text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                                        And {parsedData.length - 100} more rows...
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
