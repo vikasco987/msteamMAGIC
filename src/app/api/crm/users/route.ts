@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { users as clerkUsers } from "@clerk/clerk-sdk-node";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
@@ -13,10 +12,14 @@ export async function GET(req: NextRequest) {
         let reqLimit = parseInt(searchParams.get("limit") || "100");
         if (reqLimit > 500) reqLimit = 500;
 
-        const userList = await clerkUsers.getUserList({
-            query,
+        const clerk = await clerkClient();
+        const response = await clerk.users.getUserList({
+            query: query || undefined,
             limit: reqLimit
         });
+
+        // clerkClient returns { data: User[], totalCount: number }
+        const userList = response.data || [];
 
         const dbUsers = await prisma.user.findMany({
             where: { clerkId: { in: userList.map(u => u.id) } },
