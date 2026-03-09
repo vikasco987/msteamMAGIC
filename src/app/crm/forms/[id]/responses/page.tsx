@@ -225,7 +225,8 @@ const FILTER_OPERATORS = {
         { label: "Greater or Equal", value: "gte" },
         { label: "Less or Equal", value: "lte" },
         { label: "Between", value: "between" },
-        { label: "Is Empty", value: "is_empty" }
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ],
     date: [
         { label: "Is Today", value: "today" },
@@ -235,22 +236,27 @@ const FILTER_OPERATORS = {
         { label: "Is Tomorrow", value: "tomorrow" },
         { label: "This Week", value: "this_week" },
         { label: "Between", value: "between" },
-        { label: "Is Empty", value: "is_empty" }
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ],
     dropdown: [
         { label: "Is", value: "equals" },
         { label: "Is Not", value: "not_equals" },
         { label: "Is One Of", value: "one_of" },
-        { label: "Is Empty", value: "is_empty" }
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ],
     multi_select: [
         { label: "Contains", value: "contains" },
         { label: "Is One Of", value: "one_of" },
-        { label: "Is Empty", value: "is_empty" }
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ],
     checkbox: [
         { label: "Is Checked", value: "is_true" },
-        { label: "Is Unchecked", value: "is_false" }
+        { label: "Is Unchecked", value: "is_false" },
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ]
 };
 
@@ -2432,6 +2438,36 @@ export default function CRMSpreadsheetPage() {
                                                                                     </div>
                                                                                 </div>
                                                                             )}
+
+                                                                            {/* Universal Quick Filters: Is Empty / Is Not Empty */}
+                                                                            <div className="px-1 py-1 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-0.5 shrink-0">
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_empty');
+                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_empty')));
+                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_empty', val: '' }]);
+                                                                                    }}
+                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
+                                                                                >
+                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
+                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_empty') && <Check size={8} className="text-white" />}
+                                                                                    </div>
+                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'text-white' : 'text-slate-600'}`}>Is Empty</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_not_empty');
+                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_not_empty')));
+                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_not_empty', val: '' }]);
+                                                                                    }}
+                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
+                                                                                >
+                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
+                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') && <Check size={8} className="text-white" />}
+                                                                                    </div>
+                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'text-white' : 'text-slate-600'}`}>Is Not Empty</span>
+                                                                                </button>
+                                                                            </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
                                                                                 if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
@@ -3078,7 +3114,11 @@ export default function CRMSpreadsheetPage() {
                                             onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                                             className="bg-slate-50 border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0"
                                         >
-                                            {[10, 25, 50, 100].map(v => <option key={v} value={v}>{v}</option>)}
+                                            {[10, 25, 50, 100, 99999].map(v => (
+                                                <option key={v} value={v}>
+                                                    {v === 99999 ? 'Full' : v}
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div className="text-sm text-[#475467]">
