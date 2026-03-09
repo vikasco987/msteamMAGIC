@@ -93,8 +93,18 @@ export default function Sidebar() {
 
   // --- DYNAMIC PERMISSIONS ---
   const [dynamicPermissions, setDynamicPermissions] = useState<string[] | null>(null);
+  const [pinnedForms, setPinnedForms] = useState<any[]>([]);
 
   useEffect(() => {
+    const fetchPinned = () => {
+      fetch(`/api/crm/forms/pinned`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setPinnedForms(data);
+        })
+        .catch(err => console.error("Pinned forms fetch error:", err));
+    };
+
     if (isLoaded && userRole) {
       fetch(`/api/admin/sidebar/per-role?role=${userRole}`)
         .then(res => res.json())
@@ -102,6 +112,19 @@ export default function Sidebar() {
           if (data.sidebarItems) setDynamicPermissions(data.sidebarItems);
         })
         .catch(err => console.error("Sidebar permissions fetch error:", err));
+      
+      fetchPinned();
+
+      // Listen for updates
+      window.addEventListener('pinnedFormsUpdated', fetchPinned);
+      
+      // Auto-poll
+      const interval = setInterval(fetchPinned, 30000);
+
+      return () => {
+        window.removeEventListener('pinnedFormsUpdated', fetchPinned);
+        clearInterval(interval);
+      };
     }
   }, [isLoaded, userRole]);
 
@@ -197,6 +220,54 @@ export default function Sidebar() {
           {userRole !== 'user' && (
             <div className="space-y-2">
               <NotificationBell isCollapsed={isCollapsed} />
+            </div>
+          )}
+
+          {pinnedForms.length > 0 && (
+            <div className="space-y-2">
+              {!isCollapsed && (
+                <div className="flex items-center gap-2 px-4 mb-4">
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.25em]">
+                    Pinned Forms
+                  </h3>
+                  <div className="flex-1 h-px bg-slate-800/50" />
+                </div>
+              )}
+              {pinnedForms.map((form) => {
+                const href = `/crm/forms/${form.id}/responses`;
+                const isActive = pathname === href;
+                return (
+                  <Tooltip.Root key={form.id} delayDuration={0}>
+                    <Tooltip.Trigger asChild>
+                      <Link
+                        href={href}
+                        onClick={() => setIsMobileOpen(false)}
+                        className={`group flex items-center gap-3 px-4 py-3 rounded-[14px] transition-all relative
+                          ${isActive
+                            ? 'bg-indigo-600/20 text-indigo-400 ring-1 ring-indigo-500/30'
+                            : 'hover:bg-slate-800/50 hover:text-white text-slate-400'}`}
+                      >
+                        <FileSpreadsheet size={20} className={`shrink-0 ${isActive ? 'text-indigo-400' : 'group-hover:text-amber-400'}`} />
+                        {!isCollapsed && (
+                          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm font-bold truncate">
+                            {form.title}
+                          </motion.span>
+                        )}
+                        {isActive && !isCollapsed && (
+                          <motion.div layoutId="pinnedHighlight" className="absolute right-2 w-1 h-4 rounded-full bg-indigo-500" />
+                        )}
+                      </Link>
+                    </Tooltip.Trigger>
+                    {isCollapsed && (
+                      <Tooltip.Portal>
+                        <Tooltip.Content side="right" sideOffset={15} className="bg-slate-900 text-white text-[11px] font-black px-4 py-2 rounded-xl shadow-2xl border border-slate-800 z-[1000] uppercase tracking-widest">
+                          {form.title}
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    )}
+                  </Tooltip.Root>
+                );
+              })}
             </div>
           )}
 

@@ -64,7 +64,9 @@ import {
     Send,
     BarChart3,
     CloudOff,
-    Wifi
+    Wifi,
+    Pin,
+    PinOff
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
@@ -85,6 +87,59 @@ const getExcelLabel = (index: number): string => {
         index = Math.floor(index / 26) - 1;
     }
     return label;
+};
+
+const getColumnGroup = (col: any) => {
+    if (["__profile", "__assigned"].includes(col.id)) return "OPERATIONAL";
+    if (["__submittedAt", "__contributor"].includes(col.id) || !col.isInternal) return "LEAD_INFO";
+    if (col.id === "__payment" || col.label?.toLowerCase().includes("amount") || col.type === "currency") return "FINANCIALS";
+    if (["__followup", "__recentRemark", "__nextFollowUpDate", "__followUpStatus", "__nextFollow up date"].includes(col.id) || col.isInternal) return "CRM_TRACKING";
+    return "OTHERS";
+};
+
+const getGroupStyle = (group: string) => {
+    switch (group) {
+        case "OPERATIONAL": return { 
+            bg: "bg-indigo-50/50", 
+            headerBg: "bg-indigo-100/50",
+            text: "text-indigo-600", 
+            accent: "bg-indigo-500", 
+            border: "border-indigo-200",
+            label: "Operations" 
+        };
+        case "LEAD_INFO": return { 
+            bg: "bg-blue-50/50", 
+            headerBg: "bg-blue-100/50",
+            text: "text-blue-600", 
+            accent: "bg-blue-500", 
+            border: "border-blue-200", 
+            label: "Lead Entry" 
+        };
+        case "FINANCIALS": return { 
+            bg: "bg-emerald-50/50", 
+            headerBg: "bg-emerald-100/50",
+            text: "text-emerald-600", 
+            accent: "bg-emerald-500", 
+            border: "border-emerald-200", 
+            label: "Financials" 
+        };
+        case "CRM_TRACKING": return { 
+            bg: "bg-amber-50/50", 
+            headerBg: "bg-amber-100/50",
+            text: "text-amber-600", 
+            accent: "bg-amber-500", 
+            border: "border-amber-200", 
+            label: "CRM Tracking" 
+        };
+        default: return { 
+            bg: "bg-slate-50/50", 
+            headerBg: "bg-slate-100/50",
+            text: "text-slate-600", 
+            accent: "bg-slate-500", 
+            border: "border-slate-200", 
+            label: "Core Data" 
+        };
+    }
 };
 
 interface FormField {
@@ -393,6 +448,25 @@ export default function CRMSpreadsheetPage() {
     const [accessUserResults, setAccessUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
     // Granular Access Control (GAC)
+    const [isPinned, setIsPinned] = useState(false);
+
+    const togglePin = async () => {
+        const previousState = isPinned;
+        setIsPinned(!isPinned);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/pin`, { method: "PATCH" });
+            if (!res.ok) throw new Error("Pin failed");
+            const json = await res.json();
+            setIsPinned(json.isPinned);
+            if (json.isPinned) toast.success("Pinned to sidebar", { icon: "📌" });
+            else toast.success("Unpinned from sidebar");
+            window.dispatchEvent(new Event('pinnedFormsUpdated'));
+        } catch (err) {
+            setIsPinned(previousState);
+            toast.error("Could not update pin");
+        }
+    };
+
     const [accessTab, setAccessTab] = useState<"GLOBAL" | "COLUMNS">("GLOBAL");
     const [colPermissions, setColPermissions] = useState<{ roles: any, users: any }>({ roles: {}, users: {} });
     const [selectedRoleForGAC, setSelectedRoleForGAC] = useState<string>("ADMIN");
@@ -597,6 +671,11 @@ export default function CRMSpreadsheetPage() {
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
+
+            // Set Pinned State
+            if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
+                setIsPinned(json.form.pinnedBy.includes(json.clerkId));
+            }
 
             // Save safe cache
             localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(json));
@@ -1228,22 +1307,34 @@ export default function CRMSpreadsheetPage() {
                     const isInternal = col?.isInternal;
 
                     if (colId === "__assigned") {
-                        return (conds as any[]).some((cond: any) => {
+                        const result = (conds as any[]).some((cond: any) => {
                             const targetId = (cond.val || "").toString();
-                            const rawAssigned = r.assignedTo || [];
-                            const rawVisible = r.visibleToUsers || [];
+                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
+                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
                             const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                             const isUnassigned = rawAssigned.length === 0;
                             const isSubmitter = r.submittedBy === targetId;
 
+                            let match = false;
                             if (cond.op === "equals" || cond.op === "contains") {
-                                return isAssigned || (isUnassigned && isSubmitter);
+                                match = isAssigned || (isUnassigned && isSubmitter);
+                            } else if (cond.op === "is_empty") {
+                                match = isUnassigned && !r.submittedBy;
+                            } else if (cond.op === "is_not_empty") {
+                                match = !isUnassigned || !!r.submittedBy;
+                            } else if (cond.op === "not_equals") {
+                                match = !isAssigned && !(isUnassigned && isSubmitter);
                             }
-                            if (cond.op === "is_empty") return isUnassigned && !r.submittedBy;
-                            if (cond.op === "is_not_empty") return !isUnassigned || !!r.submittedBy;
-                            if (cond.op === "not_equals") return !isAssigned && !(isUnassigned && isSubmitter);
-                            return false;
+
+                            if (targetId) {
+                                console.log(`[FilterDebug] Row:${r.id.slice(-4)} | Target:${targetId} | Op:${cond.op}`);
+                                console.log(`  - r.assignedTo:`, JSON.stringify(rawAssigned));
+                                console.log(`  - r.submittedBy:`, r.submittedBy);
+                                console.log(`  - Flags: isAssigned:${isAssigned}, isUnassigned:${isUnassigned}, isSubmitter:${isSubmitter} => Match:${match}`);
+                            }
+                            return match;
                         });
+                        return result;
                     }
 
                     const cellVal = getCellValue(r.id, colId, isInternal || false);
@@ -1929,6 +2020,13 @@ export default function CRMSpreadsheetPage() {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                                <button
+                                    onClick={togglePin}
+                                    className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                    title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
+                                >
+                                    {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
+                                </button>
                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                     <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{isPureMaster ? "Master Core" : "Live Matrix"}</span>
@@ -2352,20 +2450,37 @@ export default function CRMSpreadsheetPage() {
                                 className={`table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
                             >
                                 <thead className="sticky top-0 z-[40]">
-                                    {/* Excel Column Labels Header */}
-                                    <tr className="bg-slate-100 divide-x divide-slate-200 h-8">
+                                    {/* Excel Column Labels Header with Group Indication */}
+                                    <tr className="bg-slate-50 divide-x divide-slate-100 h-9 transition-colors">
                                         <th className={`sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0]`}>
                                             #
                                         </th>
-                                        {getColumns.map((col, idx) => (
-                                            <th
-                                                key={`excel-label-${col.id}`}
-                                                className="bg-slate-100 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase p-0 h-8 text-center"
-                                                style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
-                                            >
-                                                {getExcelLabel(idx)}
-                                            </th>
-                                        ))}
+                                        {getColumns.map((col, idx) => {
+                                            const groupKey = getColumnGroup(col);
+                                            const style = getGroupStyle(groupKey);
+                                            const prevGroupKey = idx > 0 ? getColumnGroup(getColumns[idx - 1]) : null;
+                                            const isGroupStart = groupKey !== prevGroupKey;
+
+                                            return (
+                                                <th
+                                                    key={`excel-label-${col.id}`}
+                                                    className={`${style.headerBg} border-b border-slate-200 text-[9px] font-black text-slate-400 uppercase p-0 h-9 text-center relative overflow-hidden`}
+                                                    style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
+                                                >
+                                                    <div className="flex flex-col items-center justify-center h-full">
+                                                        {isGroupStart && (
+                                                            <div className={`absolute top-0 left-0 right-0 h-1 ${style.accent}`} />
+                                                        )}
+                                                        {isGroupStart ? (
+                                                            <span className={`${style.text} text-[7px] tracking-[0.2em] mb-0.5 opacity-80 uppercase`}>{style.label}</span>
+                                                        ) : (
+                                                            <div className="h-2" />
+                                                        )}
+                                                        <span className="opacity-40">{getExcelLabel(idx)}</span>
+                                                    </div>
+                                                </th>
+                                            );
+                                        })}
                                     </tr>
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0] h-14">
                                         <th className={`px-4 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] shadow-[1px_0_0_#EAECF0] ${isPureMaster ? 'w-[70px]' : 'w-[56px]'}`}>
@@ -2382,6 +2497,8 @@ export default function CRMSpreadsheetPage() {
                                         {getColumns.map((col, cIdx) => {
                                             const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
                                             const isSticky = cIdx < 2;
+                                            const groupKey = getColumnGroup(col);
+                                            const style = getGroupStyle(groupKey);
 
                                             // Dynamic left offset
                                             let leftOffset = isPureMaster ? 70 : 50;
@@ -2400,11 +2517,11 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky bg-[#F9FAFB] z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${col.isInternal ? 'text-indigo-600 bg-indigo-50/30' : 'text-[#475467]'}`}
+                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${style.bg} ${style.text}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={10} className={col.isInternal ? "text-indigo-600 shrink-0" : "text-[#667085] shrink-0"} />
+                                                            <TypeIcon size={10} className={`${style.text} shrink-0`} />
                                                             <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
                                                         </div>
 
@@ -4657,6 +4774,37 @@ export default function CRMSpreadsheetPage() {
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
             )}
-        </div >
+            {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
+            <motion.button
+                initial={{ scale: 0, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.1, y: -5 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                className={`fixed bottom-10 right-10 z-[101] w-16 h-16 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex flex-col items-center justify-center transition-all duration-500 border-2 backdrop-blur-xl group ${
+                    isFullScreen 
+                    ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40' 
+                    : 'bg-indigo-600/90 text-white border-indigo-400/50'
+                }`}
+                title={isFullScreen ? "Exit Full View" : "Enable Full Table View"}
+            >
+                <div className="relative">
+                    {isFullScreen ? (
+                        <Minimize2 size={22} className="group-hover:scale-110 transition-transform duration-500" />
+                    ) : (
+                        <Maximize2 size={22} className="group-hover:scale-110 transition-transform duration-500" />
+                    )}
+                    <div className={`absolute -inset-4 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${isFullScreen ? 'bg-slate-500/20' : 'bg-white/20'}`} />
+                </div>
+                <span className="text-[7px] font-black uppercase tracking-[0.1em] mt-1.5 opacity-60 group-hover:opacity-100 transition-all">
+                    {isFullScreen ? "Focus Off" : "Full Table"}
+                </span>
+                
+                {/* Glow Effect */}
+                {!isFullScreen && (
+                    <div className="absolute inset-0 bg-indigo-500/20 rounded-3xl blur-md -z-10 animate-pulse" />
+                )}
+            </motion.button>
+        </div>
     );
 }

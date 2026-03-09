@@ -20,7 +20,9 @@ import {
     Check,
     X,
     UserPlus,
-    Edit3
+    Edit3,
+    Pin,
+    PinOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -37,6 +39,7 @@ interface FormSummary {
     createdAt: string;
     createdByName: string;
     _count: { responses: number };
+    pinnedBy?: string[];
     visibleToRoles?: string[];
     visibleToUsers?: string[];
     visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
@@ -163,6 +166,22 @@ export default function CRMFormsList() {
         toast.success("Public Link Copied!");
     };
 
+    const togglePin = async (formId: string) => {
+        try {
+            const res = await fetch(`/api/crm/forms/${formId}/pin`, { method: "PATCH" });
+            if (res.ok) {
+                const json = await res.json();
+                setForms(prev => prev.map(f =>
+                    f.id === formId ? { ...f, pinnedBy: json.isPinned ? [...(f.pinnedBy || []), user?.id || ""] : (f.pinnedBy || []).filter(uid => uid !== user?.id) } : f
+                ));
+                toast.success(json.isPinned ? "Pinned to sidebar" : "Unpinned from sidebar", { icon: json.isPinned ? "📌" : undefined });
+                window.dispatchEvent(new Event('pinnedFormsUpdated'));
+            }
+        } catch (err) {
+            toast.error("Pin failed");
+        }
+    };
+
     const deleteForm = async (id: string) => {
         if (!confirm("Are you sure? All responses will be deleted.")) return;
         try {
@@ -262,6 +281,13 @@ export default function CRMFormsList() {
                                                 </div>
                                                 {isMaster && (
                                                     <div className="flex items-center gap-1 self-start">
+                                                        <button
+                                                            onClick={() => togglePin(form.id)}
+                                                            className={`p-3 rounded-xl transition-all ${form.pinnedBy?.includes(user?.id || "") ? 'text-indigo-600 bg-indigo-50' : 'text-slate-200 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                            title={form.pinnedBy?.includes(user?.id || "") ? "Unpin from sidebar" : "Pin to sidebar"}
+                                                        >
+                                                            {form.pinnedBy?.includes(user?.id || "") ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
+                                                        </button>
                                                         <button
                                                             onClick={() => handleOpenAccessModal(form)}
                                                             className="p-3 text-slate-200 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
