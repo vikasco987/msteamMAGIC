@@ -971,7 +971,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
-        (data.responses || []).forEach((res: any) => {
+        const responsesSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+        responsesSource.forEach((res: any) => {
             const rawAssigned = res.assignedTo || [];
             const rawVisible = res.visibleToUsers || [];
             const defaultVisibleIds: string[] = [];
@@ -1051,7 +1052,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
-        (data.responses || []).forEach((res: any) => {
+        const responsesSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+        responsesSource.forEach((res: any) => {
             const rawAssigned = res.assignedTo || [];
             const rawVisible = res.visibleToUsers || [];
             const defaultVisibleIds: string[] = [];
@@ -1206,6 +1208,7 @@ export default function CRMSpreadsheetPage() {
             const term = searchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
+                (getCellValue(r.id, "__assigned", false) || "").toLowerCase().includes(term) ||
                 (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
             );
         }
@@ -1231,7 +1234,7 @@ export default function CRMSpreadsheetPage() {
                         const targetVal2 = (cond.val2 || "").toString().toLowerCase();
 
                         switch (cond.op) {
-                            case "equals": return val === targetVal;
+                            case "equals": return val === targetVal || (colId === "__assigned" && val.includes(targetVal));
                             case "not_equals": return val !== targetVal;
                             case "contains": return val.includes(targetVal);
                             case "one_of": {
