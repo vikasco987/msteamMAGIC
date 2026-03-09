@@ -442,3 +442,13 @@ model FormPayment {
   @@index([formId])
   @@index([paymentDate])
 }
+
+model SidebarPermission {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  role            String   @unique
+  sidebarItems    String[] // List of sidebar item labels visible for this role
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+

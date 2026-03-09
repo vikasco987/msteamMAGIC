@@ -186,3 +186,49 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id: taskId } = await context.params;
+  const originalTaskId = await getEffectiveTaskId(taskId);
+  const user = await currentUser();
+  const role = (user?.publicMetadata?.role as string || "").toLowerCase();
+
+  if (role !== "master") {
+    return NextResponse.json({ error: "Only masters can delete proofs" }, { status: 403 });
+  }
+
+  try {
+    const { url } = await req.json();
+    if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
+
+    const existingTask = await prisma.task.findUnique({
+      where: { id: originalTaskId },
+      select: { paymentProofs: true, title: true, customFields: true },
+    });
+
+    if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+    const updatedProofs = (existingTask.paymentProofs || []).filter(p => p !== url);
+
+    const updatedTask = await prisma.task.update({
+      where: { id: originalTaskId },
+      data: { paymentProofs: updatedProofs },
+    });
+
+    const userName = user?.firstName || "Admin";
+    await logActivity({
+      taskId: originalTaskId,
+      type: "PAYMENT_DELETED",
+      content: `A payment proof was deleted.`,
+      author: userName,
+      authorId: userId
+    });
+
+    return NextResponse.json({ success: true, task: updatedTask });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

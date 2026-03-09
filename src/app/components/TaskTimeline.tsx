@@ -637,6 +637,7 @@ export default function TaskTimeline() {
               alt={assigneeMap[id]?.name || "Avatar"}
               width={32}
               height={32}
+              unoptimized
               className={`w-8 h-8 rounded-full cursor-pointer border-2 ${selectedAvatar === id ? "border-blue-500" : "border-transparent"}`}
               onClick={() => setSelectedAvatar(prev => prev === id ? null : id)}
               title={assigneeMap[id]?.name || id}
@@ -814,6 +815,7 @@ export default function TaskTimeline() {
                         key={id}
                         src={assigneeMap[id]?.imageUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`}
                         alt="Assignee" width={32} height={32} title={assigneeMap[id]?.name || id}
+                        unoptimized
                         className="w-8 h-8 rounded-full border-2 border-white shadow-sm"
                       />
                     )) || <p className="text-sm text-gray-400">No assignees</p>}
@@ -869,7 +871,7 @@ export default function TaskTimeline() {
                                   onClick={() => insertMention(u)}
                                   className="w-full text-left p-2 hover:bg-blue-50 flex items-center gap-3 transition-colors"
                                 >
-                                  <Image src={u.imageUrl} alt={u.name} width={24} height={24} className="rounded-full" />
+                                  <Image src={u.imageUrl} alt={u.name} width={24} height={24} className="rounded-full" unoptimized />
                                   <div>
                                     <div className="text-sm font-medium text-gray-800">{u.name}</div>
                                     <div className="text-[10px] text-gray-400">{u.email}</div>
