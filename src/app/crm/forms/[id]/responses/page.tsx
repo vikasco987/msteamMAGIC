@@ -257,6 +257,13 @@ const FILTER_OPERATORS = {
         { label: "Is Unchecked", value: "is_false" },
         { label: "Is Empty", value: "is_empty" },
         { label: "Is Not Empty", value: "is_not_empty" }
+    ],
+    user: [
+        { label: "Contains User", value: "contains" },
+        { label: "Is Exact Match", value: "equals" },
+        { label: "Is Not", value: "not_equals" },
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ]
 };
 
@@ -963,11 +970,12 @@ export default function CRMSpreadsheetPage() {
     const getColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
+        const teamOptions = teamMembers.map(tm => ({ label: tm.email, value: tm.email }));
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "user", options: teamOptions }
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
@@ -1023,16 +1031,17 @@ export default function CRMSpreadsheetPage() {
         }
 
         return ordered.filter(c => !hiddenColumns.includes(c.id));
-    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster, isPureMaster]);
+    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster, isPureMaster, teamMembers]);
 
     const allColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
+        const teamOptions = teamMembers.map(tm => ({ label: tm.email, value: tm.email }));
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "user", options: teamOptions }
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
@@ -1062,7 +1071,7 @@ export default function CRMSpreadsheetPage() {
             });
         }
         return ordered;
-    }, [data, columnOrder]);
+    }, [data, columnOrder, teamMembers]);
 
     const moveColumn = (index: number, direction: 'up' | 'down') => {
         const currentOrder = allColumns.map(c => c.id);
@@ -2470,8 +2479,12 @@ export default function CRMSpreadsheetPage() {
                                                                             </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
-                                                                                if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
+                                                                                if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
+                                                                                        if (col.type === "user" && typeof o === 'string') {
+                                                                                            const email = teamMembers.find(t => t.clerkId === o)?.email || o;
+                                                                                            return { label: email, value: email };
+                                                                                        }
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
                                                                                     });
@@ -2510,7 +2523,9 @@ export default function CRMSpreadsheetPage() {
                                                                                                 if (isSelected) {
                                                                                                     setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
                                                                                                 } else {
-                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: 'equals', val: opt.value }]);
+                                                                                                    let autoOp = 'equals';
+                                                                                                    if (col.type === "multi_select" || col.type === "user") autoOp = 'contains';
+                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
                                                                                                 }
                                                                                             }}
                                                                                             className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 group/btn"
@@ -3384,27 +3399,29 @@ export default function CRMSpreadsheetPage() {
                                                             <>
                                                                 {colType === "date" ? (
                                                                     <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                ) : colType === "dropdown" || colType === "multi_select" ? (
+                                                                ) : colType === "dropdown" || colType === "multi_select" || colType === "user" ? (
                                                                     <div className="flex-1 flex flex-col gap-2">
                                                                         {c.op === "one_of" ? (
                                                                             <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
                                                                                 {Array.isArray(col?.options) && col?.options.map((opt: any) => {
+                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
+                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
                                                                                     const currentVals = String(c.val || "").split(",").map(v => v.trim()).filter(Boolean);
-                                                                                    const isSelected = currentVals.includes(opt.label);
+                                                                                    const isSelected = currentVals.includes(optLabel);
                                                                                     return (
                                                                                         <button
-                                                                                            key={opt.label}
+                                                                                            key={optLabel}
                                                                                             onClick={() => {
                                                                                                 const n = [...conditions];
                                                                                                 const newVals = isSelected
-                                                                                                    ? currentVals.filter(v => v !== opt.label)
-                                                                                                    : [...currentVals, opt.label];
+                                                                                                    ? currentVals.filter(v => v !== optLabel)
+                                                                                                    : [...currentVals, optLabel];
                                                                                                 n[i].val = newVals.join(",");
                                                                                                 setConditions(n);
                                                                                             }}
                                                                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
                                                                                         >
-                                                                                            {opt.label}
+                                                                                            {optLabel}
                                                                                         </button>
                                                                                     );
                                                                                 })}
@@ -3413,7 +3430,11 @@ export default function CRMSpreadsheetPage() {
                                                                         ) : (
                                                                             <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
                                                                                 <option value="">Value...</option>
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
+                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
+                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
+                                                                                    return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                                                                })}
                                                                             </select>
                                                                         )}
                                                                     </div>
