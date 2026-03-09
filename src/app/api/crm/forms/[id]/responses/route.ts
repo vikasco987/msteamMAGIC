@@ -175,6 +175,7 @@ export async function GET(
                         columnFilters.push({
                             OR: [
                                 { assignedTo: { has: val } },
+                                { visibleToUsers: { has: val } },
                                 { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: val }] }
                             ]
                         });

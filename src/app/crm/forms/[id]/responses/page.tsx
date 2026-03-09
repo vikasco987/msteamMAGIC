@@ -1284,13 +1284,14 @@ export default function CRMSpreadsheetPage() {
                     return conditionMatches.some(m => m);
                 });
 
-                // Override for __assigned to handle Submitter fallback logic
+                // Match based on selected team IDs
                 const assignedConditions = groupedConditions["__assigned"];
                 if (assignedConditions) {
                     const matchesAnyAssigned = assignedConditions.some((cond: any) => {
                         const targetId = (cond.val || "").toString();
                         const rawAssigned = r.assignedTo || [];
-                        const isAssigned = rawAssigned.includes(targetId);
+                        const rawVisible = r.visibleToUsers || [];
+                        const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                         const isUnassigned = rawAssigned.length === 0;
                         const isSubmitter = r.submittedBy === targetId;
 
@@ -1302,10 +1303,13 @@ export default function CRMSpreadsheetPage() {
                         return false;
                     });
 
-                    // Overwrite the group result for __assigned
-                    const assignedIndex = Object.keys(groupedConditions).indexOf("__assigned");
-                    if (assignedIndex > -1) {
-                        groupMatches[assignedIndex] = matchesAnyAssigned;
+                    // Overwrite the group check result specifically for the __assigned ID
+                    const assignedGroupKey = Object.keys(groupedConditions).find(k => k === "__assigned");
+                    if (assignedGroupKey) {
+                        const groupIdx = Object.keys(groupedConditions).indexOf(assignedGroupKey);
+                        if (groupIdx !== -1) {
+                            groupMatches[groupIdx] = matchesAnyAssigned;
+                        }
                     }
                 }
 

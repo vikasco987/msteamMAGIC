@@ -10,6 +10,8 @@ type UserReport = {
     name: string;
     email: string;
     callCount: number;
+    connectedCount: number;
+    notConnectedCount: number;
 };
 
 export default function CallReportPage() {
@@ -123,11 +125,21 @@ export default function CallReportPage() {
                             <div className="mt-10 pt-8 border-t border-slate-50 flex items-end justify-between">
                                 <div>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Distinct Calls Logged</p>
-                                    <div className="flex items-baseline gap-2">
+                                    <div className="flex items-baseline gap-2 mb-4">
                                         <span className={`text-6xl font-black tracking-tighter ${idx === 0 ? 'text-indigo-600' : 'text-slate-800'}`}>
                                             {user.callCount}
                                         </span>
                                         <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Leads</span>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">Connected: {user.connectedCount || 0}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-rose-500" />
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Not Connected: {user.notConnectedCount || 0}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${idx === 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-200'}`}>

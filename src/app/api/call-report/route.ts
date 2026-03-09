@@ -44,46 +44,62 @@ export async function GET(req: Request) {
                 authorName: true,
                 authorEmail: true,
                 createdById: true,
-                responseId: true
+                responseId: true,
+                followUpStatus: true
             }
         });
 
-        // Group by User
-        // 1 row = 1 call max per user. If a user made 10 remarks on the same response in a single day, it's 1 call.
-        
-        type UserStats = {
-            id: string;
-            name: string;
-            email: string;
-            uniqueResponses: Set<string>;
-        };
+        type UserStatusMap = Map<string, { connected: boolean; notConnected: boolean }>;
+        const userGroupMap = new Map<string, UserStatusMap>();
 
-        const userMap = new Map<string, UserStats>();
+        const connectedStatuses = ["Call done", "Walked In", "Follow-up Done", "Closed", "Scheduled", "Called", "Not interested", "Call Again"];
+        const notConnectedStatuses = ["RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Missed"];
 
         for (const r of remarks) {
             const userId = r.createdById || r.authorEmail || r.authorName || "Unknown";
-            
-            if (!userMap.has(userId)) {
-                userMap.set(userId, {
-                    id: userId,
-                    name: r.authorName || "Unknown User",
-                    email: r.authorEmail || "",
-                    uniqueResponses: new Set<string>()
-                });
+            const responseId = r.responseId;
+
+            if (!userGroupMap.has(userId)) {
+                userGroupMap.set(userId, new Map());
             }
 
-            // Ensure unique responses only
-            userMap.get(userId)!.uniqueResponses.add(r.responseId);
+            const responseMap = userGroupMap.get(userId)!;
+            if (!responseMap.has(responseId)) {
+                responseMap.set(responseId, { connected: false, notConnected: false });
+            }
+
+            const status = responseMap.get(responseId)!;
+            if (connectedStatuses.includes(r.followUpStatus || "")) {
+                status.connected = true;
+            } else if (notConnectedStatuses.includes(r.followUpStatus || "")) {
+                status.notConnected = true;
+            }
         }
 
-        const report = Array.from(userMap.values()).map(u => ({
-            userId: u.id,
-            name: u.name,
-            email: u.email,
-            callCount: u.uniqueResponses.size
-        }));
+        const report = Array.from(userGroupMap.entries()).map(([userId, responseMap]) => {
+            let totalRecords = responseMap.size;
+            let connected = 0;
+            let notConnected = 0;
 
-        // Sort by highest call count
+            responseMap.forEach(s => {
+                if (s.connected) connected++;
+                else if (s.notConnected) notConnected++;
+            });
+
+            // Need to retrieve user name/email from the first remark found for this user
+            const firstRemark = remarks.find(r => (r.createdById || r.authorEmail || r.authorName || "Unknown") === userId);
+
+            return {
+                userId,
+                name: firstRemark?.authorName || "Unknown User",
+                email: firstRemark?.authorEmail || "",
+                callCount: totalRecords,
+                connectedCount: connected,
+                notConnectedCount: notConnected
+            };
+        });
+
+        // Sort by highest unique call count
         report.sort((a, b) => b.callCount - a.callCount);
 
         return NextResponse.json({ report });
