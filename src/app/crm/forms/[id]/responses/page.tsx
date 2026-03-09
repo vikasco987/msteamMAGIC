@@ -970,10 +970,18 @@ export default function CRMSpreadsheetPage() {
     const getColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
-        const teamOptions = teamMembers.map(tm => {
-            const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-            return { label: name, value: name };
+        const assignedIds = new Set<string>();
+        (data.responses || []).forEach((res: any) => {
+            if (Array.isArray(res.assignedTo)) {
+                res.assignedTo.forEach((uid: string) => assignedIds.add(uid));
+            }
         });
+        const teamOptions = teamMembers
+            .filter(tm => assignedIds.has(tm.clerkId))
+            .map(tm => {
+                const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+                return { label: name, value: name };
+            });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
@@ -1039,10 +1047,18 @@ export default function CRMSpreadsheetPage() {
     const allColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
-        const teamOptions = teamMembers.map(tm => {
-            const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-            return { label: name, value: name };
+        const assignedIds = new Set<string>();
+        (data.responses || []).forEach((res: any) => {
+            if (Array.isArray(res.assignedTo)) {
+                res.assignedTo.forEach((uid: string) => assignedIds.add(uid));
+            }
         });
+        const teamOptions = teamMembers
+            .filter(tm => assignedIds.has(tm.clerkId))
+            .map(tm => {
+                const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+                return { label: name, value: name };
+            });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
@@ -3011,11 +3027,14 @@ export default function CRMSpreadsheetPage() {
                                                                             })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
-                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                            <option value="">Assigned To...</option>
-                                                                            {teamMembers
-                                                                                .filter(m => !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.includes(m.clerkId)))
-                                                                                .map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
+                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                                <option value="">Assigned To...</option>
+                                                                                {teamMembers
+                                                                                    .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
+                                                                                    .map(m => {
+                                                                                        const name = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : m.email.split('@')[0];
+                                                                                        return <option key={m.clerkId} value={m.clerkId}>{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
+                                                                                    })}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
                                                                         <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
