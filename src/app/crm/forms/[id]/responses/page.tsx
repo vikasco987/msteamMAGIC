@@ -322,6 +322,13 @@ const FILTER_OPERATORS = {
     ]
 };
 
+const getFallbackAvatar = (userId: string, imageUrl?: string | null) => {
+    if (imageUrl && !imageUrl.includes("default") && !imageUrl.includes("gravatar") && imageUrl.trim() !== "") return imageUrl;
+    const sum = (userId || "unknown").split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const index = (sum % 5) + 1;
+    return `/avatars/${index}.png`;
+};
+
 export default function CRMSpreadsheetPage() {
     const { user, isLoaded } = useUser();
     const router = useRouter();
@@ -2337,13 +2344,7 @@ export default function CRMSpreadsheetPage() {
                                             <div className="flex items-center gap-2.5">
                                                 <div className="relative">
                                                     <div className="relative w-10 h-10 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white font-black text-xs overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500">
-                                                        {authorImage ? (
-                                                            <img src={authorImage} alt="author" className="w-full h-full object-cover" title={authorName} />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center">
-                                                                {authorName[0].toUpperCase()}
-                                                            </div>
-                                                        )}
+                                                        <img src={getFallbackAvatar(author?.clerkId || latestRemarkFull?.createdById || res.id, authorImage)} alt="author" className="w-full h-full object-cover" title={authorName} />
                                                     </div>
                                                     {followUpCount > 0 && (
                                                         <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Total interaction count">
@@ -2420,11 +2421,7 @@ export default function CRMSpreadsheetPage() {
                                     const initial = (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?');
                                     return (
                                         <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                            {m.imageUrl ? (
-                                                <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                            ) : (
-                                                initial
-                                            )}
+                                            <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                         </div>
                                     );
                                 })}
@@ -2442,11 +2439,7 @@ export default function CRMSpreadsheetPage() {
                                         return (
                                             <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
                                                 <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900 overflow-hidden">
-                                                    {m.imageUrl ? (
-                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?')
-                                                    )}
+                                                    <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center justify-between gap-2">
@@ -2924,10 +2917,7 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
                                                                         {(() => {
                                                                             const m = teamMembers.find(t => t.clerkId === res.submittedBy);
-                                                                            if (m?.imageUrl) {
-                                                                                return <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />;
-                                                                            }
-                                                                            return res.submittedByName ? (res.submittedByName[0]?.toUpperCase() || 'U') : 'U';
+                                                                            return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
                                                                     <div className="min-w-0">
@@ -2972,11 +2962,7 @@ export default function CRMSpreadsheetPage() {
                                                                             const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
                                                                                 <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                                                                    {m?.imageUrl ? (
-                                                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                                                                    ) : (
-                                                                                        initial
-                                                                                    )}
+                                                                                    <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                                                 </div>
                                                                             );
                                                                         })}
@@ -3030,9 +3016,7 @@ export default function CRMSpreadsheetPage() {
                                                                                     return (
                                                                                         <div key={uid} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 transition-colors">
                                                                                             <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden shadow-sm border border-slate-200 shrink-0 flex items-center justify-center text-[10px] font-black text-slate-600">
-                                                                                                {m?.imageUrl ? (
-                                                                                                    <img src={m.imageUrl} alt="img" className="w-full h-full object-cover" />
-                                                                                                ) : initialStr}
+                                                                                                <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="img" className="w-full h-full object-cover" />
                                                                                             </div>
                                                                                             <div className="flex-1 min-w-0">
                                                                                                 <div className="flex items-center gap-2">
@@ -3441,8 +3425,8 @@ export default function CRMSpreadsheetPage() {
                                                             {(() => {
                                                                 const latestRemark = item.remarks?.[0];
                                                                 const author = teamMembers.find(m => m.clerkId === latestRemark?.createdById);
-                                                                if (author?.imageUrl) return <img src={author.imageUrl} title={author.name} className="w-full h-full object-cover" />;
-                                                                return latestRemark?.authorName?.[0] || item.submittedByName?.[0] || "?";
+                                                                const fallbackId = author?.clerkId || latestRemark?.createdById || item.submittedBy || item.id;
+                                                                return <img src={getFallbackAvatar(fallbackId, author?.imageUrl)} title={author?.name || latestRemark?.authorName || item.submittedByName || "User"} className="w-full h-full object-cover" />;
                                                             })()}
                                                         </div>
                                                         {item.remarks?.length > 0 && (
