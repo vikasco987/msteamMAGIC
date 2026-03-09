@@ -984,7 +984,7 @@ export default function CRMSpreadsheetPage() {
             .filter(tm => assignedIds.has(tm.clerkId))
             .map(tm => {
                 const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-                return { label: name, value: name };
+                return { label: name, value: tm.clerkId };
             });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
@@ -1065,7 +1065,7 @@ export default function CRMSpreadsheetPage() {
             .filter(tm => assignedIds.has(tm.clerkId))
             .map(tm => {
                 const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-                return { label: name, value: name };
+                return { label: name, value: tm.clerkId };
             });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
@@ -1208,7 +1208,8 @@ export default function CRMSpreadsheetPage() {
             const term = searchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
-                (getCellValue(r.id, "__assigned", false) || "").toLowerCase().includes(term) ||
+                (r.submittedBy || "").toLowerCase().includes(term) ||
+                (r.assignedTo || []).some(uid => uid.toLowerCase().includes(term)) ||
                 (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
             );
         }
@@ -1280,9 +1281,33 @@ export default function CRMSpreadsheetPage() {
                     });
 
                     // Inside a column group, we OR them together
-                    // So if you pick 'Option A' and 'Option B', it returns true if either matches
                     return conditionMatches.some(m => m);
                 });
+
+                // Override for __assigned to handle Submitter fallback logic
+                const assignedConditions = groupedConditions["__assigned"];
+                if (assignedConditions) {
+                    const matchesAnyAssigned = assignedConditions.some((cond: any) => {
+                        const targetId = (cond.val || "").toString();
+                        const rawAssigned = r.assignedTo || [];
+                        const isAssigned = rawAssigned.includes(targetId);
+                        const isUnassigned = rawAssigned.length === 0;
+                        const isSubmitter = r.submittedBy === targetId;
+
+                        if (cond.op === "equals" || cond.op === "contains") {
+                            return isAssigned || (isUnassigned && isSubmitter);
+                        }
+                        if (cond.op === "is_empty") return isUnassigned && !r.submittedBy;
+                        if (cond.op === "is_not_empty") return !isUnassigned || !!r.submittedBy;
+                        return false;
+                    });
+
+                    // Overwrite the group result for __assigned
+                    const assignedIndex = Object.keys(groupedConditions).indexOf("__assigned");
+                    if (assignedIndex > -1) {
+                        groupMatches[assignedIndex] = matchesAnyAssigned;
+                    }
+                }
 
                 if (filterConjunction === "AND") return groupMatches.every(m => m);
                 return groupMatches.some(m => m);

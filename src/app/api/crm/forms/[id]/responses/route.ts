@@ -168,12 +168,16 @@ export async function GET(
                     columnFilters.push({ submittedByName: c });
                 } else if (colId === "__assigned") {
                     if (op === "is_empty") {
-                        columnFilters.push({ assignedTo: { equals: [] } });
+                        columnFilters.push({ AND: [{ assignedTo: { equals: [] } }, { submittedBy: null }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ NOT: { assignedTo: { equals: [] } } });
+                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { submittedBy: null } }] });
                     } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ assignedTo: { has: val } });
+                        columnFilters.push({
+                            OR: [
+                                { assignedTo: { has: val } },
+                                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: val }] }
+                            ]
+                        });
                     }
                 } else if (colId === "__nextFollowUpDate") {
                     if (op === "is_empty") {
