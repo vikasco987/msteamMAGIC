@@ -22,7 +22,12 @@ export async function GET(req: Request) {
             "RNR2 (Checked)",
             "RNR3",
             "Switch off",
-            "Invalid Number"
+            "Invalid Number",
+            "Scheduled",
+            "Walked In",
+            "Follow-up Done",
+            "Missed",
+            "Closed"
         ];
 
         const remarks = await prisma.formRemark.findMany({
