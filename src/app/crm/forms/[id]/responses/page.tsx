@@ -970,7 +970,10 @@ export default function CRMSpreadsheetPage() {
     const getColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
-        const teamOptions = teamMembers.map(tm => ({ label: tm.email, value: tm.email }));
+        const teamOptions = teamMembers.map(tm => {
+            const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+            return { label: name, value: name };
+        });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
@@ -1036,7 +1039,10 @@ export default function CRMSpreadsheetPage() {
     const allColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
-        const teamOptions = teamMembers.map(tm => ({ label: tm.email, value: tm.email }));
+        const teamOptions = teamMembers.map(tm => {
+            const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+            return { label: name, value: name };
+        });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
@@ -1101,7 +1107,7 @@ export default function CRMSpreadsheetPage() {
 
         if (colId === "__contributor") return resp.submittedByName || "";
         if (colId === "__submittedAt") return resp.submittedAt || "";
-        if (colId === "__assigned") return (resp.assignedTo || []).map((uid: string) => teamMembers.find(t => t.clerkId === uid)?.email || uid).join(", ");
+        if (colId === "__assigned") return (resp.assignedTo || []).map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
 
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
@@ -2482,8 +2488,9 @@ export default function CRMSpreadsheetPage() {
                                                                                 if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
                                                                                         if (col.type === "user" && typeof o === 'string') {
-                                                                                            const email = teamMembers.find(t => t.clerkId === o)?.email || o;
-                                                                                            return { label: email, value: email };
+                                                                                            const tm = teamMembers.find(t => t.clerkId === o);
+                                                                                            const name = tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : o)) : o;
+                                                                                            return { label: name, value: name };
                                                                                         }
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
