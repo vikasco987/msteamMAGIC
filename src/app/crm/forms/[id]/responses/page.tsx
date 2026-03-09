@@ -972,9 +972,12 @@ export default function CRMSpreadsheetPage() {
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
         (data.responses || []).forEach((res: any) => {
-            if (Array.isArray(res.assignedTo)) {
-                res.assignedTo.forEach((uid: string) => assignedIds.add(uid));
-            }
+            const rawAssigned = res.assignedTo || [];
+            const rawVisible = res.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            assignedUsers.forEach(uid => assignedIds.add(uid as string));
         });
         const teamOptions = teamMembers
             .filter(tm => assignedIds.has(tm.clerkId))
@@ -1049,9 +1052,12 @@ export default function CRMSpreadsheetPage() {
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
         (data.responses || []).forEach((res: any) => {
-            if (Array.isArray(res.assignedTo)) {
-                res.assignedTo.forEach((uid: string) => assignedIds.add(uid));
-            }
+            const rawAssigned = res.assignedTo || [];
+            const rawVisible = res.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            assignedUsers.forEach(uid => assignedIds.add(uid as string));
         });
         const teamOptions = teamMembers
             .filter(tm => assignedIds.has(tm.clerkId))
@@ -1123,7 +1129,14 @@ export default function CRMSpreadsheetPage() {
 
         if (colId === "__contributor") return resp.submittedByName || "";
         if (colId === "__submittedAt") return resp.submittedAt || "";
-        if (colId === "__assigned") return (resp.assignedTo || []).map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
+        if (colId === "__assigned") {
+            const rawAssigned = resp.assignedTo || [];
+            const rawVisible = resp.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (resp.submittedBy) defaultVisibleIds.push(resp.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            return assignedUsers.map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
+        }
 
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
