@@ -298,6 +298,14 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                         >
                                             <option>Scheduled</option>
                                             <option>Called</option>
+                                            <option>Call Again</option>
+                                            <option>Call done</option>
+                                            <option>Not interested</option>
+                                            <option>RNR</option>
+                                            <option>RNR2 (Checked)</option>
+                                            <option>RNR3</option>
+                                            <option>Switch off</option>
+                                            <option>Invalid Number</option>
                                             <option>Walked In</option>
                                             <option>Follow-up Done</option>
                                             <option>Missed</option>
