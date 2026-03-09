@@ -533,7 +533,7 @@ export default function CRMSpreadsheetPage() {
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
-    const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("standard");
+    const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -611,8 +611,10 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
-    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction) => {
-        setIsSyncing(true);
+    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        if (!isSilent) {
+            setIsSyncing(true);
+        }
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -755,8 +757,9 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix");
             }
         } finally {
-            setLoading(false);
-            setIsSyncing(false);
+            if (!isSilent) {
+                setIsSyncing(false);
+            }
         }
     };
 
@@ -1429,6 +1432,26 @@ export default function CRMSpreadsheetPage() {
         setCurrentPage(1);
         // searchTerm change pe bhi page 1 pe jaao
     }, [searchTerm]);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Element;
+            if (target?.closest('.ignore-click-outside')) {
+                return;
+            }
+            setOpenColorPicker(null);
+            setOpenAssignedCell(null);
+            setActiveColumnFilter(null);
+            setUserResults([]);
+            setAccessUserResults([]);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, []);
 
     useEffect(() => {
         // Conditions/filterConjunction change pe saara data refetch karo
@@ -2570,14 +2593,15 @@ export default function CRMSpreadsheetPage() {
                                                                         e.stopPropagation();
                                                                         setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
                                                                     }}
-                                                                    className={`p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
+                                                                    className={`ignore-click-outside p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
                                                                 >
                                                                     <Filter size={10} />
                                                                 </button>
                                                                 {activeColumnFilter === col.id && (
                                                                     <div
-                                                                        className="absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
+                                                                        className="ignore-click-outside absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
                                                                         onClick={(e) => e.stopPropagation()}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
                                                                     >
                                                                         <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
                                                                             <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest">{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
@@ -2765,15 +2789,15 @@ export default function CRMSpreadsheetPage() {
                                         {paginatedResponses.map((res, rIdx) => (
                                             <motion.tr
                                                 key={res.id}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                transition={{ duration: 0.2, delay: rIdx * 0.03 }}
+                                                initial={{ opacity: 1 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0 }}
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-colors relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${openColorPicker === res.id ? 'z-[100]' : 'z-10'} 
-                                                    ${density === 'compact' ? 'h-[36px] text-xs' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[60px] text-sm md:text-[15px]'} 
+                                                className={`group cursor-pointer transition-none relative [&>td]:border-r [&>td]:border-[#EAECF0] ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
                                                     ${(() => {
                                                         const remarks = res.remarks || [];
                                                         const latestRemark = remarks[0];
@@ -2788,9 +2812,9 @@ export default function CRMSpreadsheetPage() {
                                                         return '';
                                                     })()}`}
                                             >
-                                                <td className={`px-4 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 
+                                                <td className={`border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] z-[35] 
                                                     ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} 
-                                                    ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[80px]' : 'h-[60px]'} 
+                                                    ${density === 'compact' ? 'h-[32px]' : density === 'comfortable' ? 'h-[80px]' : 'h-[50px]'} 
                                                     overflow-visible shadow-[1px_0_0_#EAECF0]`}
                                                 >
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">
@@ -2852,12 +2876,16 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="relative">
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
-                                                                            className={`p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                                                                            className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
                                                                         >
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div className="absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                                            <div 
+                                                                                className="ignore-click-outside absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            >
                                                                                 <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-white border-b border-r border-slate-200 rotate-45" />
                                                                                 {[
                                                                                     "#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9", "#fff1f2",
@@ -2928,7 +2956,7 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`ignore-click-outside px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white shadow-[1px_0_0_#EAECF0]' : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     if (isCellOpen) setOpenAssignedCell(null);
@@ -2969,7 +2997,8 @@ export default function CRMSpreadsheetPage() {
                                                                             exit={{ opacity: 0, y: 5, scale: 0.95 }}
                                                                             transition={{ duration: 0.2 }}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            className="absolute top-12 left-0 z-50 w-64 bg-white/70 backdrop-blur-3xl border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto"
+                                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                                            className="ignore-click-outside absolute top-12 left-0 z-50 w-64 bg-white/70 backdrop-blur-3xl border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto"
                                                                         >
                                                                             <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between mb-1 sticky top-0 bg-white/80 backdrop-blur-md z-10">
                                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Authorized Access</span>
@@ -3796,6 +3825,7 @@ export default function CRMSpreadsheetPage() {
                                                             <input
                                                                 value={userSearchQuery}
                                                                 onChange={(e) => searchUsers(e.target.value)}
+                                                                onClick={(e) => e.stopPropagation()}
                                                                 placeholder="Search users by email..."
                                                                 className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
                                                             />
@@ -3950,6 +3980,7 @@ export default function CRMSpreadsheetPage() {
                                         placeholder="Search User..."
                                         value={userSearchQuery}
                                         onChange={(e) => searchUsers(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
                                     />
                                     {userResults.length > 0 && (
                                         <div
@@ -4300,6 +4331,7 @@ export default function CRMSpreadsheetPage() {
                                                     <input
                                                         value={accessUserSearch}
                                                         onChange={(e) => searchAccessUsers(e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
                                                         placeholder="Search user ID or email..."
                                                         className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
                                                     />
@@ -4424,13 +4456,21 @@ export default function CRMSpreadsheetPage() {
 
             <AnimatePresence>
                 {isMounted && isAIFilterOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, x: 300, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 300, scale: 0.95 }}
-                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                        className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
-                    >
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAIFilterOpen(false)}
+                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[90]"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, x: 300, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 300, scale: 0.95 }}
+                            transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                            className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
+                        >
                         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -4570,6 +4610,7 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </div>
                     </motion.div>
+                    </>
                 )}
             </AnimatePresence>
 
@@ -4742,10 +4783,8 @@ export default function CRMSpreadsheetPage() {
                         formId={openFollowUpModal.formId}
                         responseId={openFollowUpModal.responseId}
                         userRole={userRole || 'GUEST'}
-                        onClose={() => {
-                            setOpenFollowUpModal(null);
-                            fetchData();
-                        }}
+                        onClose={() => setOpenFollowUpModal(null)}
+                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
                     />
                 )
             }
@@ -4755,11 +4794,8 @@ export default function CRMSpreadsheetPage() {
                         formId={openPaymentModal.formId}
                         responseId={openPaymentModal.responseId}
                         userRole={userRole || 'GUEST'}
-                        onClose={() => {
-                            setOpenPaymentModal(null);
-                            fetchData();
-                        }}
-                        onSave={() => fetchData()}
+                        onClose={() => setOpenPaymentModal(null)}
+                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
                     />
                 )
             }

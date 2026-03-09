@@ -87,7 +87,12 @@ export default function PaymentHubDashboard({ formId, onClose }: Props) {
     const maxAmount = Math.max(...Object.values(computedByDay).map(d => d.amount), 1);
 
     return (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[10001] p-4">
+        <div 
+            className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[10001] p-4"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
             <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
 
                 {/* Header */}

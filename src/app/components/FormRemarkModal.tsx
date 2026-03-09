@@ -230,7 +230,12 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
     const canDelete = userRole === "MASTER" || userRole === "ADMIN";
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[10000] p-4">
+        <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
             <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="bg-indigo-600 p-5 pl-6 text-white flex justify-between items-center shrink-0">
                     <div>
