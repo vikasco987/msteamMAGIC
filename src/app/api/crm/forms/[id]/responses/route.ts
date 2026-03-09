@@ -21,6 +21,7 @@ export async function POST(
                 formId,
                 submittedBy: user?.id || null,
                 submittedByName: user ? `${user.firstName} ${user.lastName}` : "Public User",
+                assignedTo: user?.id ? [user.id] : [],
                 values: {
                     create: Object.entries(values).map(([fieldId, value]) => ({
                         fieldId,
@@ -98,8 +99,8 @@ export async function GET(
         // Construct where clause for filtering based on permissions
         const permissionWhere: any = isMaster ? {} : {
             OR: [
-                { submittedBy: userId },
                 { assignedTo: { has: userId } },
+                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } }
             ]

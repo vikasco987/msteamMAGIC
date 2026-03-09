@@ -128,7 +128,8 @@ export async function POST(
                                 formId,
                                 submittedBy: user.id,
                                 submittedByName: userName,
-                                submittedAt: new Date()
+                                submittedAt: new Date(),
+                                assignedTo: [user.id]
                             }
                         });
                         finalResponseId = newResp.id;
