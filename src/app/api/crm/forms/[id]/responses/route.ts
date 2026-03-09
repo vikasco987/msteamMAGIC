@@ -130,6 +130,8 @@ export async function GET(
                         case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' };
                         case "is_empty": return { equals: "" };
                         case "is_not_empty": return { not: "" };
+                        case "is_true": return { equals: "true" };
+                        case "is_false": return { equals: "false" };
                         case "eq": return { equals: value };
                         case "gt": return { gt: value };
                         case "lt": return { lt: value };
@@ -163,14 +165,97 @@ export async function GET(
                 } else if (colId === "__contributor") {
                     const c = getPrismaOp(op, val, val2);
                     columnFilters.push({ submittedByName: c });
-                } else {
-                    const c = getPrismaOp(op, val, val2);
-                    columnFilters.push({
-                        OR: [
-                            { values: { some: { fieldId: colId, value: c } } },
-                            { internalValues: { some: { columnId: colId, value: c } } }
-                        ]
-                    });
+                } else if (colId === "__assigned") {
+                    if (op === "is_empty") {
+                        columnFilters.push({ assignedTo: { equals: [] } });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({ NOT: { assignedTo: { equals: [] } } });
+                    } else {
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({ assignedTo: { has: val } });
+                    }
+                } else if (colId === "__nextFollowUpDate") {
+                    if (op === "is_empty") {
+                        columnFilters.push({
+                            OR: [
+                                { remarks: { none: {} } },
+                                { remarks: { every: { nextFollowUpDate: null } } }
+                            ]
+                        });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
+                    } else if (op === "today") {
+                        const start = new Date(); start.setHours(0, 0, 0, 0);
+                        const end = new Date(); end.setHours(23, 59, 59, 999);
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                    } else if (op === "this_week") {
+                        const now = new Date();
+                        const start = new Date(now.setDate(now.getDate() - now.getDay()));
+                        start.setHours(0, 0, 0, 0);
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start } } } });
+                    } else if (op === "before" && val) {
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
+                    } else if (op === "after" && val) {
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
+                    } else if (op === "exact_date" && val) {
+                        const start = new Date(val); start.setHours(0, 0, 0, 0);
+                        const end = new Date(val); end.setHours(23, 59, 59, 999);
+                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                    }
+                } else if (colId === "__followUpStatus") {
+                    if (op === "is_empty") {
+                        columnFilters.push({
+                            OR: [
+                                { remarks: { none: {} } },
+                                { remarks: { every: { followUpStatus: "" } } }
+                            ]
+                        });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({ remarks: { some: { followUpStatus: { not: "" } } } });
+                    } else {
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({ remarks: { some: { followUpStatus: c } } });
+                    }
+                } else if (colId === "__recentRemark") {
+                    if (op === "is_empty") {
+                        columnFilters.push({
+                            OR: [
+                                { remarks: { none: {} } },
+                                { remarks: { every: { remark: "" } } }
+                            ]
+                        });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({ remarks: { some: { remark: { not: "" } } } });
+                    } else {
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({ remarks: { some: { remark: c } } });
+                    }
+                } else if (!colId.startsWith("__")) {
+                    if (op === "is_empty") {
+                        columnFilters.push({
+                            OR: [
+                                { values: { some: { fieldId: colId, value: { equals: "" } } } },
+                                { values: { none: { fieldId: colId } } },
+                                { internalValues: { some: { columnId: colId, value: { equals: "" } } } },
+                                { internalValues: { none: { columnId: colId } } }
+                            ]
+                        });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({
+                            OR: [
+                                { values: { some: { fieldId: colId, value: { not: "" } } } },
+                                { internalValues: { some: { columnId: colId, value: { not: "" } } } }
+                            ]
+                        });
+                    } else {
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({
+                            OR: [
+                                { values: { some: { fieldId: colId, value: c } } },
+                                { internalValues: { some: { columnId: colId, value: c } } }
+                            ]
+                        });
+                    }
                 }
             });
 
