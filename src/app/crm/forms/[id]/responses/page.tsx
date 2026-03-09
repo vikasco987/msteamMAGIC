@@ -2944,10 +2944,12 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {latestStatus ? (
-                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${latestStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                        latestStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                                        }`}>
+                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${
+                                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                    }`}>
                                                                         {latestStatus}
                                                                     </span>
                                                                 ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">-</span>}
