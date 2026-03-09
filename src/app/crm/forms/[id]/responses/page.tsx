@@ -590,6 +590,27 @@ export default function CRMSpreadsheetPage() {
     }>({ start: null, end: null });
     const [isSelecting, setIsSelecting] = useState(false);
 
+    const isUserInvolved = useMemo(() => {
+        if (!data) return false;
+        if (isMaster || isPureMaster) return true;
+        
+        const currentClerkId = data.clerkId;
+        const currentRole = userRole?.toUpperCase();
+        
+        // 1. Explicitly added to form (Access Control settings)
+        const visibleUsers = data.form?.visibleToUsers || [];
+        const visibleRoles = data.form?.visibleToRoles || [];
+        
+        if (currentClerkId && visibleUsers.includes(currentClerkId)) return true;
+        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER"].includes(currentRole))) return true;
+        
+        // 2. Assigned to any response in this form
+        const isAssigned = data.responses?.some(r => r.assignedTo?.includes(currentClerkId || ""));
+        if (isAssigned) return true;
+
+        return false;
+    }, [data, isMaster, isPureMaster, userRole]);
+
     const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction) => {
         setIsSyncing(true);
         // 1. FAST CACHE LOAD (Run before API Call)
@@ -2020,13 +2041,15 @@ export default function CRMSpreadsheetPage() {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
-                                <button
-                                    onClick={togglePin}
-                                    className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
-                                    title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
-                                >
-                                    {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
-                                </button>
+                                {isUserInvolved && (
+                                    <button
+                                        onClick={togglePin}
+                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                        title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
+                                    >
+                                        {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
+                                    </button>
+                                )}
                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                     <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{isPureMaster ? "Master Core" : "Live Matrix"}</span>

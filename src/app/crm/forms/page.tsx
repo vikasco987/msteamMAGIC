@@ -279,27 +279,30 @@ export default function CRMFormsList() {
                                                         );
                                                     })()}
                                                 </div>
-                                                {isMaster && (
-                                                    <div className="flex items-center gap-1 self-start">
-                                                        <button
-                                                            onClick={() => togglePin(form.id)}
-                                                            className={`p-3 rounded-xl transition-all ${form.pinnedBy?.includes(user?.id || "") ? 'text-indigo-600 bg-indigo-50' : 'text-slate-200 hover:text-indigo-600 hover:bg-indigo-50'}`}
-                                                            title={form.pinnedBy?.includes(user?.id || "") ? "Unpin from sidebar" : "Pin to sidebar"}
-                                                        >
-                                                            {form.pinnedBy?.includes(user?.id || "") ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleOpenAccessModal(form)}
-                                                            className="p-3 text-slate-200 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                                                            title="Access Control"
-                                                        >
-                                                            <ShieldCheck size={16} />
-                                                        </button>
-                                                        <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    </div>
-                                                )}
+                                                <div className="flex items-center gap-1 self-start">
+                                                    <button
+                                                        onClick={() => togglePin(form.id)}
+                                                        className={`p-3 rounded-xl transition-all ${form.pinnedBy?.includes(user?.id || "") ? 'text-indigo-600 bg-indigo-50' : 'text-slate-200 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                        title={form.pinnedBy?.includes(user?.id || "") ? "Unpin from sidebar" : "Pin to sidebar"}
+                                                    >
+                                                        {form.pinnedBy?.includes(user?.id || "") ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
+                                                    </button>
+
+                                                    {isMaster && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleOpenAccessModal(form)}
+                                                                className="p-3 text-slate-200 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                                                                title="Access Control"
+                                                            >
+                                                                <ShieldCheck size={16} />
+                                                            </button>
+                                                            <button onClick={() => deleteForm(form.id)} className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
