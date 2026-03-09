@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import dayjs from "dayjs";
+import { prisma } from "@/lib/prisma";
+import { startOfDay, endOfDay, parseISO } from "date-fns";
 
 export async function GET(req: Request) {
     try {
@@ -8,9 +8,9 @@ export async function GET(req: Request) {
         const dateParam = searchParams.get("date");
 
         // Use requested date or today
-        const targetDate = dateParam ? dayjs(dateParam).toDate() : new Date();
-        const startOfDay = dayjs(targetDate).startOf("day").toDate();
-        const endOfDay = dayjs(targetDate).endOf("day").toDate();
+        const targetDate = dateParam ? parseISO(dateParam) : new Date();
+        const start = startOfDay(targetDate);
+        const end = endOfDay(targetDate);
 
         // Target valid call statuses
         const targetStatuses = [
@@ -28,8 +28,8 @@ export async function GET(req: Request) {
         const remarks = await prisma.formRemark.findMany({
             where: {
                 createdAt: {
-                    gte: startOfDay,
-                    lte: endOfDay
+                    gte: start,
+                    lte: end
                 },
                 followUpStatus: {
                     in: targetStatuses
