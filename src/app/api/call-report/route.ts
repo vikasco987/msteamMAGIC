@@ -52,7 +52,7 @@ export async function GET(req: Request) {
         type UserStatusMap = Map<string, { connected: boolean; notConnected: boolean }>;
         const userGroupMap = new Map<string, UserStatusMap>();
 
-        const connectedStatuses = ["Call done", "Walked In", "Follow-up Done", "Closed", "Scheduled", "Called", "Not interested", "Call Again"];
+        const connectedStatuses = ["Call Again", "Call done", "Not interested", "Walk-in scheduled", "Closed", "Follow up done", "Called", "Scheduled", "Follow-up Done", "Walked In"];
         const notConnectedStatuses = ["RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Missed"];
 
         for (const r of remarks) {

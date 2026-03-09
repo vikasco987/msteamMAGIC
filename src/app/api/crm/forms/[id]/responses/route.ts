@@ -176,7 +176,7 @@ export async function GET(
                             OR: [
                                 { assignedTo: { has: val } },
                                 { visibleToUsers: { has: val } },
-                                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: val }] }
+                                { AND: [{ assignedTo: { equals: [] } }, { submittedBy: val }] }
                             ]
                         });
                     }

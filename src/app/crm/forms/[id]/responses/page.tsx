@@ -1226,16 +1226,35 @@ export default function CRMSpreadsheetPage() {
                 const groupMatches = Object.entries(groupedConditions).map(([colId, conds]) => {
                     const col = getColumns.find(c => c.id === colId);
                     const isInternal = col?.isInternal;
-                    const cellVal = getCellValue(r.id, colId, isInternal);
+
+                    if (colId === "__assigned") {
+                        return (conds as any[]).some((cond: any) => {
+                            const targetId = (cond.val || "").toString();
+                            const rawAssigned = r.assignedTo || [];
+                            const rawVisible = r.visibleToUsers || [];
+                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
+                            const isUnassigned = rawAssigned.length === 0;
+                            const isSubmitter = r.submittedBy === targetId;
+
+                            if (cond.op === "equals" || cond.op === "contains") {
+                                return isAssigned || (isUnassigned && isSubmitter);
+                            }
+                            if (cond.op === "is_empty") return isUnassigned && !r.submittedBy;
+                            if (cond.op === "is_not_empty") return !isUnassigned || !!r.submittedBy;
+                            if (cond.op === "not_equals") return !isAssigned && !(isUnassigned && isSubmitter);
+                            return false;
+                        });
+                    }
+
+                    const cellVal = getCellValue(r.id, colId, isInternal || false);
                     const val = (cellVal || "").toString().toLowerCase();
 
-                    // Within the same column, multiple conditions act as OR (e.g., selecting 'Option 1' AND 'Option 2')
-                    const conditionMatches = conds.map(cond => {
+                    const conditionMatches = (conds as any[]).map(cond => {
                         const targetVal = (cond.val || "").toString().toLowerCase();
                         const targetVal2 = (cond.val2 || "").toString().toLowerCase();
 
                         switch (cond.op) {
-                            case "equals": return val === targetVal || (colId === "__assigned" && val.includes(targetVal));
+                            case "equals": return val === targetVal;
                             case "not_equals": return val !== targetVal;
                             case "contains": return val.includes(targetVal);
                             case "one_of": {
@@ -1246,17 +1265,14 @@ export default function CRMSpreadsheetPage() {
                             case "ends_with": return val.endsWith(targetVal);
                             case "is_empty": return (val || "").trim().length === 0;
                             case "is_not_empty": return (val || "").trim().length > 0;
-
                             case "eq": return parseFloat(val) === parseFloat(targetVal);
                             case "gt": return parseFloat(val) > parseFloat(targetVal);
                             case "lt": return parseFloat(val) < parseFloat(targetVal);
                             case "gte": return parseFloat(val) >= parseFloat(targetVal);
                             case "lte": return parseFloat(val) <= parseFloat(targetVal);
                             case "between": return parseFloat(val) >= parseFloat(targetVal) && parseFloat(val) <= parseFloat(targetVal2);
-
                             case "is_true": return val === "true";
                             case "is_false": return val === "false" || val === "";
-
                             case "today": {
                                 const d = new Date(cellVal);
                                 const now = new Date();
@@ -1275,43 +1291,12 @@ export default function CRMSpreadsheetPage() {
                                 const target = new Date(cond.val);
                                 return !isNaN(d.getTime()) && !isNaN(target.getTime()) && d.toDateString() === target.toDateString();
                             }
-
                             default: return true;
                         }
                     });
 
-                    // Inside a column group, we OR them together
                     return conditionMatches.some(m => m);
                 });
-
-                // Match based on selected team IDs
-                const assignedConditions = groupedConditions["__assigned"];
-                if (assignedConditions) {
-                    const matchesAnyAssigned = assignedConditions.some((cond: any) => {
-                        const targetId = (cond.val || "").toString();
-                        const rawAssigned = r.assignedTo || [];
-                        const rawVisible = r.visibleToUsers || [];
-                        const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
-                        const isUnassigned = rawAssigned.length === 0;
-                        const isSubmitter = r.submittedBy === targetId;
-
-                        if (cond.op === "equals" || cond.op === "contains") {
-                            return isAssigned || (isUnassigned && isSubmitter);
-                        }
-                        if (cond.op === "is_empty") return isUnassigned && !r.submittedBy;
-                        if (cond.op === "is_not_empty") return !isUnassigned || !!r.submittedBy;
-                        return false;
-                    });
-
-                    // Overwrite the group check result specifically for the __assigned ID
-                    const assignedGroupKey = Object.keys(groupedConditions).find(k => k === "__assigned");
-                    if (assignedGroupKey) {
-                        const groupIdx = Object.keys(groupedConditions).indexOf(assignedGroupKey);
-                        if (groupIdx !== -1) {
-                            groupMatches[groupIdx] = matchesAnyAssigned;
-                        }
-                    }
-                }
 
                 if (filterConjunction === "AND") return groupMatches.every(m => m);
                 return groupMatches.some(m => m);
