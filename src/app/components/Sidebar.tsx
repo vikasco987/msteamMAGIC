@@ -71,6 +71,12 @@ const NAVIGATION_GROUPS = [
       { label: 'Agreements', icon: FileSpreadsheet, href: '/FullDashboard/agreement', roles: ['admin', 'master', 'seller'] },
       { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller'] },
     ]
+  },
+  {
+    title: "System",
+    items: [
+      { label: 'Access Control', icon: ShieldCheck, href: '/admin/roles', roles: ['master'] },
+    ]
   }
 ];
 
@@ -80,6 +86,22 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { user, isLoaded } = useUser();
   const [mounted, setMounted] = useState(false);
+  const roleFromMetadata = user?.publicMetadata?.role as string;
+  const userRole = String(isLoaded ? (roleFromMetadata || 'user') : 'user').toLowerCase().trim();
+
+  // --- DYNAMIC PERMISSIONS ---
+  const [dynamicPermissions, setDynamicPermissions] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (isLoaded && userRole) {
+      fetch(`/api/admin/sidebar/per-role?role=${userRole}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.sidebarItems) setDynamicPermissions(data.sidebarItems);
+        })
+        .catch(err => console.error("Sidebar permissions fetch error:", err));
+    }
+  }, [isLoaded, userRole]);
 
   useEffect(() => {
     setMounted(true);
@@ -94,9 +116,6 @@ export default function Sidebar() {
   }, []);
 
   if (!mounted) return <div className="w-20 lg:w-64 h-screen bg-[#0f172a]" />;
-
-  const roleFromMetadata = user?.publicMetadata?.role as string;
-  const userRole = String(isLoaded ? (roleFromMetadata || 'user') : 'user').toLowerCase().trim();
 
   return (
     <>
@@ -180,8 +199,20 @@ export default function Sidebar() {
           )}
 
           {NAVIGATION_GROUPS.map((group, gIdx) => {
-            // Filter group items by role
-            const visibleItems = group.items.filter(i => i.roles.includes(userRole));
+            // Filter group items by role and dynamic permissions
+            const visibleItems = group.items.filter(i => {
+              const hasHardcodedRole = i.roles.includes(userRole);
+
+              // If we have dynamic permissions, they override or restrict
+              if (dynamicPermissions) {
+                // If the item is in the dynamic list, show it. 
+                // Exceptions: master always sees Access Control
+                if (userRole === 'master' && i.label === 'Access Control') return true;
+                return dynamicPermissions.includes(i.label);
+              }
+
+              return hasHardcodedRole;
+            });
             if (visibleItems.length === 0) return null;
 
             return (
