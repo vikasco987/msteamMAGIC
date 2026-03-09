@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
-export type ActivityType = "STATUS_CHANGE" | "NOTE_ADDED" | "PAYMENT_ADDED" | "SUBTASK_TOGGLED" | "TASK_UPDATED" | "TASK_CREATED";
+export type ActivityType = "STATUS_CHANGE" | "NOTE_ADDED" | "PAYMENT_ADDED" | "SUBTASK_TOGGLED" | "TASK_UPDATED" | "TASK_CREATED" | "PAYMENT_DELETED";
 
 export async function logActivity({
     taskId,

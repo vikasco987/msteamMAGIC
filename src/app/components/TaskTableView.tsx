@@ -6546,9 +6546,15 @@ type AttachmentType = {
 function PaymentProofsModal({
   urls,
   onClose,
+  taskId,
+  role,
+  onDeleteSuccess,
 }: {
   urls: string[];
   onClose: () => void;
+  taskId: string;
+  role: string;
+  onDeleteSuccess: (url: string) => void;
 }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -6621,6 +6627,32 @@ function PaymentProofsModal({
                       >
                         ⬇️ Download
                       </a>
+                      {role === "master" && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Are you sure you want to delete this payment proof?")) return;
+                            try {
+                              const res = await fetch(`/api/tasks/${taskId}/payments`, {
+                                method: "DELETE",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ url }),
+                              });
+                              if (res.ok) {
+                                toast.success("Proof deleted successfully");
+                                onDeleteSuccess(url);
+                              } else {
+                                const data = await res.json();
+                                toast.error(data.error || "Failed to delete proof");
+                              }
+                            } catch (err) {
+                              toast.error("An error occurred while deleting proof");
+                            }
+                          }}
+                          className="text-red-600 underline hover:text-red-800 text-sm"
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -6669,9 +6701,11 @@ export default function TaskTableView({
     {}
   );
   const [localTasks, setLocalTasks] = useState<Task[]>(tasks || []);
+
+  // Use a separate state for filtered tasks to avoid re-filtering on every render
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>(tasks || []);
   const [isSaving, setIsSaving] = useState<string | null>(null);
 
-  const [filteredTasks, setFilteredTasks] = useState<Task[]>(tasks || []);
   // ✅ The `copy` column is now initialized as a visible column
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     "rowNumber",
@@ -6708,6 +6742,7 @@ export default function TaskTableView({
   const [selectedPaymentProofs, setSelectedPaymentProofs] = useState<string[]>(
     []
   );
+  const [selectedTaskIdForProofs, setSelectedTaskIdForProofs] = useState<string | null>(null);
 
   // Pagination states are now from props
 
@@ -6718,6 +6753,7 @@ export default function TaskTableView({
 
   useEffect(() => {
     setLocalTasks(tasks || []);
+    setFilteredTasks(tasks || []); // Also update filteredTasks when tasks prop changes
 
     // Initialize notes map
     const initialNotes = (tasks || []).reduce(
@@ -6755,6 +6791,7 @@ export default function TaskTableView({
     }
   };
 
+  // This memoization is now less critical as filteredTasks is managed by state
   const paginatedTasks = useMemo(() => {
     return filteredTasks;
   }, [filteredTasks]);
@@ -6787,9 +6824,47 @@ export default function TaskTableView({
     setEditedValues((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleDeletePaymentProofSuccess = useCallback((deletedUrl: string) => {
+    if (!selectedTaskIdForProofs) return;
 
+    setLocalTasks((prevTasks) =>
+      prevTasks.map((task) =>
+        task.id === selectedTaskIdForProofs
+          ? {
+            ...task,
+            paymentProofs: (task.paymentProofs || []).filter(
+              (proof: any) =>
+                (typeof proof === "string" ? proof : proof.url) !== deletedUrl
+            ),
+          }
+          : task
+      )
+    );
 
+    setFilteredTasks((prevFilteredTasks) =>
+      prevFilteredTasks.map((task) =>
+        task.id === selectedTaskIdForProofs
+          ? {
+            ...task,
+            paymentProofs: (task.paymentProofs || []).filter(
+              (proof: any) =>
+                (typeof proof === "string" ? proof : proof.url) !== deletedUrl
+            ),
+          }
+          : task
+      )
+    );
 
+    setSelectedPaymentProofs((prevProofs) =>
+      prevProofs.filter((url) => url !== deletedUrl)
+    );
+
+    // If all proofs are deleted, close the modal
+    if (selectedPaymentProofs.length <= 1) {
+      setShowPaymentProofsModal(false);
+      setSelectedTaskIdForProofs(null);
+    }
+  }, [selectedTaskIdForProofs, selectedPaymentProofs]);
 
 
   // const handleBlur = async (taskId: string, field: "amount" | "received") => {
@@ -6919,7 +6994,22 @@ export default function TaskTableView({
           setEditedValues((prev) => ({ ...prev, [key]: originalValue }));
         } else {
           toast.success("Task updated successfully!");
-          await refetchTasks();
+          // Optimistic update: Update local state immediately
+          setLocalTasks((prevTasks) =>
+            prevTasks.map((task) =>
+              task.id === taskId ? { ...task, [field]: value } : task
+            )
+          );
+          setFilteredTasks((prevFilteredTasks) =>
+            prevFilteredTasks.map((task) =>
+              task.id === taskId ? { ...task, [field]: value } : task
+            )
+          );
+          // No full refetch needed, but if onTasksUpdate is provided, call it with the updated localTasks
+          onTasksUpdate?.(localTasks.map((task) =>
+            task.id === taskId ? { ...task, [field]: value } : task
+          ));
+
           setEditedValues((prev) => {
             const newState = { ...prev };
             delete newState[key];
@@ -7280,8 +7370,8 @@ export default function TaskTableView({
                               type="number"
                               value={
                                 editedValues[`${task.id}-amount`] !== undefined
-                                  ? editedValues[`${task.id}-amount`]
-                                  : amount
+                                  ? (isNaN(editedValues[`${task.id}-amount`]) ? "" : editedValues[`${task.id}-amount`])
+                                  : (isNaN(amount) ? "" : amount)
                               }
                               onChange={(e) =>
                                 handleInputChange(
@@ -7313,8 +7403,8 @@ export default function TaskTableView({
                               value={
                                 editedValues[`${task.id}-received`] !==
                                   undefined
-                                  ? editedValues[`${task.id}-received`]
-                                  : received
+                                  ? (isNaN(editedValues[`${task.id}-received`]) ? "" : editedValues[`${task.id}-received`])
+                                  : (isNaN(received) ? "" : received)
                               }
                               onChange={(e) =>
                                 handleInputChange(
@@ -7392,6 +7482,7 @@ export default function TaskTableView({
                                       : proof.url
                                 ) || []
                               );
+                              setSelectedTaskIdForProofs(task.id);
                               setShowPaymentProofsModal(true);
                             }}
                             className="text-purple-600 hover:underline text-sm"
@@ -7534,10 +7625,16 @@ export default function TaskTableView({
         </Dialog.Root>
       )}
 
-      {showPaymentProofsModal && (
+      {showPaymentProofsModal && selectedTaskIdForProofs && (
         <PaymentProofsModal
           urls={selectedPaymentProofs}
-          onClose={() => setShowPaymentProofsModal(false)}
+          taskId={selectedTaskIdForProofs}
+          role={role}
+          onDeleteSuccess={handleDeletePaymentProofSuccess}
+          onClose={() => {
+            setShowPaymentProofsModal(false);
+            setSelectedTaskIdForProofs(null);
+          }}
         />
       )}
     </div>
