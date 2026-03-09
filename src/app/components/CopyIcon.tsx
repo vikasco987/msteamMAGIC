@@ -15,8 +15,7 @@ interface CopyIconProps {
 const CopyIcon: React.FC<CopyIconProps> = ({ amount, received, pending, updatedAt }) => {
   const [copied, setCopied] = useState(false);
 
-  c
-  onst handleCopy = () => {
+  const handleCopy = () => {
     const now = new Date(updatedAt).toLocaleString("en-IN", {
       dateStyle: "short",
       timeStyle: "short",

@@ -257,6 +257,13 @@ const FILTER_OPERATORS = {
         { label: "Is Unchecked", value: "is_false" },
         { label: "Is Empty", value: "is_empty" },
         { label: "Is Not Empty", value: "is_not_empty" }
+    ],
+    user: [
+        { label: "Contains User", value: "contains" },
+        { label: "Is Exact Match", value: "equals" },
+        { label: "Is Not", value: "not_equals" },
+        { label: "Is Empty", value: "is_empty" },
+        { label: "Is Not Empty", value: "is_not_empty" }
     ]
 };
 
@@ -963,11 +970,26 @@ export default function CRMSpreadsheetPage() {
     const getColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
+        const assignedIds = new Set<string>();
+        (data.responses || []).forEach((res: any) => {
+            const rawAssigned = res.assignedTo || [];
+            const rawVisible = res.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            assignedUsers.forEach(uid => assignedIds.add(uid as string));
+        });
+        const teamOptions = teamMembers
+            .filter(tm => assignedIds.has(tm.clerkId))
+            .map(tm => {
+                const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+                return { label: name, value: name };
+            });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "user", options: teamOptions }
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
@@ -1023,16 +1045,31 @@ export default function CRMSpreadsheetPage() {
         }
 
         return ordered.filter(c => !hiddenColumns.includes(c.id));
-    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster, isPureMaster]);
+    }, [data, hiddenColumns, columnOrder, userRole, colPermissions, isMaster, isPureMaster, teamMembers]);
 
     const allColumns = useMemo(() => {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
+        const assignedIds = new Set<string>();
+        (data.responses || []).forEach((res: any) => {
+            const rawAssigned = res.assignedTo || [];
+            const rawVisible = res.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            assignedUsers.forEach(uid => assignedIds.add(uid as string));
+        });
+        const teamOptions = teamMembers
+            .filter(tm => assignedIds.has(tm.clerkId))
+            .map(tm => {
+                const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
+                return { label: name, value: name };
+            });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
             { id: "__submittedAt", label: "Date", isPublic: false, type: "date" },
             { id: "__contributor", label: "Submitter info", isPublic: false, type: "static" },
-            { id: "__assigned", label: "Assigned To", isPublic: false, type: "static" }
+            { id: "__assigned", label: "Assigned To", isPublic: false, type: "user", options: teamOptions }
         ];
 
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
@@ -1062,7 +1099,7 @@ export default function CRMSpreadsheetPage() {
             });
         }
         return ordered;
-    }, [data, columnOrder]);
+    }, [data, columnOrder, teamMembers]);
 
     const moveColumn = (index: number, direction: 'up' | 'down') => {
         const currentOrder = allColumns.map(c => c.id);
@@ -1092,7 +1129,14 @@ export default function CRMSpreadsheetPage() {
 
         if (colId === "__contributor") return resp.submittedByName || "";
         if (colId === "__submittedAt") return resp.submittedAt || "";
-        if (colId === "__assigned") return (resp.assignedTo || []).map((uid: string) => teamMembers.find(t => t.clerkId === uid)?.email || uid).join(", ");
+        if (colId === "__assigned") {
+            const rawAssigned = resp.assignedTo || [];
+            const rawVisible = resp.visibleToUsers || [];
+            const defaultVisibleIds: string[] = [];
+            if (resp.submittedBy) defaultVisibleIds.push(resp.submittedBy);
+            const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
+            return assignedUsers.map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
+        }
 
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
@@ -2470,8 +2514,13 @@ export default function CRMSpreadsheetPage() {
                                                                             </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
-                                                                                if (col.type === "dropdown" && Array.isArray(col.options) && col.options.length > 0) {
+                                                                                if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
+                                                                                        if (col.type === "user" && typeof o === 'string') {
+                                                                                            const tm = teamMembers.find(t => t.clerkId === o);
+                                                                                            const name = tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : o)) : o;
+                                                                                            return { label: name, value: name };
+                                                                                        }
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
                                                                                     });
@@ -2510,7 +2559,9 @@ export default function CRMSpreadsheetPage() {
                                                                                                 if (isSelected) {
                                                                                                     setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
                                                                                                 } else {
-                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: 'equals', val: opt.value }]);
+                                                                                                    let autoOp = 'equals';
+                                                                                                    if (col.type === "multi_select" || col.type === "user") autoOp = 'contains';
+                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
                                                                                                 }
                                                                                             }}
                                                                                             className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 group/btn"
@@ -2989,11 +3040,14 @@ export default function CRMSpreadsheetPage() {
                                                                             })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
-                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                            <option value="">Assigned To...</option>
-                                                                            {teamMembers
-                                                                                .filter(m => !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.includes(m.clerkId)))
-                                                                                .map(m => <option key={m.clerkId} value={m.clerkId}>{m.email.split('@')[0].toUpperCase()} ({m.role || 'STAFF'})</option>)}
+                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                                <option value="">Assigned To...</option>
+                                                                                {teamMembers
+                                                                                    .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
+                                                                                    .map(m => {
+                                                                                        const name = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : m.email.split('@')[0];
+                                                                                        return <option key={m.clerkId} value={m.clerkId}>{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
+                                                                                    })}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
                                                                         <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
@@ -3384,27 +3438,29 @@ export default function CRMSpreadsheetPage() {
                                                             <>
                                                                 {colType === "date" ? (
                                                                     <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                ) : colType === "dropdown" || colType === "multi_select" ? (
+                                                                ) : colType === "dropdown" || colType === "multi_select" || colType === "user" ? (
                                                                     <div className="flex-1 flex flex-col gap-2">
                                                                         {c.op === "one_of" ? (
                                                                             <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
                                                                                 {Array.isArray(col?.options) && col?.options.map((opt: any) => {
+                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
+                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
                                                                                     const currentVals = String(c.val || "").split(",").map(v => v.trim()).filter(Boolean);
-                                                                                    const isSelected = currentVals.includes(opt.label);
+                                                                                    const isSelected = currentVals.includes(optLabel);
                                                                                     return (
                                                                                         <button
-                                                                                            key={opt.label}
+                                                                                            key={optLabel}
                                                                                             onClick={() => {
                                                                                                 const n = [...conditions];
                                                                                                 const newVals = isSelected
-                                                                                                    ? currentVals.filter(v => v !== opt.label)
-                                                                                                    : [...currentVals, opt.label];
+                                                                                                    ? currentVals.filter(v => v !== optLabel)
+                                                                                                    : [...currentVals, optLabel];
                                                                                                 n[i].val = newVals.join(",");
                                                                                                 setConditions(n);
                                                                                             }}
                                                                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
                                                                                         >
-                                                                                            {opt.label}
+                                                                                            {optLabel}
                                                                                         </button>
                                                                                     );
                                                                                 })}
@@ -3413,7 +3469,11 @@ export default function CRMSpreadsheetPage() {
                                                                         ) : (
                                                                             <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
                                                                                 <option value="">Value...</option>
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => <option key={opt.label} value={opt.label}>{opt.label}</option>)}
+                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
+                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
+                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
+                                                                                    return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                                                                })}
                                                                             </select>
                                                                         )}
                                                                     </div>
