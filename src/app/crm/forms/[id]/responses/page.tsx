@@ -3818,7 +3818,7 @@ export default function CRMSpreadsheetPage() {
                                                         {userResults.length > 0 && (
                                                             <div
                                                                 onMouseDown={(e) => e.preventDefault()}
-                                                                className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto"
+                                                                className="absolute left-0 right-0 top-full mt-2 bg-white rounded-3xl shadow-2xl border border-slate-100 z-20 py-4 max-h-[200px] overflow-y-auto ignore-click-outside"
                                                             >
                                                                 {userResults.map(u => (
                                                                     <button
@@ -4245,7 +4245,8 @@ export default function CRMSpreadsheetPage() {
                                                         <motion.div
                                                             initial={{ opacity: 0, y: 10 }}
                                                             animate={{ opacity: 1, y: 0 }}
-                                                            className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                            onMouseDown={(e) => e.preventDefault()}
+                                                            className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden ignore-click-outside"
                                                         >
                                                             {accessUserResults.map(u => (
                                                                 <button
@@ -4324,7 +4325,8 @@ export default function CRMSpreadsheetPage() {
                                                             <motion.div
                                                                 initial={{ opacity: 0, y: 10 }}
                                                                 animate={{ opacity: 1, y: 0 }}
-                                                                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                                                onMouseDown={(e) => e.preventDefault()}
+                                                                className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden ignore-click-outside"
                                                             >
                                                                 {accessUserResults.map(u => (
                                                                     <button
