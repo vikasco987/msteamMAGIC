@@ -30,39 +30,110 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (!selectedFile) return;
+        
+        console.log("File selected:", selectedFile.name, selectedFile.size, selectedFile.type);
         setFile(selectedFile);
 
         const reader = new FileReader();
         reader.onload = (evt) => {
-            const bstr = evt.target?.result;
-            const wb = XLSX.read(bstr, { type: "binary" });
-            const wsname = wb.SheetNames[0];
-            const ws = wb.Sheets[wsname];
-            const data = XLSX.utils.sheet_to_json(ws) as Record<string, string>[];
+            try {
+                const dataBuffer = evt.target?.result;
+                if (!dataBuffer) throw new Error("File reading failed (empty buffer)");
 
-            if (data.length > 0) {
-                const excelHeaders = Object.keys(data[0]);
-                setHeaders(excelHeaders);
-                setParsedData(data);
+                // Try reading with multiple modes for maximum compatibility
+                let wb;
+                try {
+                    wb = XLSX.read(dataBuffer, { type: dataBuffer instanceof ArrayBuffer ? "array" : "binary", cellDates: true });
+                } catch (e) {
+                    console.warn("Primary read failed, trying string fallback...");
+                    wb = XLSX.read(dataBuffer, { type: "string" });
+                }
 
-                // Auto-map logic
-                const autoMap: Record<string, string> = {};
-                excelHeaders.forEach(h => {
-                    const exactMatch = availableColumns.find(c => c.label.toLowerCase() === h.toLowerCase());
-                    if (exactMatch) autoMap[h] = exactMatch.id;
-                });
-                setHeaderMapping(autoMap);
+                console.log("Sheets found:", wb.SheetNames);
+                
+                // Find the first sheet that actually has some data
+                let targetSheetName = wb.SheetNames[0];
+                let data: Record<string, any>[] = [];
+                
+                for (const name of wb.SheetNames) {
+                    const ws = wb.Sheets[name];
+                    const rows = XLSX.utils.sheet_to_json(ws, { defval: "" }) as Record<string, any>[];
+                    if (rows.length > 0) {
+                        data = rows;
+                        targetSheetName = name;
+                        break;
+                    }
+                }
 
-                // Auto-select match column (e.g., Phone or Email)
-                const phoneMatch = availableColumns.find(c => c.label.toLowerCase().includes("phone"));
-                if (phoneMatch) setMatchColumnId(phoneMatch.id);
+                console.log(`Using sheet: "${targetSheetName}" with ${data.length} rows`);
+                
+                if (data.length > 0) {
+                    const excelHeaders = Object.keys(data[0]);
+                    console.log("Excel headers found:", excelHeaders);
+                    
+                    setHeaders(excelHeaders);
+                    setParsedData(data as Record<string, string>[]);
 
-                setStep(2);
-            } else {
-                toast.error("Excel file is empty");
+                    // Auto-map logic: attempt to find matching labels
+                    const autoMap: Record<string, string> = {};
+                    excelHeaders.forEach(h => {
+                        const cleanH = h.toString().toLowerCase().trim();
+                        const exactMatch = availableColumns.find(c => 
+                            c.label.toLowerCase().trim() === cleanH || 
+                            c.id.toLowerCase() === cleanH
+                        );
+                        if (exactMatch) {
+                            console.log(`Auto-mapped "${h}" to DB Column "${exactMatch.label}"`);
+                            autoMap[h] = exactMatch.id;
+                        }
+                    });
+                    setHeaderMapping(autoMap);
+
+                    const phoneMatch = availableColumns.find(c => {
+                        const low = c.label.toLowerCase();
+                        return low.includes("phone") || low.includes("mobile") || low.includes("contact");
+                    });
+                    const emailMatch = availableColumns.find(c => c.label.toLowerCase().includes("email"));
+                    
+                    if (phoneMatch) {
+                        setMatchColumnId(phoneMatch.id);
+                        console.log("Auto-selected Key Column (Phone):", phoneMatch.label);
+                    } else if (emailMatch) {
+                        setMatchColumnId(emailMatch.id);
+                        console.log("Auto-selected Key Column (Email):", emailMatch.label);
+                    }
+
+                    setStep(2);
+                } else {
+                    // One last try: maybe it's a CSV that needs raw parsing or has only 1 row (headers only)
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const range = XLSX.utils.decode_range(ws['!ref'] || "A1");
+                    if (range.e.r === 0) {
+                        toast.error("This file only contains headers. Please add at least one row of data.");
+                    } else {
+                        toast.error("Could not find any data rows in this file. Please check the Excel formatting.");
+                    }
+                    console.error("No data found in any sheet. Range:", ws['!ref']);
+                }
+            } catch (err: any) {
+                console.error("Excel Parsing Error:", err);
+                toast.error("Error reading file: " + (err.message || "Unknown error"));
+            } finally {
+                if (e.target) e.target.value = "";
             }
         };
-        reader.readAsBinaryString(selectedFile);
+        
+        reader.onerror = (err) => {
+            console.error("FileReader Error:", err);
+            toast.error("Failed to read file");
+        };
+
+        // Use readAsArrayBuffer for better binary support, but readAsBinaryString as fallback
+        if (typeof reader.readAsArrayBuffer === 'function') {
+            reader.readAsArrayBuffer(selectedFile);
+        } else {
+            (reader as any).readAsBinaryString(selectedFile);
+        }
     };
 
     const handleMapChange = (excelHeader: string, dbColId: string) => {
@@ -273,19 +344,29 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                 value={headerMapping[h] || "SKIP"}
                                                 onChange={(e) => handleMapChange(h, e.target.value)}
                                                 className={`flex-1 p-2 bg-white border rounded-lg text-xs font-bold outline-none ${headerMapping[h] && headerMapping[h] !== "SKIP"
-                                                    ? 'border-emerald-200 text-emerald-700 bg-emerald-50'
+                                                    ? (headerMapping[h] === matchColumnId ? 'border-blue-500 text-blue-700 bg-blue-50 ring-2 ring-blue-100' : 'border-emerald-200 text-emerald-700 bg-emerald-50')
                                                     : 'border-slate-200 text-slate-500'
                                                     }`}
                                             >
                                                 <option value="SKIP">-- Do Not Update (Skip) --</option>
                                                 {availableColumns.map(c => (
                                                     <option key={c.id} value={c.id}>
-                                                        {c.label} {c.id === matchColumnId ? "(Used for Key)" : ""}
+                                                        {c.label} {c.id === matchColumnId ? " (⭐ Key Column)" : ""}
                                                     </option>
                                                 ))}
                                             </select>
                                         </div>
                                     ))}
+
+                                    {importMode === 'update' && matchColumnId && !Object.values(headerMapping).includes(matchColumnId) && (
+                                        <div className="mt-4 bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-center gap-3 animate-pulse">
+                                            <AlertCircle className="text-rose-500 shrink-0" size={20} />
+                                            <div>
+                                                <p className="text-xs font-black text-rose-700 uppercase tracking-widest">Key Column Missing Mapping</p>
+                                                <p className="text-[10px] text-rose-600 font-bold mt-1">Please map one of your Excel columns to <b>{availableColumns.find(c => c.id === matchColumnId)?.label}</b> to enable history matching.</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
