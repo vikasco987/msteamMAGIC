@@ -5,7 +5,7 @@ import axios from "axios";
 import {
     Calendar, Clock, User, Phone, FileText, Search, Filter,
     ChevronRight, ExternalLink, AlertCircle, CheckCircle2,
-    ArrowRight, Bell, CalendarDays, Inbox
+    ArrowRight, Bell, CalendarDays, Inbox, Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -82,6 +82,22 @@ export default function FollowUpBoard() {
         }
     };
 
+    const handleRemoveFollowUp = async (responseId: string) => {
+        const isConfirmed = window.confirm("Are you sure you want to remove this lead from the Follow-up board? This will clear the next follow-up date for this lead.");
+        if (!isConfirmed) return;
+
+        try {
+            const res = await axios.delete(`/api/crm/followups?responseId=${responseId}`);
+            if (res.data.success) {
+                toast.success("Lead removed from follow-up board");
+                fetchData();
+            }
+        } catch (error) {
+            toast.error("Failed to remove lead from board");
+            console.error(error);
+        }
+    };
+
     useEffect(() => {
         fetchData();
 
@@ -136,7 +152,7 @@ export default function FollowUpBoard() {
                 return activeTab === "closed";
             }
 
-            if (!latest.nextFollowUpDate) return activeTab === "today"; // fallback
+            if (!latest.nextFollowUpDate) return false;
 
             const nextDate = startOfDay(new Date(latest.nextFollowUpDate));
 
@@ -162,7 +178,6 @@ export default function FollowUpBoard() {
             }
 
             if (!latest.nextFollowUpDate) {
-                counts.today++;
                 return;
             }
 
@@ -390,6 +405,15 @@ export default function FollowUpBoard() {
                                                         >
                                                             <ExternalLink size={16} />
                                                         </a>
+                                                        {(userRole === "ADMIN" || userRole === "MASTER") && (
+                                                            <button
+                                                                onClick={() => handleRemoveFollowUp(res.id)}
+                                                                className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
+                                                                title="Exclude from Board"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>

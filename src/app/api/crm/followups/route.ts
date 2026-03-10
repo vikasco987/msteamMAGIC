@@ -17,7 +17,11 @@ export async function GET(req: NextRequest) {
         // We include form details and values to show customer info
         const responses = await prisma.formResponse.findMany({
             where: {
-                remarks: { some: {} }
+                remarks: {
+                    some: {
+                        nextFollowUpDate: { not: null }
+                    }
+                }
             },
             include: {
                 remarks: { orderBy: { createdAt: "desc" } },
@@ -46,6 +50,42 @@ export async function GET(req: NextRequest) {
         });
     } catch (error) {
         console.error("Follow-up Board API Error:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const { userId } = await auth();
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const user = await currentUser();
+        const userRole = (user?.publicMetadata?.role as string || "GUEST").toUpperCase();
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+
+        if (!isMaster) {
+            return NextResponse.json({ error: "Permission denied: Only Admin/Master can remove follow-ups" }, { status: 403 });
+        }
+
+        const { searchParams } = new URL(req.url);
+        const responseId = searchParams.get("responseId");
+
+        if (!responseId) {
+            return NextResponse.json({ error: "Missing responseId" }, { status: 400 });
+        }
+
+        // Logic: Clear all nextFollowUpDates for this response so it stops appearing in board
+        await prisma.formRemark.updateMany({
+            where: { responseId },
+            data: {
+                nextFollowUpDate: null,
+                followUpStatus: "Closed"
+            }
+        });
+
+        return NextResponse.json({ success: true, message: "Follow-up removed from board" });
+    } catch (error) {
+        console.error("Follow-up Board Delete Error:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
