@@ -77,14 +77,18 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
         switch (form.followUpStatus) {
             case "Missed":
+            case "Call Again":
+            case "RNR":
+            case "RNR2 (Checked)":
+            case "RNR3":
+            case "Switch off":
                 daysToAdd = 1;
                 break;
             case "Called":
+            case "Call done":
                 daysToAdd = 2;
                 break;
             case "Scheduled":
-                daysToAdd = 3;
-                break;
             case "Walked In":
                 daysToAdd = 3;
                 break;
@@ -92,6 +96,8 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                 daysToAdd = 7;
                 break;
             case "Closed":
+            case "Not interested":
+            case "Invalid Number":
                 setForm(prev => ({ ...prev, nextFollowUpDate: "" }));
                 return;
             default:
@@ -224,7 +230,12 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
     const canDelete = userRole === "MASTER" || userRole === "ADMIN";
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[10000] p-4">
+        <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[10000] p-4"
+            onClick={(e) => {
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
             <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="bg-indigo-600 p-5 pl-6 text-white flex justify-between items-center shrink-0">
                     <div>
@@ -298,6 +309,14 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                         >
                                             <option>Scheduled</option>
                                             <option>Called</option>
+                                            <option>Call Again</option>
+                                            <option>Call done</option>
+                                            <option>Not interested</option>
+                                            <option>RNR</option>
+                                            <option>RNR2 (Checked)</option>
+                                            <option>RNR3</option>
+                                            <option>Switch off</option>
+                                            <option>Invalid Number</option>
                                             <option>Walked In</option>
                                             <option>Follow-up Done</option>
                                             <option>Missed</option>
@@ -353,10 +372,12 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                                     <FaCalendarAlt /> Next: {format(new Date(r.nextFollowUpDate), "MMM d, yyyy")}
                                                 </span>
                                                 {r.followUpStatus && (
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${r.followUpStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                        r.followUpStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                            'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                        }`}>
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${
+                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(r.followUpStatus || '') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(r.followUpStatus || '') ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(r.followUpStatus || '') ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                    }`}>
                                                         {r.followUpStatus}
                                                     </span>
                                                 )}

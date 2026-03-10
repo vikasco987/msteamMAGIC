@@ -63,12 +63,24 @@ export async function GET(
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
         console.log(`[API] Resolved Role: ${userRole} (Clerk: ${metaRole}, DB: ${dbRole})`);
-        const form = await prisma.dynamicForm.findUnique({
-            where: { id: formId },
-            include: { fields: { orderBy: { order: "asc" } } }
+        const rawFormResult: any = await (prisma as any).$runCommandRaw({
+            find: "DynamicForm",
+            filter: { _id: { $oid: formId } },
+            limit: 1
         });
 
-        if (!form) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+        const rawForm = rawFormResult.cursor?.firstBatch?.[0];
+        if (!rawForm) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+
+        // Map raw MongoDB fields to Prisma-like shape
+        const form = {
+            ...rawForm,
+            id: rawForm._id.$oid || rawForm._id,
+            fields: await prisma.formField.findMany({
+                where: { formId },
+                orderBy: { order: "asc" }
+            })
+        };
 
         const isFormOwner = form.createdBy === userId;
         const isMasterRole = userRole === "MASTER"; // Ultimate Authority
@@ -168,12 +180,19 @@ export async function GET(
                     columnFilters.push({ submittedByName: c });
                 } else if (colId === "__assigned") {
                     if (op === "is_empty") {
-                        columnFilters.push({ assignedTo: { equals: [] } });
+                        columnFilters.push({ AND: [{ assignedTo: { equals: [] } }, { submittedBy: null }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ NOT: { assignedTo: { equals: [] } } });
+                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { submittedBy: null } }] });
                     } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ assignedTo: { has: val } });
+                        const f = {
+                            OR: [
+                                { assignedTo: { has: val } },
+                                { visibleToUsers: { has: val } },
+                                { AND: [{ assignedTo: { equals: [] } }, { submittedBy: val }] }
+                            ]
+                        };
+                        console.log(`[BackendFilterDebug] colId:__assigned val:${val} filter:`, JSON.stringify(f, null, 2));
+                        columnFilters.push(f);
                     }
                 } else if (colId === "__nextFollowUpDate") {
                     if (op === "is_empty") {

@@ -64,7 +64,9 @@ import {
     Send,
     BarChart3,
     CloudOff,
-    Wifi
+    Wifi,
+    Pin,
+    PinOff
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
@@ -85,6 +87,59 @@ const getExcelLabel = (index: number): string => {
         index = Math.floor(index / 26) - 1;
     }
     return label;
+};
+
+const getColumnGroup = (col: any) => {
+    if (["__profile", "__assigned"].includes(col.id)) return "OPERATIONAL";
+    if (["__submittedAt", "__contributor"].includes(col.id) || !col.isInternal) return "LEAD_INFO";
+    if (col.id === "__payment" || col.label?.toLowerCase().includes("amount") || col.type === "currency") return "FINANCIALS";
+    if (["__followup", "__recentRemark", "__nextFollowUpDate", "__followUpStatus", "__nextFollow up date"].includes(col.id) || col.isInternal) return "CRM_TRACKING";
+    return "OTHERS";
+};
+
+const getGroupStyle = (group: string) => {
+    switch (group) {
+        case "OPERATIONAL": return { 
+            bg: "bg-indigo-50/50", 
+            headerBg: "bg-indigo-100/50",
+            text: "text-indigo-600", 
+            accent: "bg-indigo-500", 
+            border: "border-indigo-200",
+            label: "Operations" 
+        };
+        case "LEAD_INFO": return { 
+            bg: "bg-blue-50/50", 
+            headerBg: "bg-blue-100/50",
+            text: "text-blue-600", 
+            accent: "bg-blue-500", 
+            border: "border-blue-200", 
+            label: "Lead Entry" 
+        };
+        case "FINANCIALS": return { 
+            bg: "bg-emerald-50/50", 
+            headerBg: "bg-emerald-100/50",
+            text: "text-emerald-600", 
+            accent: "bg-emerald-500", 
+            border: "border-emerald-200", 
+            label: "Financials" 
+        };
+        case "CRM_TRACKING": return { 
+            bg: "bg-amber-50/50", 
+            headerBg: "bg-amber-100/50",
+            text: "text-amber-600", 
+            accent: "bg-amber-500", 
+            border: "border-amber-200", 
+            label: "CRM Tracking" 
+        };
+        default: return { 
+            bg: "bg-slate-50/50", 
+            headerBg: "bg-slate-100/50",
+            text: "text-slate-600", 
+            accent: "bg-slate-500", 
+            border: "border-slate-200", 
+            label: "Core Data" 
+        };
+    }
 };
 
 interface FormField {
@@ -267,6 +322,13 @@ const FILTER_OPERATORS = {
     ]
 };
 
+const getFallbackAvatar = (userId: string, imageUrl?: string | null) => {
+    if (imageUrl && !imageUrl.includes("default") && !imageUrl.includes("gravatar") && imageUrl.trim() !== "") return imageUrl;
+    const sum = (userId || "unknown").split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const index = (sum % 5) + 1;
+    return `/avatars/${index}.png`;
+};
+
 export default function CRMSpreadsheetPage() {
     const { user, isLoaded } = useUser();
     const router = useRouter();
@@ -393,6 +455,25 @@ export default function CRMSpreadsheetPage() {
     const [accessUserResults, setAccessUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
     // Granular Access Control (GAC)
+    const [isPinned, setIsPinned] = useState(false);
+
+    const togglePin = async () => {
+        const previousState = isPinned;
+        setIsPinned(!isPinned);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/pin`, { method: "PATCH" });
+            if (!res.ok) throw new Error("Pin failed");
+            const json = await res.json();
+            setIsPinned(json.isPinned);
+            if (json.isPinned) toast.success("Pinned to sidebar", { icon: "📌" });
+            else toast.success("Unpinned from sidebar");
+            window.dispatchEvent(new Event('pinnedFormsUpdated'));
+        } catch (err) {
+            setIsPinned(previousState);
+            toast.error("Could not update pin");
+        }
+    };
+
     const [accessTab, setAccessTab] = useState<"GLOBAL" | "COLUMNS">("GLOBAL");
     const [colPermissions, setColPermissions] = useState<{ roles: any, users: any }>({ roles: {}, users: {} });
     const [selectedRoleForGAC, setSelectedRoleForGAC] = useState<string>("ADMIN");
@@ -459,7 +540,7 @@ export default function CRMSpreadsheetPage() {
     const [userRole, setUserRole] = useState<string>("GUEST");
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
-    const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("standard");
+    const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -516,8 +597,31 @@ export default function CRMSpreadsheetPage() {
     }>({ start: null, end: null });
     const [isSelecting, setIsSelecting] = useState(false);
 
-    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction) => {
-        setIsSyncing(true);
+    const isUserInvolved = useMemo(() => {
+        if (!data) return false;
+        if (isMaster || isPureMaster) return true;
+        
+        const currentClerkId = data.clerkId;
+        const currentRole = userRole?.toUpperCase();
+        
+        // 1. Explicitly added to form (Access Control settings)
+        const visibleUsers = data.form?.visibleToUsers || [];
+        const visibleRoles = data.form?.visibleToRoles || [];
+        
+        if (currentClerkId && visibleUsers.includes(currentClerkId)) return true;
+        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER"].includes(currentRole))) return true;
+        
+        // 2. Assigned to any response in this form
+        const isAssigned = data.responses?.some(r => r.assignedTo?.includes(currentClerkId || ""));
+        if (isAssigned) return true;
+
+        return false;
+    }, [data, isMaster, isPureMaster, userRole]);
+
+    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        if (!isSilent) {
+            setIsSyncing(true);
+        }
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -598,6 +702,11 @@ export default function CRMSpreadsheetPage() {
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
 
+            // Set Pinned State
+            if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
+                setIsPinned(json.form.pinnedBy.includes(json.clerkId));
+            }
+
             // Save safe cache
             localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(json));
 
@@ -655,8 +764,9 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix");
             }
         } finally {
-            setLoading(false);
-            setIsSyncing(false);
+            if (!isSilent) {
+                setIsSyncing(false);
+            }
         }
     };
 
@@ -971,7 +1081,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
-        (data.responses || []).forEach((res: any) => {
+        const responsesSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+        responsesSource.forEach((res: any) => {
             const rawAssigned = res.assignedTo || [];
             const rawVisible = res.visibleToUsers || [];
             const defaultVisibleIds: string[] = [];
@@ -983,7 +1094,7 @@ export default function CRMSpreadsheetPage() {
             .filter(tm => assignedIds.has(tm.clerkId))
             .map(tm => {
                 const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-                return { label: name, value: name };
+                return { label: name, value: tm.clerkId };
             });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
@@ -1051,7 +1162,8 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         const deletedSystemCols = (data.form?.columnPermissions as any)?.deletedSystemCols || [];
         const assignedIds = new Set<string>();
-        (data.responses || []).forEach((res: any) => {
+        const responsesSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+        responsesSource.forEach((res: any) => {
             const rawAssigned = res.assignedTo || [];
             const rawVisible = res.visibleToUsers || [];
             const defaultVisibleIds: string[] = [];
@@ -1063,7 +1175,7 @@ export default function CRMSpreadsheetPage() {
             .filter(tm => assignedIds.has(tm.clerkId))
             .map(tm => {
                 const name = tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : tm.clerkId);
-                return { label: name, value: name };
+                return { label: name, value: tm.clerkId };
             });
         const baseCols: any[] = [
             { id: "__profile", label: "Profile", isPublic: false, type: "static" },
@@ -1206,6 +1318,8 @@ export default function CRMSpreadsheetPage() {
             const term = searchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
+                (r.submittedBy || "").toLowerCase().includes(term) ||
+                (r.assignedTo || []).some(uid => uid.toLowerCase().includes(term)) ||
                 (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
             );
         }
@@ -1222,11 +1336,42 @@ export default function CRMSpreadsheetPage() {
                 const groupMatches = Object.entries(groupedConditions).map(([colId, conds]) => {
                     const col = getColumns.find(c => c.id === colId);
                     const isInternal = col?.isInternal;
-                    const cellVal = getCellValue(r.id, colId, isInternal);
+
+                    if (colId === "__assigned") {
+                        const result = (conds as any[]).some((cond: any) => {
+                            const targetId = (cond.val || "").toString();
+                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
+                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
+                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
+                            const isUnassigned = rawAssigned.length === 0;
+                            const isSubmitter = r.submittedBy === targetId;
+
+                            let match = false;
+                            if (cond.op === "equals" || cond.op === "contains") {
+                                match = isAssigned || (isUnassigned && isSubmitter);
+                            } else if (cond.op === "is_empty") {
+                                match = isUnassigned && !r.submittedBy;
+                            } else if (cond.op === "is_not_empty") {
+                                match = !isUnassigned || !!r.submittedBy;
+                            } else if (cond.op === "not_equals") {
+                                match = !isAssigned && !(isUnassigned && isSubmitter);
+                            }
+
+                            if (targetId) {
+                                console.log(`[FilterDebug] Row:${r.id.slice(-4)} | Target:${targetId} | Op:${cond.op}`);
+                                console.log(`  - r.assignedTo:`, JSON.stringify(rawAssigned));
+                                console.log(`  - r.submittedBy:`, r.submittedBy);
+                                console.log(`  - Flags: isAssigned:${isAssigned}, isUnassigned:${isUnassigned}, isSubmitter:${isSubmitter} => Match:${match}`);
+                            }
+                            return match;
+                        });
+                        return result;
+                    }
+
+                    const cellVal = getCellValue(r.id, colId, isInternal || false);
                     const val = (cellVal || "").toString().toLowerCase();
 
-                    // Within the same column, multiple conditions act as OR (e.g., selecting 'Option 1' AND 'Option 2')
-                    const conditionMatches = conds.map(cond => {
+                    const conditionMatches = (conds as any[]).map(cond => {
                         const targetVal = (cond.val || "").toString().toLowerCase();
                         const targetVal2 = (cond.val2 || "").toString().toLowerCase();
 
@@ -1242,17 +1387,14 @@ export default function CRMSpreadsheetPage() {
                             case "ends_with": return val.endsWith(targetVal);
                             case "is_empty": return (val || "").trim().length === 0;
                             case "is_not_empty": return (val || "").trim().length > 0;
-
                             case "eq": return parseFloat(val) === parseFloat(targetVal);
                             case "gt": return parseFloat(val) > parseFloat(targetVal);
                             case "lt": return parseFloat(val) < parseFloat(targetVal);
                             case "gte": return parseFloat(val) >= parseFloat(targetVal);
                             case "lte": return parseFloat(val) <= parseFloat(targetVal);
                             case "between": return parseFloat(val) >= parseFloat(targetVal) && parseFloat(val) <= parseFloat(targetVal2);
-
                             case "is_true": return val === "true";
                             case "is_false": return val === "false" || val === "";
-
                             case "today": {
                                 const d = new Date(cellVal);
                                 const now = new Date();
@@ -1271,13 +1413,10 @@ export default function CRMSpreadsheetPage() {
                                 const target = new Date(cond.val);
                                 return !isNaN(d.getTime()) && !isNaN(target.getTime()) && d.toDateString() === target.toDateString();
                             }
-
                             default: return true;
                         }
                     });
 
-                    // Inside a column group, we OR them together
-                    // So if you pick 'Option A' and 'Option B', it returns true if either matches
                     return conditionMatches.some(m => m);
                 });
 
@@ -1300,6 +1439,26 @@ export default function CRMSpreadsheetPage() {
         setCurrentPage(1);
         // searchTerm change pe bhi page 1 pe jaao
     }, [searchTerm]);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            const target = e.target as Element;
+            if (target?.closest('.ignore-click-outside')) {
+                return;
+            }
+            setOpenColorPicker(null);
+            setOpenAssignedCell(null);
+            setActiveColumnFilter(null);
+            setUserResults([]);
+            setAccessUserResults([]);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, []);
 
     useEffect(() => {
         // Conditions/filterConjunction change pe saara data refetch karo
@@ -1912,6 +2071,15 @@ export default function CRMSpreadsheetPage() {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                                {isUserInvolved && (
+                                    <button
+                                        onClick={togglePin}
+                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                        title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
+                                    >
+                                        {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
+                                    </button>
+                                )}
                                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                     <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{isPureMaster ? "Master Core" : "Live Matrix"}</span>
@@ -2176,13 +2344,7 @@ export default function CRMSpreadsheetPage() {
                                             <div className="flex items-center gap-2.5">
                                                 <div className="relative">
                                                     <div className="relative w-10 h-10 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white font-black text-xs overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-500">
-                                                        {authorImage ? (
-                                                            <img src={authorImage} alt="author" className="w-full h-full object-cover" title={authorName} />
-                                                        ) : (
-                                                            <div className="w-full h-full flex items-center justify-center">
-                                                                {authorName[0].toUpperCase()}
-                                                            </div>
-                                                        )}
+                                                        <img src={getFallbackAvatar(author?.clerkId || latestRemarkFull?.createdById || res.id, authorImage)} alt="author" className="w-full h-full object-cover" title={authorName} />
                                                     </div>
                                                     {followUpCount > 0 && (
                                                         <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Total interaction count">
@@ -2259,11 +2421,7 @@ export default function CRMSpreadsheetPage() {
                                     const initial = (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?');
                                     return (
                                         <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                            {m.imageUrl ? (
-                                                <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                            ) : (
-                                                initial
-                                            )}
+                                            <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                         </div>
                                     );
                                 })}
@@ -2281,11 +2439,7 @@ export default function CRMSpreadsheetPage() {
                                         return (
                                             <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
                                                 <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900 overflow-hidden">
-                                                    {m.imageUrl ? (
-                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?')
-                                                    )}
+                                                    <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center justify-between gap-2">
@@ -2335,20 +2489,37 @@ export default function CRMSpreadsheetPage() {
                                 className={`table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
                             >
                                 <thead className="sticky top-0 z-[40]">
-                                    {/* Excel Column Labels Header */}
-                                    <tr className="bg-slate-100 divide-x divide-slate-200 h-8">
+                                    {/* Excel Column Labels Header with Group Indication */}
+                                    <tr className="bg-slate-50 divide-x divide-slate-100 h-9 transition-colors">
                                         <th className={`sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0]`}>
                                             #
                                         </th>
-                                        {getColumns.map((col, idx) => (
-                                            <th
-                                                key={`excel-label-${col.id}`}
-                                                className="bg-slate-100 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase p-0 h-8 text-center"
-                                                style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
-                                            >
-                                                {getExcelLabel(idx)}
-                                            </th>
-                                        ))}
+                                        {getColumns.map((col, idx) => {
+                                            const groupKey = getColumnGroup(col);
+                                            const style = getGroupStyle(groupKey);
+                                            const prevGroupKey = idx > 0 ? getColumnGroup(getColumns[idx - 1]) : null;
+                                            const isGroupStart = groupKey !== prevGroupKey;
+
+                                            return (
+                                                <th
+                                                    key={`excel-label-${col.id}`}
+                                                    className={`${style.headerBg} border-b border-slate-200 text-[9px] font-black text-slate-400 uppercase p-0 h-9 text-center relative overflow-hidden`}
+                                                    style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
+                                                >
+                                                    <div className="flex flex-col items-center justify-center h-full">
+                                                        {isGroupStart && (
+                                                            <div className={`absolute top-0 left-0 right-0 h-1 ${style.accent}`} />
+                                                        )}
+                                                        {isGroupStart ? (
+                                                            <span className={`${style.text} text-[7px] tracking-[0.2em] mb-0.5 opacity-80 uppercase`}>{style.label}</span>
+                                                        ) : (
+                                                            <div className="h-2" />
+                                                        )}
+                                                        <span className="opacity-40">{getExcelLabel(idx)}</span>
+                                                    </div>
+                                                </th>
+                                            );
+                                        })}
                                     </tr>
                                     <tr className="bg-[#F9FAFB] border-b border-[#EAECF0] h-14">
                                         <th className={`px-4 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] shadow-[1px_0_0_#EAECF0] ${isPureMaster ? 'w-[70px]' : 'w-[56px]'}`}>
@@ -2365,6 +2536,8 @@ export default function CRMSpreadsheetPage() {
                                         {getColumns.map((col, cIdx) => {
                                             const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
                                             const isSticky = cIdx < 2;
+                                            const groupKey = getColumnGroup(col);
+                                            const style = getGroupStyle(groupKey);
 
                                             // Dynamic left offset
                                             let leftOffset = isPureMaster ? 70 : 50;
@@ -2383,11 +2556,11 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky bg-[#F9FAFB] z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${col.isInternal ? 'text-indigo-600 bg-indigo-50/30' : 'text-[#475467]'}`}
+                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${style.bg} ${style.text}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={10} className={col.isInternal ? "text-indigo-600 shrink-0" : "text-[#667085] shrink-0"} />
+                                                            <TypeIcon size={10} className={`${style.text} shrink-0`} />
                                                             <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
                                                         </div>
 
@@ -2413,14 +2586,15 @@ export default function CRMSpreadsheetPage() {
                                                                         e.stopPropagation();
                                                                         setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
                                                                     }}
-                                                                    className={`p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
+                                                                    className={`ignore-click-outside p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
                                                                 >
                                                                     <Filter size={10} />
                                                                 </button>
                                                                 {activeColumnFilter === col.id && (
                                                                     <div
-                                                                        className="absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
+                                                                        className="ignore-click-outside absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
                                                                         onClick={(e) => e.stopPropagation()}
+                                                                        onMouseDown={(e) => e.stopPropagation()}
                                                                     >
                                                                         <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
                                                                             <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest">{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
@@ -2608,15 +2782,15 @@ export default function CRMSpreadsheetPage() {
                                         {paginatedResponses.map((res, rIdx) => (
                                             <motion.tr
                                                 key={res.id}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                transition={{ duration: 0.2, delay: rIdx * 0.03 }}
+                                                initial={{ opacity: 1 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0 }}
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-colors relative ${(res as any).isOptimistic ? 'opacity-50' : ''} ${openColorPicker === res.id ? 'z-[100]' : 'z-10'} 
-                                                    ${density === 'compact' ? 'h-[36px] text-xs' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[60px] text-sm md:text-[15px]'} 
+                                                className={`group cursor-pointer transition-none relative [&>td]:border-r [&>td]:border-[#EAECF0] ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
                                                     ${(() => {
                                                         const remarks = res.remarks || [];
                                                         const latestRemark = remarks[0];
@@ -2631,9 +2805,9 @@ export default function CRMSpreadsheetPage() {
                                                         return '';
                                                     })()}`}
                                             >
-                                                <td className={`px-4 py-2 border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] transition-colors z-30 
+                                                <td className={`border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] z-[35] 
                                                     ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} 
-                                                    ${density === 'compact' ? 'h-[36px]' : density === 'comfortable' ? 'h-[80px]' : 'h-[60px]'} 
+                                                    ${density === 'compact' ? 'h-[32px]' : density === 'comfortable' ? 'h-[80px]' : 'h-[50px]'} 
                                                     overflow-visible shadow-[1px_0_0_#EAECF0]`}
                                                 >
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">
@@ -2695,12 +2869,16 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="relative">
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
-                                                                            className={`p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                                                                            className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
                                                                         >
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div className="absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                                            <div 
+                                                                                className="ignore-click-outside absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                            >
                                                                                 <div className="absolute -bottom-1.5 left-3 w-3 h-3 bg-white border-b border-r border-slate-200 rotate-45" />
                                                                                 {[
                                                                                     "#fffbeb", "#f0fdf4", "#eff6ff", "#fdf2f8", "#fafaf9", "#fff1f2",
@@ -2739,10 +2917,7 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
                                                                         {(() => {
                                                                             const m = teamMembers.find(t => t.clerkId === res.submittedBy);
-                                                                            if (m?.imageUrl) {
-                                                                                return <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />;
-                                                                            }
-                                                                            return res.submittedByName ? (res.submittedByName[0]?.toUpperCase() || 'U') : 'U';
+                                                                            return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
                                                                     <div className="min-w-0">
@@ -2771,7 +2946,7 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`ignore-click-outside px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white shadow-[1px_0_0_#EAECF0]' : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     if (isCellOpen) setOpenAssignedCell(null);
@@ -2787,11 +2962,7 @@ export default function CRMSpreadsheetPage() {
                                                                             const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
                                                                                 <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                                                                    {m?.imageUrl ? (
-                                                                                        <img src={m.imageUrl} alt="avatar" className="w-full h-full object-cover" />
-                                                                                    ) : (
-                                                                                        initial
-                                                                                    )}
+                                                                                    <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                                                 </div>
                                                                             );
                                                                         })}
@@ -2812,7 +2983,8 @@ export default function CRMSpreadsheetPage() {
                                                                             exit={{ opacity: 0, y: 5, scale: 0.95 }}
                                                                             transition={{ duration: 0.2 }}
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            className="absolute top-12 left-0 z-50 w-64 bg-white/70 backdrop-blur-3xl border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto"
+                                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                                            className="ignore-click-outside absolute top-12 left-0 z-50 w-64 bg-white/70 backdrop-blur-3xl border border-slate-200 shadow-2xl rounded-2xl p-2 flex flex-col gap-1 max-h-[300px] overflow-y-auto"
                                                                         >
                                                                             <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between mb-1 sticky top-0 bg-white/80 backdrop-blur-md z-10">
                                                                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Authorized Access</span>
@@ -2844,9 +3016,7 @@ export default function CRMSpreadsheetPage() {
                                                                                     return (
                                                                                         <div key={uid} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 transition-colors">
                                                                                             <div className="w-8 h-8 rounded-full bg-slate-100 overflow-hidden shadow-sm border border-slate-200 shrink-0 flex items-center justify-center text-[10px] font-black text-slate-600">
-                                                                                                {m?.imageUrl ? (
-                                                                                                    <img src={m.imageUrl} alt="img" className="w-full h-full object-cover" />
-                                                                                                ) : initialStr}
+                                                                                                <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="img" className="w-full h-full object-cover" />
                                                                                             </div>
                                                                                             <div className="flex-1 min-w-0">
                                                                                                 <div className="flex items-center gap-2">
@@ -2944,10 +3114,12 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {latestStatus ? (
-                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${latestStatus === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                        latestStatus === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                                        }`}>
+                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${
+                                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                    }`}>
                                                                         {latestStatus}
                                                                     </span>
                                                                 ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">-</span>}
@@ -3253,8 +3425,8 @@ export default function CRMSpreadsheetPage() {
                                                             {(() => {
                                                                 const latestRemark = item.remarks?.[0];
                                                                 const author = teamMembers.find(m => m.clerkId === latestRemark?.createdById);
-                                                                if (author?.imageUrl) return <img src={author.imageUrl} title={author.name} className="w-full h-full object-cover" />;
-                                                                return latestRemark?.authorName?.[0] || item.submittedByName?.[0] || "?";
+                                                                const fallbackId = author?.clerkId || latestRemark?.createdById || item.submittedBy || item.id;
+                                                                return <img src={getFallbackAvatar(fallbackId, author?.imageUrl)} title={author?.name || latestRemark?.authorName || item.submittedByName || "User"} className="w-full h-full object-cover" />;
                                                             })()}
                                                         </div>
                                                         {item.remarks?.length > 0 && (
@@ -3637,6 +3809,7 @@ export default function CRMSpreadsheetPage() {
                                                             <input
                                                                 value={userSearchQuery}
                                                                 onChange={(e) => searchUsers(e.target.value)}
+                                                                onClick={(e) => e.stopPropagation()}
                                                                 placeholder="Search users by email..."
                                                                 className="w-full bg-slate-50 p-4 pl-12 rounded-2xl border-none font-bold text-[11px] shadow-inner outline-none focus:ring-1 ring-indigo-500"
                                                             />
@@ -3791,6 +3964,7 @@ export default function CRMSpreadsheetPage() {
                                         placeholder="Search User..."
                                         value={userSearchQuery}
                                         onChange={(e) => searchUsers(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
                                     />
                                     {userResults.length > 0 && (
                                         <div
@@ -4141,6 +4315,7 @@ export default function CRMSpreadsheetPage() {
                                                     <input
                                                         value={accessUserSearch}
                                                         onChange={(e) => searchAccessUsers(e.target.value)}
+                                                        onClick={(e) => e.stopPropagation()}
                                                         placeholder="Search user ID or email..."
                                                         className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
                                                     />
@@ -4265,13 +4440,21 @@ export default function CRMSpreadsheetPage() {
 
             <AnimatePresence>
                 {isMounted && isAIFilterOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, x: 300, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 300, scale: 0.95 }}
-                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-                        className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
-                    >
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsAIFilterOpen(false)}
+                            className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[90]"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, x: 300, scale: 0.95 }}
+                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 300, scale: 0.95 }}
+                            transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                            className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
+                        >
                         <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
@@ -4411,6 +4594,7 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </div>
                     </motion.div>
+                    </>
                 )}
             </AnimatePresence>
 
@@ -4583,10 +4767,8 @@ export default function CRMSpreadsheetPage() {
                         formId={openFollowUpModal.formId}
                         responseId={openFollowUpModal.responseId}
                         userRole={userRole || 'GUEST'}
-                        onClose={() => {
-                            setOpenFollowUpModal(null);
-                            fetchData();
-                        }}
+                        onClose={() => setOpenFollowUpModal(null)}
+                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
                     />
                 )
             }
@@ -4596,11 +4778,8 @@ export default function CRMSpreadsheetPage() {
                         formId={openPaymentModal.formId}
                         responseId={openPaymentModal.responseId}
                         userRole={userRole || 'GUEST'}
-                        onClose={() => {
-                            setOpenPaymentModal(null);
-                            fetchData();
-                        }}
-                        onSave={() => fetchData()}
+                        onClose={() => setOpenPaymentModal(null)}
+                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
                     />
                 )
             }
@@ -4638,6 +4817,37 @@ export default function CRMSpreadsheetPage() {
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
             )}
-        </div >
+            {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
+            <motion.button
+                initial={{ scale: 0, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                whileHover={{ scale: 1.1, y: -5 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                className={`fixed bottom-10 right-10 z-[101] w-16 h-16 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex flex-col items-center justify-center transition-all duration-500 border-2 backdrop-blur-xl group ${
+                    isFullScreen 
+                    ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40' 
+                    : 'bg-indigo-600/90 text-white border-indigo-400/50'
+                }`}
+                title={isFullScreen ? "Exit Full View" : "Enable Full Table View"}
+            >
+                <div className="relative">
+                    {isFullScreen ? (
+                        <Minimize2 size={22} className="group-hover:scale-110 transition-transform duration-500" />
+                    ) : (
+                        <Maximize2 size={22} className="group-hover:scale-110 transition-transform duration-500" />
+                    )}
+                    <div className={`absolute -inset-4 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${isFullScreen ? 'bg-slate-500/20' : 'bg-white/20'}`} />
+                </div>
+                <span className="text-[7px] font-black uppercase tracking-[0.1em] mt-1.5 opacity-60 group-hover:opacity-100 transition-all">
+                    {isFullScreen ? "Focus Off" : "Full Table"}
+                </span>
+                
+                {/* Glow Effect */}
+                {!isFullScreen && (
+                    <div className="absolute inset-0 bg-indigo-500/20 rounded-3xl blur-md -z-10 animate-pulse" />
+                )}
+            </motion.button>
+        </div>
     );
 }
