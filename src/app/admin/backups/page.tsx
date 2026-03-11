@@ -64,9 +64,30 @@ export default function BackupDashboard() {
     }
   };
 
-  const handleExport = (format: 'excel' | 'json', model: 'task' | 'customer') => {
+  const handleExport = (format: 'excel' | 'json', model: string) => {
     window.open(`/api/admin/backups/export?format=${format}&model=${model}`, "_blank");
   };
+
+  const [collections, setCollections] = useState<string[]>([]);
+  const [collectionSearch, setCollectionSearch] = useState("");
+  const [loadingCols, setLoadingCols] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/backups/collections")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setCollections(data);
+        setLoadingCols(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoadingCols(false);
+      });
+  }, []);
+
+  const filteredCollections = collections.filter(c => 
+    c.toLowerCase().includes(collectionSearch.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white p-6 md:p-12 font-sans selection:bg-purple-500/30">
@@ -92,16 +113,16 @@ export default function BackupDashboard() {
           <div className="p-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl transition hover:border-white/20">
             <h2 className="text-2xl font-semibold mb-6 flex items-center gap-2">
               <ShieldCheck className="text-green-400" />
-              Yeh Setup Kaise Kaam Karta Hai?
+              Setup Kaise Kaam Karta Hai?
             </h2>
             
             <div className="space-y-6">
               <div className="flex gap-4">
                 <div className="h-8 w-8 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 font-bold border border-purple-500/20 shrink-0">1</div>
                 <div>
-                  <h3 className="font-medium text-purple-300">Daily mongodump Script</h3>
+                  <h3 className="font-medium text-purple-300">Daily Cloud Backup</h3>
                   <p className="text-sm text-gray-400 mt-1">
-                    Rozana raat 2 baje system auto command run karta hai jo aapke pure database ki ek <b>compressed copy</b> (.gz file) banata hai.
+                    System rozana auto backup lekar use direct <b>AWS S3 Cloud</b> mein upload karta hai.
                   </p>
                 </div>
               </div>
@@ -109,29 +130,19 @@ export default function BackupDashboard() {
               <div className="flex gap-4">
                 <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold border border-blue-500/20 shrink-0">2</div>
                 <div>
-                  <h3 className="font-medium text-blue-300">Local Validation</h3>
+                  <h3 className="font-medium text-blue-300">Private & Secure</h3>
                   <p className="text-sm text-gray-400 mt-1">
-                    Backup file pehle server ke ek <b>secure folder</b> mein save hoti hai taaki verify ho sake ki data sahi se dump hua hai.
+                    Saara data <b>Private</b> rehta hai. Dashboard se download ke liye encrypted Pre-signed URLs use hote hain.
                   </p>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="h-8 w-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold border border-indigo-500/20 shrink-0">3</div>
+                <div className="h-8 w-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-bold border border-emerald-500/20 shrink-0">3</div>
                 <div>
-                  <h3 className="font-medium text-indigo-300">Cloud S3 Upload</h3>
+                  <h3 className="font-medium text-emerald-300">Instant Export</h3>
                   <p className="text-sm text-gray-400 mt-1">
-                    Validation ke baad, file ko turant <b>AWS S3 Bucket</b> mein upload kiya jata hai. Isse aapka data server crash hone ke baad bhi safe rehta hai.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <div className="h-8 w-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-bold border border-emerald-500/20 shrink-0">4</div>
-                <div>
-                  <h3 className="font-medium text-emerald-300">Automatic Cleanup</h3>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Upload success hote hi server se temp file delete ho jati hai, taaki <b>disk space wastage</b> na ho.
+                    Aap kisi bhi table (collection) ko turant <b>Excel ya JSON</b> mein download kar sakte hain analysis ke liye.
                   </p>
                 </div>
               </div>
@@ -140,7 +151,7 @@ export default function BackupDashboard() {
             <div className="mt-8 p-4 rounded-2xl bg-yellow-500/5 border border-yellow-500/20">
               <p className="text-xs text-yellow-200/70 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Agar data delete ho jaye, toh Admin niche di gayi history se latest file download karke <b>'npm run db:restore'</b> chala sakta hai.</span>
+                <span>Niche diye gaye <b>Collections Explorer</b> se aap apna sara database live browse kar sakte hain.</span>
               </p>
             </div>
           </div>
@@ -152,10 +163,10 @@ export default function BackupDashboard() {
             <div className="flex items-center justify-between mb-8">
               <h2 className="text-2xl font-semibold flex items-center gap-2">
                 <History className="text-purple-400" />
-                Backup History
+                Last Cloud Backups
               </h2>
               <div className="px-3 py-1 rounded-full bg-white/5 text-xs text-gray-400 border border-white/10 italic">
-                Logs updated in real-time
+                Encrypted on S3
               </div>
             </div>
 
@@ -170,7 +181,6 @@ export default function BackupDashboard() {
                   <HardDrive className="w-8 h-8 text-gray-600" />
                 </div>
                 <p className="text-gray-400">No backup records found yet.</p>
-                <p className="text-sm text-gray-600 mt-1">Run 'npm run db:backup' to create your first backup.</p>
               </div>
             ) : (
               <div className="overflow-x-auto relative">
@@ -247,71 +257,84 @@ export default function BackupDashboard() {
       </div>
 
       {/* Footer Info & Instant Export */}
-      <div className="max-w-7xl mx-auto mt-12 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Instant Export Section */}
+      <div className="max-w-7xl mx-auto mt-12 grid grid-cols-1 gap-8">
         <div className="p-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
-          <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
-            <FileText className="text-blue-400" />
-            Instant Data Export
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Tasks Export */}
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-              <p className="text-sm font-medium mb-3">All Tasks Data</p>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleExport('excel', 'task')}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-green-500/20 text-green-400 border border-green-500/20 text-xs hover:bg-green-500/30 transition"
-                >
-                  <Table size={14} /> Excel
-                </button>
-                <button 
-                  onClick={() => handleExport('json', 'task')}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 text-xs hover:bg-yellow-500/30 transition"
-                >
-                  <FileCode size={14} /> JSON
-                </button>
-              </div>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <h2 className="text-2xl font-semibold flex items-center gap-2">
+                <FileText className="text-blue-400" />
+                Database Collections Explorer
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Export any of your {collections.length} collections directly to Excel or JSON</p>
             </div>
+            
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <ShieldCheck className="h-4 w-4 text-gray-500 group-focus-within:text-blue-400 transition-colors" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search collection name..."
+                value={collectionSearch}
+                onChange={(e) => setCollectionSearch(e.target.value)}
+                className="block w-full md:w-80 pl-10 pr-3 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all"
+              />
+            </div>
+          </div>
 
-            {/* Customers Export */}
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-              <p className="text-sm font-medium mb-3">Customers Data</p>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleExport('excel', 'customer')}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-green-500/20 text-green-400 border border-green-500/20 text-xs hover:bg-green-500/30 transition"
-                >
-                  <Table size={14} /> Excel
-                </button>
-                <button 
-                  onClick={() => handleExport('json', 'customer')}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-yellow-500/20 text-yellow-400 border border-yellow-500/20 text-xs hover:bg-yellow-500/30 transition"
-                >
-                  <FileCode size={14} /> JSON
-                </button>
-              </div>
+          {loadingCols ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[500px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+              {filteredCollections.map((colName) => (
+                <div key={colName} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-white/20 transition-all group">
+                  <p className="text-sm font-bold mb-3 truncate group-hover:text-blue-300 transition-colors" title={colName}>
+                    {colName}
+                  </p>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleExport('excel', colName)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-green-500/10 text-green-400 border border-green-500/20 text-[10px] font-black uppercase tracking-wider hover:bg-green-500/20 transition"
+                    >
+                      <Table size={12} /> Excel
+                    </button>
+                    <button 
+                      onClick={() => handleExport('json', colName)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 text-[10px] font-black uppercase tracking-wider hover:bg-yellow-500/20 transition"
+                    >
+                      <FileCode size={12} /> JSON
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {filteredCollections.length === 0 && (
+                <div className="col-span-full py-10 text-center text-gray-600 italic">
+                  No collections matching "{collectionSearch}"
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Footer Branding */}
+      <div className="max-w-7xl mx-auto mt-8 flex flex-col md:flex-row items-center justify-between gap-6 p-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl">
+        <div className="flex items-center gap-4 text-gray-400">
+          <Cloud className="w-6 h-6" />
+          <div className="flex flex-col">
+            <span className="text-sm">Storage: <b>AWS S3 (US-EAST-1)</b></span>
+            <span className="text-xs text-gray-600">Auto-backup: 02:00 AM Daily</span>
           </div>
         </div>
-
-        {/* System Info */}
-        <div className="p-8 rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl flex flex-col justify-between">
-          <div className="flex items-center gap-4 text-gray-400 mb-6 sm:mb-0">
-            <Cloud className="w-6 h-6" />
-            <div>
-              <p className="text-sm">Storage: <b>AWS S3 (Private)</b></p>
-              <p className="text-xs text-gray-500">Auto-backup set for 02:00 AM daily</p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-             <div className="px-4 py-3 rounded-2xl bg-purple-600/20 border border-purple-500/30 text-xs text-purple-300 flex-1 text-center">
-               Next Sync: Today @ 02:00 AM
-             </div>
-             <div className="px-4 py-3 rounded-2xl bg-blue-600/20 border border-blue-500/30 text-xs text-blue-300 flex-1 text-center font-bold">
-               Status: System Secure
-             </div>
-          </div>
+        <div className="flex items-center gap-3">
+           <div className="px-5 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black text-emerald-400 uppercase tracking-widest leading-none">
+             Backup: 100% Full Cluster
+           </div>
+           <div className="px-5 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none">
+             Status: Secure
+           </div>
         </div>
       </div>
     </div>
