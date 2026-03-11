@@ -14,7 +14,11 @@ import {
     ArrowRightLeft,
     Lock,
     Eye,
-    EyeOff
+    EyeOff,
+    AlertCircle,
+    FileText,
+    Cloud,
+    HardDrive
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -44,6 +48,7 @@ export default function RoleManagementPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'users' | 'sidebar'>('users');
     const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
+    const [showDocs, setShowDocs] = useState(false);
 
     useEffect(() => {
         if (isLoaded && currentUser) {
@@ -161,14 +166,97 @@ export default function RoleManagementPage() {
     );
 
     return (
-        <div className="container mx-auto px-6 py-10 max-w-7xl">
+        <div className="container mx-auto px-6 py-10 max-w-7xl relative">
+            {/* DOCUMENTATION MODAL overlay */}
+            <AnimatePresence>
+                {showDocs && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-white border border-slate-200 rounded-[32px] p-8 shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-6">
+                                <div className="flex items-center gap-3 text-indigo-600">
+                                    <FileText size={24} />
+                                    <h2 className="text-2xl font-black">Access Commander Guide</h2>
+                                </div>
+                                <button 
+                                    onClick={() => setShowDocs(false)}
+                                    className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                                >
+                                    <XCircle className="text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-10">
+                                <section className="space-y-3">
+                                    <h3 className="text-indigo-600 font-black flex items-center gap-2">
+                                        <Users className="w-5 h-5" /> 1. Personnel Management (Role System)
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-bold leading-relaxed">
+                                        Yahan se aap kisi bhi staff member ki <span className="text-slate-900">Security Rank</span> change kar sakte hain. 
+                                        Jab aap list mein se kisi user ka role (ADMIN, SELLER, etc.) बदलते हैं, toh woh real-time mein change hota hai. 
+                                        Agli baar jab woh login karenge toh unhe wahi permissions milengi jo aapne yahan set ki hain.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-3">
+                                    <h3 className="text-indigo-600 font-black flex items-center gap-2">
+                                        <Layout className="w-5 h-5" /> 2. Interface (Sidebar visibility)
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-bold leading-relaxed">
+                                        Interface tab mein aap har role (MASTER ko chhod kar) ke liye yeh decide kar sakte hain ki unhe **Sidebar mein kya-kya dikhega**. 
+                                        Eye icon 👁️ ka matlab hai woh item unhe dikhega, aur EyeOff icon unhe woh page access karne se rok dega.
+                                    </p>
+                                </section>
+
+                                <section className="space-y-3">
+                                    <h3 className="text-indigo-600 font-black flex items-center gap-2">
+                                        <ShieldCheck className="w-5 h-5" /> 3. MASTER Privileges
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-bold leading-relaxed">
+                                        <span className="text-indigo-600">MASTER</span> account ke pas "God Mode" powers hoti hain. 
+                                        Master ka view koi change nahi kar sakta aur Backup Center jaise sensitive areas sirf Master ke liye hi open hote hain.
+                                    </p>
+                                </section>
+                            </div>
+
+                            <div className="mt-12 flex justify-center">
+                                <button 
+                                    onClick={() => setShowDocs(false)}
+                                    className="px-10 py-4 rounded-2xl bg-indigo-600 text-white font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200"
+                                >
+                                    Me Samajh Gaya!
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-6 mb-12">
                 <div>
                     <div className="flex items-center gap-3 text-indigo-600 mb-2">
                         <ShieldCheck size={28} className="drop-shadow-sm" />
                         <span className="text-sm font-black uppercase tracking-[0.3em] opacity-80">Security Core</span>
                     </div>
-                    <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Access <span className="text-indigo-600">Commander</span></h1>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Access <span className="text-indigo-600">Commander</span></h1>
+                        <button 
+                          onClick={() => setShowDocs(true)}
+                          className="w-fit flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 text-xs font-black transition-all"
+                        >
+                          <AlertCircle size={14} className="text-indigo-600" />
+                          HOW TO USE?
+                        </button>
+                    </div>
                     <p className="text-slate-500 font-bold mt-4 max-w-xl">Central synchronization engine for user roles and global interface visibility. Changes affect platform access in real-time.</p>
                 </div>
 

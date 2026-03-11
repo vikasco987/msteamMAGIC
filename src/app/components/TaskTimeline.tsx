@@ -185,6 +185,7 @@ export default function TaskTimeline() {
   const [mentionSearch, setMentionSearch] = useState("");
   const [showMentions, setShowMentions] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
+  const [showDocs, setShowDocs] = useState(false);
 
   useEffect(() => {
     const fetchAllUsers = async () => {
@@ -626,9 +627,110 @@ export default function TaskTimeline() {
   }, [totalPages, currentPage]);
 
   return (
-    <div className="space-y-4 p-4 bg-white rounded-xl shadow-md overflow-x-auto">
+    <div className="space-y-4 p-4 bg-white rounded-xl shadow-md overflow-x-auto relative">
+      {/* DOCUMENTATION MODAL */}
+      <AnimatePresence>
+        {showDocs && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto bg-white border border-gray-200 rounded-[32px] p-8 shadow-2xl custom-scrollbar text-gray-800"
+            >
+              <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-6">
+                <div className="flex items-center gap-3 text-purple-600">
+                  <FaFileAlt size={24} />
+                  <h2 className="text-2xl font-black">Timeline & Payment Guide</h2>
+                </div>
+                <button 
+                  onClick={() => setShowDocs(false)}
+                  className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-400"
+                >
+                  <FaPlus className="rotate-45" />
+                </button>
+              </div>
+
+              <div className="space-y-8">
+                {/* Section 1 */}
+                <section className="space-y-2">
+                  <h3 className="text-purple-600 font-black flex items-center gap-2">
+                    📊 1. Timeline Navigation
+                  </h3>
+                  <p className="text-sm text-gray-600 leading-relaxed font-medium">
+                    Yahan aapko sabhi projects ek calendar view mein dikhenge. 
+                    <span className="text-purple-700 font-bold block mt-1">• Blue/Grey Bar:</span> Yeh project ka duration (Start to End date) batata hai.
+                    <span className="text-purple-700 font-bold block">• Progress %:</span> Bar ke andar ka number project ki completion status dikhata hai.
+                  </p>
+                </section>
+
+                {/* Section 2 */}
+                <section className="space-y-2">
+                  <h3 className="text-purple-600 font-black flex items-center gap-2">
+                    💰 2. Payment Update Kaise Karein?
+                  </h3>
+                  <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100 space-y-3">
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      Kisi bhi task par click karein, right side mein <span className="text-black font-bold">"Payments"</span> section milega.
+                    </p>
+                    <ul className="text-xs text-gray-500 space-y-2 list-disc ml-4">
+                      <li><b>Total Amount:</b> Pure project ki final deal value.</li>
+                      <li><b>Add Received:</b> Jitne paise customer ne abhi diye (yeh value history mein jud jayegi).</li>
+                      <li><b>Proof Upload:</b> Aap payment ka screenshot ya invoice bhi upload kar sakte hain.</li>
+                    </ul>
+                  </div>
+                </section>
+
+                {/* Section 3 */}
+                <section className="space-y-2">
+                  <h3 className="text-purple-600 font-black flex items-center gap-2">
+                    📝 3. Collaboration (Notes & Subtasks)
+                  </h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    Har task ke andar aap <span className="text-black font-bold">Subtasks</span> bana sakte hain taaki team member unhe tick kar sake. 
+                    <span className="bg-purple-50 px-1 rounded">@Mention</span> feature use karke aap kisi bhi team member ko note mein tag kar sakte hain, unhe turant notification mil jayega.
+                  </p>
+                </section>
+
+                {/* Section 4 */}
+                <section className="space-y-2">
+                  <h3 className="text-purple-600 font-black flex items-center gap-2">
+                    📂 4. Attachments & Proofs
+                  </h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    Aap "Files" section mein design files, PDFs ya photographs upload kar sakte hain. 
+                    Koi purani file replace karni ho toh <b>Reupload</b> button use karein.
+                  </p>
+                </section>
+              </div>
+
+              <div className="mt-12 flex justify-center">
+                <button 
+                  onClick={() => setShowDocs(false)}
+                  className="px-10 py-4 rounded-full bg-purple-600 text-white font-black hover:bg-purple-700 transition-all shadow-xl shadow-purple-200"
+                >
+                  OK, Got it!
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowDocs(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 text-xs font-black transition-all"
+          >
+            <FaHistory className="text-purple-500" />
+            HOW TO USE?
+          </button>
           <span className="text-sm font-medium text-gray-600">Assignees:</span>
           {allAssignees.map((id) => (
             <Image
