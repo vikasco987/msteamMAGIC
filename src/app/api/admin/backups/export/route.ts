@@ -1,30 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { MongoClient } from "mongodb";
 import * as XLSX from "xlsx";
 
-const prisma = new PrismaClient();
+// Use Mongo Driver directly for dynamic collection access
+const uri = process.env.DATABASE_URL;
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const format = searchParams.get("format"); // "json" or "excel"
-    const model = searchParams.get("model") || "task"; // Default to task
+    const collectionName = searchParams.get("model"); // the actual collection name in DB
 
-    // Fetch data based on model - mapping standard names to prisma models
-    let data: any[] = [];
-    
-    if (model === "task") {
-      data = await prisma.task.findMany();
-    } else if (model === "customer") {
-      data = await prisma.customer.findMany();
-    } else if (model === "backup") {
-      data = await prisma.backup.findMany();
-    } else {
-        return NextResponse.json({ error: "Invalid model selection" }, { status: 400 });
+    if (!collectionName) {
+      return NextResponse.json({ error: "Collection name is required" }, { status: 400 });
     }
 
+    if (!uri) {
+        return NextResponse.json({ error: "Database configuration missing" }, { status: 500 });
+    }
+
+    const client = new MongoClient(uri);
+    await client.connect();
+    const db = client.db();
+    
+    // Fetch data from the specified collection
+    const data = await db.collection(collectionName).find({}).toArray();
+    await client.close();
+
+    // Remove MongoDB specific _id object if it exists (for cleaner export)
+    const cleanedData = data.map(item => {
+        const doc = { ...item };
+        if (doc._id) doc._id = doc._id.toString();
+        return doc;
+    });
+
     if (format === "excel") {
-      const worksheet = XLSX.utils.json_to_sheet(data);
+      const worksheet = XLSX.utils.json_to_sheet(cleanedData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
       
@@ -33,16 +44,16 @@ export async function GET(req: NextRequest) {
       return new NextResponse(buffer, {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=backup_${model}_${new Date().toISOString()}.xlsx`,
+          "Content-Disposition": `attachment; filename=export_${collectionName}_${new Date().toISOString().split('T')[0]}.xlsx`,
         },
       });
     }
 
     // Default to JSON
-    return new NextResponse(JSON.stringify(data, null, 2), {
+    return new NextResponse(JSON.stringify(cleanedData, null, 2), {
       headers: {
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename=backup_${model}_${new Date().toISOString()}.json`,
+        "Content-Disposition": `attachment; filename=export_${collectionName}_${new Date().toISOString().split('T')[0]}.json`,
       },
     });
 
