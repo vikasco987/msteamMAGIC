@@ -17,9 +17,14 @@ export async function POST(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
+        const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress || "User";
+        
         if (userRole !== "ADMIN" && userRole !== "MASTER" && userRole !== "PURE_MASTER") {
-            return NextResponse.json({ error: "Forbidden: Only admins can bulk update responses" }, { status: 403 });
+            console.error(`Forbidden bulk-import attempt by ${user.id} (${userName}) with role ${userRole}`);
+            return NextResponse.json({ error: `Forbidden: Only admins can bulk update (Current Role: ${userRole})` }, { status: 403 });
         }
+
+        console.log(`Starting bulk import for form ${formId} by ${userName} (${userRole})`);
 
         const body = await req.json();
         const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update' } = body as {
@@ -34,8 +39,6 @@ export async function POST(
         if (!data || data.length === 0 || (importMode === 'update' && !matchColumnId)) {
             return NextResponse.json({ error: "Invalid data or match column missing" }, { status: 400 });
         }
-
-        const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress || "User";
 
         let successCount = 0;
         let errors: string[] = [];
@@ -112,10 +115,13 @@ export async function POST(
                     }
 
                     if (!responseIdToUpdate) {
-                        errors.push(`Row ${i + 1} (${matchValue}): Record not found in database`);
+                        console.warn(`Row ${i + 1}: No match found for value "${matchValue}"`);
+                        errors.push(`Row ${i + 1}: No existing record found matching "${matchValue}" in the Key Column.`);
                         continue;
                     }
                 }
+
+                console.log(`Updating/Creating row ${i + 1} (${matchValue || 'New Row'})`);
 
                 // Apply Updates via Transaction
                 await prisma.$transaction(async (tx) => {
