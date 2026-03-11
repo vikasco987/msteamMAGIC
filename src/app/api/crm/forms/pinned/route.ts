@@ -7,15 +7,17 @@ export async function GET(req: NextRequest) {
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        const rawResult: any = await (prisma as any).$runCommandRaw({
-            find: "DynamicForm",
-            filter: { pinnedBy: userId }
+        const pinnedForms = await prisma.dynamicForm.findMany({
+            where: {
+                pinnedBy: {
+                    has: userId
+                }
+            },
+            select: {
+                id: true,
+                title: true
+            }
         });
-
-        const pinnedForms = (rawResult.cursor?.firstBatch || []).map((f: any) => ({
-            id: f._id.$oid || f._id,
-            title: f.title
-        }));
 
         return NextResponse.json(pinnedForms);
     } catch (error) {

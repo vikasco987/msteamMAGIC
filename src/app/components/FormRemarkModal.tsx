@@ -10,6 +10,7 @@ interface FormRemark {
     remark: string;
     nextFollowUpDate?: string;
     followUpStatus?: string;
+    columnId?: string;
     authorName: string;
     createdAt: string;
 }
@@ -17,12 +18,13 @@ interface FormRemark {
 interface Props {
     formId: string;
     responseId: string;
+    columnId?: string; // NEW: Optional column link
     userRole: string; // "MASTER", "ADMIN", etc.
     onClose: () => void;
     onSave?: () => void;
 }
 
-export default function FormRemarkModal({ formId, responseId, userRole, onClose, onSave }: Props) {
+export default function FormRemarkModal({ formId, responseId, columnId, userRole, onClose, onSave }: Props) {
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
     const [remarks, setRemarks] = useState<FormRemark[]>([]);
@@ -113,13 +115,16 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
     useEffect(() => {
         fetchRemarks();
+        if (columnId) {
+            setIsAdding(true);
+        }
 
         const handleSync = () => {
             syncOfflineQueue();
         };
         window.addEventListener('online', handleSync);
         return () => window.removeEventListener('online', handleSync);
-    }, [formId, responseId]);
+    }, [formId, responseId, columnId]);
 
     const syncOfflineQueue = async () => {
         const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
@@ -156,7 +161,18 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!form.remark) return toast.error("Please enter a remark.");
+        
+        // Use a default remark if none is provided but a column status is being set
+        const finalRemark = form.remark || `Status interaction: ${form.followUpStatus}`;
+        
+        if (!finalRemark && !columnId) return toast.error("Please enter a remark.");
+
+        const payload = { 
+            remark: finalRemark,
+            nextFollowUpDate: form.nextFollowUpDate || null,
+            followUpStatus: form.followUpStatus,
+            columnId 
+        };
 
         // OFFLINE HANDLER
         if (!navigator.onLine) {
@@ -164,12 +180,13 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                 id: `offline-${Date.now()}`,
                 formId,
                 responseId,
-                data: form,
-                remark: form.remark,
+                data: payload,
+                remark: payload.remark,
                 authorName: "You (Offline)",
                 createdAt: new Date().toISOString(),
-                nextFollowUpDate: form.nextFollowUpDate,
-                followUpStatus: form.followUpStatus
+                nextFollowUpDate: payload.nextFollowUpDate,
+                followUpStatus: payload.followUpStatus,
+                columnId: payload.columnId
             };
 
             const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
@@ -189,11 +206,11 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
             const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(form)
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
-                toast.success("Follow-up added!");
+                toast.success(columnId ? "Status updated!" : "Follow-up added!");
                 setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "Scheduled" });
                 setIsAdding(false);
                 fetchRemarks();
@@ -239,8 +256,8 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
             <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
                 <div className="bg-indigo-600 p-5 pl-6 text-white flex justify-between items-center shrink-0">
                     <div>
-                        <h3 className="text-xl font-black flex items-center gap-2">
-                            <FaCalendarAlt /> Follow-ups & Remarks
+                        <h3 className="text-xl font-black flex items-center gap-2 text-white">
+                            <FaCalendarAlt /> {columnId ? "Status Updates" : "Follow-ups & Remarks"}
                         </h3>
                         <p className="text-indigo-100 text-[11px] mt-1 font-bold uppercase tracking-widest">
                             Client interaction history
@@ -280,26 +297,30 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                     <FaPlus /> Add New Follow-up
                                 </button>
                             ) : (
-                                <form onSubmit={handleSubmit} className="bg-white border border-indigo-100 shadow-sm rounded-2xl p-4 space-y-4 animate-in slide-in-from-top-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Update / Remark</label>
-                                        <textarea
-                                            autoFocus
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-300 min-h-[80px] font-bold text-slate-700"
-                                            placeholder="What was discussed?"
-                                            value={form.remark}
-                                            onChange={(e) => setForm({ ...form, remark: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Next Follow-up Date (Optional)</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700"
-                                            value={form.nextFollowUpDate}
-                                            onChange={(e) => setForm({ ...form, nextFollowUpDate: e.target.value })}
-                                        />
-                                    </div>
+                                <form onSubmit={handleSubmit} className="bg-white border border-indigo-100 shadow-xl rounded-[32px] p-6 space-y-5 animate-in slide-in-from-top-4">
+                                    {!columnId && (
+                                        <>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Update / Remark</label>
+                                                <textarea
+                                                    autoFocus
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-300 min-h-[100px] font-bold text-slate-700 shadow-inner"
+                                                    placeholder="What was discussed?"
+                                                    value={form.remark}
+                                                    onChange={(e) => setForm({ ...form, remark: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Next Follow-up Date (Optional)</label>
+                                                <input
+                                                    type="date"
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 shadow-inner"
+                                                    value={form.nextFollowUpDate}
+                                                    onChange={(e) => setForm({ ...form, nextFollowUpDate: e.target.value })}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                     <div>
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Follow-up Status</label>
                                         <select
@@ -336,7 +357,14 @@ export default function FormRemarkModal({ formId, responseId, userRole, onClose,
                                             type="submit"
                                             className="flex-[2] py-2.5 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-md transition-all flex items-center justify-center gap-2"
                                         >
-                                            {loading ? "Saving..." : <><FaSave /> Save Follow-up</>}
+                                            {loading ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                    Saving...
+                                                </div>
+                                            ) : (
+                                                <><FaSave /> {columnId ? "Log Interaction" : "Save Follow-up"}</>
+                                            )}
                                         </button>
                                     </div>
                                 </form>

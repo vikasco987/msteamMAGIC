@@ -80,6 +80,10 @@ import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
 
+const CALL_STATUS_OPTIONS = [
+    "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
+];
+
 const getExcelLabel = (index: number): string => {
     let label = "";
     while (index >= 0) {
@@ -353,7 +357,7 @@ export default function CRMSpreadsheetPage() {
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
-    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
+    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -1694,6 +1698,62 @@ export default function CRMSpreadsheetPage() {
                 return next;
             });
         }
+    };
+
+    const handleStatusCellUpdate = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        // 1. Optimistic Update (Immediate Feedback)
+        setData(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                responses: prev.responses.map(r => {
+                    if (r.id === responseId) {
+                        return { 
+                            ...r, 
+                            remarks: [{ 
+                                id: 'temp-' + Date.now(),
+                                remark: `Status action: ${value}`,
+                                followUpStatus: value,
+                                createdAt: new Date().toISOString()
+                            } as any, ...(r.remarks || [])]
+                        };
+                    }
+                    return r;
+                })
+            };
+        });
+        
+        // 2. Persistent update
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses/${responseId}/remarks`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    remark: `Status action: ${value}`,
+                    followUpStatus: value,
+                    columnId: columnId
+                })
+            });
+            
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error || "Failed to log interaction");
+            }
+
+            toast.success(`Interaction logged as ${value}`, {
+                icon: '📞',
+                duration: 2000
+            });
+            
+            // Re-fetch to sync IDs and other data
+            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+        } catch (e: any) {
+            console.error(e);
+            toast.error(e.message || "Failed to log interaction");
+            // Re-fetch to revert optimistic update if failed
+            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+        }
+        setEditingCell(null);
     };
 
     const handleUpdateRowColor = async (responseId: string, color: string | null) => {
@@ -3203,7 +3263,20 @@ export default function CRMSpreadsheetPage() {
                                                         >
                                                             {isEditing ? (
                                                                 <div className="w-full" onClick={(e) => e.stopPropagation()}>
-                                                                    {col.type === "dropdown" ? (
+                                                                    {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
+                                                                        <select 
+                                                                            autoFocus 
+                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black text-indigo-700 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} 
+                                                                            value={editValue} 
+                                                                            onChange={(e) => { 
+                                                                                handleStatusCellUpdate(res.id, col.id, e.target.value, isInternal); 
+                                                                            }}
+                                                                            onBlur={() => setEditingCell(null)}
+                                                                        >
+                                                                            <option value="">Status...</option>
+                                                                            {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                        </select>
+                                                                    ) : col.type === "dropdown" ? (
                                                                         <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
                                                                             {Array.isArray(col.options) && col.options.map((opt: any) => {
@@ -4768,8 +4841,9 @@ export default function CRMSpreadsheetPage() {
                     <FormRemarkModal
                         formId={openFollowUpModal.formId}
                         responseId={openFollowUpModal.responseId}
-                        userRole={userRole || 'GUEST'}
+                        columnId={openFollowUpModal.columnId}
                         onClose={() => setOpenFollowUpModal(null)}
+                        userRole={userRole || 'GUEST'}
                         onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
                     />
                 )

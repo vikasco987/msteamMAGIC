@@ -14,96 +14,153 @@ export async function GET(req: Request) {
 
         // Target valid call statuses
         const targetStatuses = [
-            "Called",
-            "Call Again",
-            "Call done",
-            "Not interested",
-            "RNR",
-            "RNR2 (Checked)",
-            "RNR3",
-            "Switch off",
-            "Invalid Number",
-            "Scheduled",
-            "Walked In",
-            "Follow-up Done",
-            "Missed",
-            "Closed"
+            "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Scheduled", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
         ];
 
-        const remarks = await prisma.formRemark.findMany({
+        const remarks = await (prisma as any).formRemark.findMany({
             where: {
-                createdAt: {
-                    gte: start,
-                    lte: end
-                },
-                followUpStatus: {
-                    in: targetStatuses
-                }
-            },
-            select: {
-                authorName: true,
-                authorEmail: true,
-                createdById: true,
-                responseId: true,
-                followUpStatus: true
+                createdAt: { gte: start, lte: end },
+                followUpStatus: { in: targetStatuses }
             }
         });
 
-        type UserStatusMap = Map<string, { connected: boolean; notConnected: boolean }>;
-        const userGroupMap = new Map<string, UserStatusMap>();
+        console.log(`Report API: Found ${remarks.length} remarks for ${targetDate.toISOString()}`);
 
+        // Categorize interactions
         const connectedStatuses = ["Call Again", "Call done", "Not interested", "Walk-in scheduled", "Closed", "Follow up done", "Called", "Scheduled", "Follow-up Done", "Walked In"];
         const notConnectedStatuses = ["RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Missed"];
+
+        type Interaction = {
+            type: 'NEW' | 'FOLLOWUP';
+            connected: boolean;
+            notConnected: boolean;
+        };
+
+        type UserStats = {
+            name: string;
+            email: string;
+            leadsContacted: Map<string, Interaction>;
+        };
+
+        const userStatsMap = new Map<string, UserStats>();
 
         for (const r of remarks) {
             const userId = r.createdById || r.authorEmail || r.authorName || "Unknown";
             const responseId = r.responseId;
 
-            if (!userGroupMap.has(userId)) {
-                userGroupMap.set(userId, new Map());
+            if (!userStatsMap.has(userId)) {
+                userStatsMap.set(userId, {
+                    name: r.authorName || "Unknown User",
+                    email: r.authorEmail || "",
+                    leadsContacted: new Map()
+                });
             }
 
-            const responseMap = userGroupMap.get(userId)!;
-            if (!responseMap.has(responseId)) {
-                responseMap.set(responseId, { connected: false, notConnected: false });
+            const userStats = userStatsMap.get(userId)!;
+            
+            if (!userStats.leadsContacted.has(responseId)) {
+                userStats.leadsContacted.set(responseId, {
+                    type: 'FOLLOWUP',
+                    connected: false,
+                    notConnected: false
+                });
             }
 
-            const status = responseMap.get(responseId)!;
+            const inter = userStats.leadsContacted.get(responseId)!;
+
+            // 1. DEDUPLICATION LOGIC:
+            // If interaction has ANY columnId on this day, categorize as 'NEW' (primary)
+            if (r.columnId) {
+                inter.type = 'NEW';
+            }
+
+            // 2. STATUS CONVERSION:
+            // If any remark for this lead is connected, mark whole interaction as connected
             if (connectedStatuses.includes(r.followUpStatus || "")) {
-                status.connected = true;
+                inter.connected = true;
             } else if (notConnectedStatuses.includes(r.followUpStatus || "")) {
-                status.notConnected = true;
+                inter.notConnected = true;
             }
         }
 
-        const report = Array.from(userGroupMap.entries()).map(([userId, responseMap]) => {
-            let totalRecords = responseMap.size;
-            let connected = 0;
-            let notConnected = 0;
+        // Transform into the 3 report structures
+        const finalResults = Array.from(userStatsMap.entries()).map(([userId, user]) => {
+            const stats = {
+                newCalls: { count: 0, connected: 0, notConnected: 0 },
+                followUps: { count: 0, connected: 0, notConnected: 0 },
+                combined: { count: 0, connected: 0, notConnected: 0 }
+            };
 
-            responseMap.forEach(s => {
-                if (s.connected) connected++;
-                else if (s.notConnected) notConnected++;
+            user.leadsContacted.forEach((inter) => {
+                // Combined tracking (Every unique lead)
+                stats.combined.count++;
+                if (inter.connected) stats.combined.connected++;
+                else if (inter.notConnected) stats.combined.notConnected++;
+
+                // Exclusive tracking (Either New or Follow-up)
+                if (inter.type === 'NEW') {
+                    stats.newCalls.count++;
+                    if (inter.connected) stats.newCalls.connected++;
+                    else if (inter.notConnected) stats.newCalls.notConnected++;
+                } else {
+                    stats.followUps.count++;
+                    if (inter.connected) stats.followUps.connected++;
+                    else if (inter.notConnected) stats.followUps.notConnected++;
+                }
             });
-
-            // Need to retrieve user name/email from the first remark found for this user
-            const firstRemark = remarks.find(r => (r.createdById || r.authorEmail || r.authorName || "Unknown") === userId);
 
             return {
                 userId,
-                name: firstRemark?.authorName || "Unknown User",
-                email: firstRemark?.authorEmail || "",
-                callCount: totalRecords,
-                connectedCount: connected,
-                notConnectedCount: notConnected
+                name: user.name,
+                email: user.email,
+                stats
             };
         });
 
-        // Sort by highest unique call count
-        report.sort((a, b) => b.callCount - a.callCount);
+        const newCallReport = finalResults
+            .map(r => ({
+                userId: r.userId,
+                name: r.name,
+                email: r.email,
+                callCount: r.stats.newCalls.count,
+                connectedCount: r.stats.newCalls.connected,
+                notConnectedCount: r.stats.newCalls.notConnected
+            }))
+            .filter(r => r.callCount > 0)
+            .sort((a, b) => b.callCount - a.callCount);
 
-        return NextResponse.json({ report });
+        const followUpReport = finalResults
+            .map(r => ({
+                userId: r.userId,
+                name: r.name,
+                email: r.email,
+                callCount: r.stats.followUps.count,
+                connectedCount: r.stats.followUps.connected,
+                notConnectedCount: r.stats.followUps.notConnected
+            }))
+            .filter(r => r.callCount > 0)
+            .sort((a, b) => b.callCount - a.callCount);
+
+        const combinedReport = finalResults
+            .map(r => ({
+                userId: r.userId,
+                name: r.name,
+                email: r.email,
+                callCount: r.stats.combined.count,
+                connectedCount: r.stats.combined.connected,
+                notConnectedCount: r.stats.combined.notConnected
+            }))
+            .filter(r => r.callCount > 0)
+            .sort((a, b) => b.callCount - a.callCount);
+
+        return NextResponse.json({ 
+            followUpReport, 
+            newCallReport, 
+            combinedReport,
+            totalOperators: combinedReport.length
+        });
     } catch (e: any) {
+        console.error("Call report API error:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

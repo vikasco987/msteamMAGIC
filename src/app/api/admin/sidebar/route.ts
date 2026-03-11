@@ -23,11 +23,11 @@ export async function GET(req: NextRequest) {
             'Dashboard', 'Team Board', 'Create Task', 'Assigned Task',
             'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report',
             'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers',
-            'Agreements', 'Timeline'
+            'Agreements', 'Timeline', 'DB Backups'
         ];
 
         const DEFAULT_PERMISSIONS: Record<string, string[]> = {
-            master: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline'],
+            master: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline', 'DB Backups'],
             admin: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline'],
             seller: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Activity Log', 'Customers', 'Agreements', 'Timeline'],
             user: ['Team Board', 'Create Task', 'CRM Forms', 'Activity Log'],

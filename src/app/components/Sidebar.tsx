@@ -27,7 +27,9 @@ import {
   Zap,
   Briefcase,
   Calendar,
-  PhoneCall
+  PhoneCall,
+  Activity,
+  Database
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -78,6 +80,7 @@ const NAVIGATION_GROUPS = [
     title: "System",
     items: [
       { label: 'Access Control', icon: ShieldCheck, href: '/admin/roles', roles: ['master'] },
+      { label: 'DB Backups', icon: Database, href: '/admin/backups', roles: ['master'] },
     ]
   }
 ];
@@ -280,7 +283,7 @@ export default function Sidebar() {
               if (dynamicPermissions) {
                 // If the item is in the dynamic list, show it. 
                 // Exceptions: master always sees Access Control
-                if (userRole === 'master' && i.label === 'Access Control') return true;
+                if (userRole === 'master' && (i.label === 'Access Control' || i.label === 'DB Backups')) return true;
                 return dynamicPermissions.includes(i.label);
               }
 

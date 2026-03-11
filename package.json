@@ -7,11 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:backup": "node scripts/backup/mongodb-backup.js",
+    "db:restore": "node scripts/backup/mongodb-restore.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.31",
     "@ai-sdk/react": "^3.0.103",
+    "@aws-sdk/client-s3": "^3.1006.0",
+    "@aws-sdk/lib-storage": "^3.1006.0",
+    "@aws-sdk/s3-request-presigner": "^3.1006.0",
     "@clerk/backend": "^2.3.1",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/nextjs": "^6.23.3",
@@ -35,6 +40,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "dotenv": "^17.3.1",
     "file-saver": "^2.0.5",
     "framer-motion": "^12.23.5",
     "frappe-gantt": "^1.0.3",
