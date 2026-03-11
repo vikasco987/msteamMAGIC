@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const format = searchParams.get("format"); // "json" or "excel"
     const collectionName = searchParams.get("model"); // the actual collection name in DB
+    const targetDbName = searchParams.get("db"); // Optional snapshot DB name
 
     if (!collectionName) {
       return NextResponse.json({ error: "Collection name is required" }, { status: 400 });
@@ -21,7 +22,9 @@ export async function GET(req: NextRequest) {
 
     const client = new MongoClient(uri);
     await client.connect();
-    const db = client.db();
+    
+    // Switch to target DB if provided, otherwise use default from URI
+    const db = targetDbName ? client.db(targetDbName) : client.db();
     
     // Fetch data from the specified collection
     const data = await db.collection(collectionName).find({}).toArray();
