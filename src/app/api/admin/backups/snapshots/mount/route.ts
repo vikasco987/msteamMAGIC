@@ -3,9 +3,13 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
+import readline from "readline";
 import { promisify } from "util";
+import { MongoClient, BSON } from "mongodb";
 
 const execPromise = promisify(exec);
+const { EJSON } = BSON;
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest) {
     const tempDbName = `snap_${sanitizedName}`;
 
     // 2. Local paths
-    const tempDir = path.join(process.cwd(), "tmp-mounts");
+    const tempDir = process.env.NODE_ENV === "production" ? "/tmp/temp-mounts" : path.join(process.cwd(), "tmp-mounts");
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
     const localFilePath = path.join(tempDir, fileName);
 
@@ -49,33 +53,86 @@ export async function POST(req: NextRequest) {
     await new Promise((resolve, reject) => {
       stream.pipe(fileWriter);
       stream.on("error", reject);
-      fileWriter.on("finish", resolve);
+      fileWriter.on("finish", () => resolve(true));
     });
 
     console.log("✅ Downloaded. Now restoring to ghost database...");
 
-    // 4. Mongorestore to temporary database
-    // Extract original DB name from URI (usually clickup_clone)
-    const urlParts = MONGODB_URI.split("/");
-    const originalDbName = urlParts[3]?.split("?")[0] || "clickup_clone";
+    // 4. Restore Logic based on file type
+    if (fileName.endsWith('.json.gz')) {
+        // Pure JS restore for new backups
+        console.log("Reading pure-JS archive (.json.gz)...");
+        const client = new MongoClient(MONGODB_URI);
+        try {
+            await client.connect();
+            const tempDb = client.db(tempDbName);
 
-    // Try to find mongorestore path
-    let restoreCmd = "mongorestore";
-    const commonPaths = ["/usr/local/bin/mongorestore", "/opt/homebrew/bin/mongorestore"];
-    for (const p of commonPaths) {
-      if (fs.existsSync(p)) {
-        restoreCmd = p;
-        break;
-      }
+            // Clean the db in case of re-mount
+            const collections = await tempDb.listCollections().toArray();
+            for (const col of collections) {
+                await tempDb.dropCollection(col.name);
+            }
+
+            const readStream = fs.createReadStream(localFilePath).pipe(zlib.createGunzip());
+            const rl = readline.createInterface({ input: readStream });
+
+            let currentCollection = null;
+            let currentBatch: any[] = [];
+            
+            for await (const line of rl) {
+                if (!line.trim()) continue;
+                const parsed = EJSON.parse(line);
+                const colName = parsed.__collection__;
+                
+                if (currentCollection !== colName) {
+                    if (currentCollection && currentBatch.length > 0) {
+                        try { await tempDb.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+                        currentBatch = [];
+                    }
+                    currentCollection = colName;
+                }
+                
+                currentBatch.push(parsed.doc);
+                if (currentBatch.length >= 2000) {
+                    try { await tempDb.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+                    currentBatch = [];
+                }
+            }
+            if (currentCollection && currentBatch.length > 0) {
+                try { await tempDb.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+            }
+
+            console.log("✅ Pure-JS Restore successful!");
+        } finally {
+            await client.close();
+        }
+
+    } else {
+        // Legacy mongorestore
+        console.log("Reading legacy archive (.gz) via mongorestore...");
+        const urlParts = MONGODB_URI.split("/");
+        const originalDbName = urlParts[3]?.split("?")[0] || "clickup_clone";
+
+        let restoreCmd = "mongorestore";
+        const commonPaths = ["/usr/bin/mongorestore", "/usr/local/bin/mongorestore", "/opt/homebrew/bin/mongorestore"];
+        for (const p of commonPaths) {
+            if (fs.existsSync(p)) {
+                restoreCmd = p;
+                break;
+            }
+        }
+
+        const command = `${restoreCmd} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip --nsInclude="${originalDbName}.*" --nsFrom="${originalDbName}.*" --nsTo="${tempDbName}.*" --drop`;
+        
+        try {
+            await execPromise(command);
+        } catch (execError: any) {
+            throw new Error(`mongorestore failed: ${execError.message}`);
+        }
     }
 
-    // Command to restore the archive into a NEW namespace
-    const command = `${restoreCmd} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip --nsInclude="${originalDbName}.*" --nsFrom="${originalDbName}.*" --nsTo="${tempDbName}.*" --drop`;
-
-    await execPromise(command);
-
     // 5. Cleanup local file
-    fs.unlinkSync(localFilePath);
+    try { fs.unlinkSync(localFilePath); } catch(e){}
 
     console.log(`🏁 Snapshot mounted successfully. DB: ${tempDbName}`);
     return NextResponse.json({ success: true, tempDbName });

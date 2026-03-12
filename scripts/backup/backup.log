@@ -1,0 +1,18 @@
+------------------------------------------
+📅 Backup started at: Thu Mar 12 10:15:19 IST 2026
+
+> clickup-clone@0.1.0 db:backup
+> node scripts/backup/mongodb-backup.js
+
+[dotenv@17.3.1] injecting env (21) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+🚀 Starting Kravy POS Ultimate Backup...
+📦 Generating backup: kravy-pos-backup-2026-03-12T04-45-19-484Z.gz...
+✅ Local backup created successfully.
+📤 Uploading to S3 bucket: magicscale-backups...
+✨ Backup uploaded successfully to cloud: kravy-pos-backup-2026-03-12T04-45-19-484Z.gz
+📝 Backup metadata saved to database.
+🧹 Local temporary file cleaned up.
+🏁 Backup process completed successfully!
+✅ Backup process finished successfully.
+🕒 Finished at: Thu Mar 12 10:15:24 IST 2026
+------------------------------------------
