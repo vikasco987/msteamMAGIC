@@ -1,15 +1,21 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
-const { exec } = require('child_process');
 const fs = require('fs');
+const envPath = path.resolve(__dirname, '../../.env');
+if (fs.existsSync(envPath)) {
+    require('dotenv').config({ path: envPath });
+}
+const { exec } = require('child_process');
+const zlib = require('zlib');
+const readline = require('readline');
 const { S3Client, ListObjectsV2Command, GetObjectCommand } = require("@aws-sdk/client-s3");
-const { streamingProgress } = require("@aws-sdk/lib-storage");
+const { MongoClient, BSON } = require('mongodb');
+const { EJSON } = BSON;
 
 // Configuration
 const MONGODB_URI = process.env.DATABASE_URL;
 const S3_BUCKET_NAME = process.env.AWS_S3_BACKUP_BUCKET;
 const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
-const RESTORE_DIR = path.join(__dirname, 'temp-restore');
+const RESTORE_DIR = process.env.NODE_ENV === 'production' ? '/tmp/temp-restore' : path.join(__dirname, 'temp-restore');
 
 // Initialize S3 Client
 const s3Client = new S3Client({
@@ -67,46 +73,102 @@ async function runRestore() {
         const { Body } = await s3Client.send(getCommand);
         const writer = fs.createWriteStream(localFilePath);
         
-        // Body is a ReadableStream in Node.js
         await new Promise((resolve, reject) => {
             Body.pipe(writer);
             Body.on('error', reject);
-            writer.on('finish', resolve);
+            writer.on('finish', () => resolve());
         });
 
         console.log('✅ Download complete.');
 
-        // 3. Run mongorestore
+        // 3. Run restore based on file format
         console.log('🛡️ Restoring database (This will overwrite existing data)...');
-        
-        // Try to find mongorestore if not in PATH
-        let restoreBin = 'mongorestore';
-        const commonPaths = ['/usr/local/bin/mongorestore', '/opt/homebrew/bin/mongorestore'];
-        for (const p of commonPaths) {
-            if (fs.existsSync(p)) {
-                restoreBin = p;
-                break;
+
+        if (filename.endsWith('.json.gz')) {
+            console.log("Reading pure-JS archive (.json.gz)...");
+            const client = new MongoClient(MONGODB_URI);
+            try {
+                await client.connect();
+                const db = client.db();
+
+                // Drop all existing collections safely
+                const collections = await db.listCollections().toArray();
+                for (const col of collections) {
+                    if (col.name.startsWith('system.')) continue;
+                    await db.dropCollection(col.name);
+                }
+
+                const readStream = fs.createReadStream(localFilePath).pipe(zlib.createGunzip());
+                const rl = readline.createInterface({ input: readStream });
+
+                let currentCollection = null;
+                let currentBatch = [];
+                
+                for await (const line of rl) {
+                    if (!line.trim()) continue;
+                    const parsed = EJSON.parse(line);
+                    const colName = parsed.__collection__;
+                    
+                    if (currentCollection !== colName) {
+                        if (currentCollection && currentBatch.length > 0) {
+                            try { await db.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+                            currentBatch = [];
+                        }
+                        console.log(`   - Restoring collection: ${colName}...`);
+                        currentCollection = colName;
+                    }
+                    
+                    currentBatch.push(parsed.doc);
+                    if (currentBatch.length >= 2000) {
+                        try { await db.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+                        currentBatch = [];
+                    }
+                }
+                
+                if (currentCollection && currentBatch.length > 0) {
+                    try { await db.collection(currentCollection).insertMany(currentBatch, { ordered: false }); } catch(e){}
+                }
+
+                console.log('✨ Pure-JS Database Restore successfully!');
+            } finally {
+                await client.close();
             }
+        } else {
+            console.log("Reading legacy archive (.gz) via mongorestore...");
+            // Try to find mongorestore if not in PATH
+            let restoreBin = 'mongorestore';
+            const commonPaths = ['/usr/bin/mongorestore', '/usr/local/bin/mongorestore', '/opt/homebrew/bin/mongorestore'];
+            for (const p of commonPaths) {
+                if (fs.existsSync(p)) {
+                    restoreBin = p;
+                    break;
+                }
+            }
+
+            // Using --drop to clear existing collections before restore
+            const restoreCommand = `${restoreBin} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip --drop`;
+
+            await new Promise((resolve, reject) => {
+                exec(restoreCommand, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`❌ mongorestore error: ${error.message}`);
+                        reject(error);
+                        return;
+                    }
+                    console.log('✨ Database restored via mongorestore successfully!');
+                    resolve();
+                });
+            });
         }
-
-        // Using --drop to clear existing collections before restore
-        const restoreCommand = `${restoreBin} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip --drop`;
-
-        exec(restoreCommand, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`❌ mongorestore error: ${error.message}`);
-                return;
-            }
-            console.log('✨ Database restored successfully!');
-            
-            // 4. Cleanup
-            fs.unlinkSync(localFilePath);
-            console.log('🧹 Local temporary file cleaned up.');
-            console.log('🏁 Restore process completed.');
-        });
+        
+        // 4. Cleanup
+        if (fs.existsSync(localFilePath)) fs.unlinkSync(localFilePath);
+        console.log('🧹 Local temporary file cleaned up.');
+        console.log('🏁 Restore process completed.');
 
     } catch (err) {
         console.error('❌ Error during restore process:', err);
+        process.exit(1);
     }
 }
 

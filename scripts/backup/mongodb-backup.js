@@ -1,13 +1,14 @@
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
 const envPath = path.resolve(__dirname, '../../.env');
 if (fs.existsSync(envPath)) {
     require('dotenv').config({ path: envPath });
 }
-const { exec } = require('child_process');
 const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
-const { MongoClient } = require('mongodb');
+const { MongoClient, BSON } = require('mongodb');
+const { EJSON } = BSON;
 
 // Configuration
 const MONGODB_URI = process.env.DATABASE_URL;
@@ -27,7 +28,7 @@ const s3Client = new S3Client({
 });
 
 async function runBackup() {
-    console.log('🚀 Starting Kravy POS Ultimate Backup...');
+    console.log('🚀 Starting Kravy POS Pure-JS Backup...');
 
     if (!MONGODB_URI) {
         console.error('❌ Error: DATABASE_URL is not defined in .env');
@@ -46,110 +47,107 @@ async function runBackup() {
 
     // 2. Generate backup filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `kravy-pos-backup-${timestamp}.gz`;
+    const filename = `kravy-pos-backup-${timestamp}.json.gz`;
     const localFilePath = path.join(BACKUP_DIR, filename);
-
-    // Try to find mongodump if not in PATH
-    let mongodumpPath = 'mongodump';
-    const commonPaths = [
-        '/usr/bin/mongodump',
-        '/usr/local/bin/mongodump', 
-        '/opt/homebrew/bin/mongodump'
-    ];
-    for (const p of commonPaths) {
-        if (fs.existsSync(p)) {
-            mongodumpPath = p;
-            break;
-        }
-    }
 
     console.log(`📦 Generating backup: ${filename}...`);
 
-    // Using --archive to create a single compressed file
-    const dumpCommand = `${mongodumpPath} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip`;
-
-    // Pre-check: does the mongodump executable exist?
+    let client;
     try {
-        if (mongodumpPath !== 'mongodump' && !fs.existsSync(mongodumpPath)) {
-            throw new Error(`mongodump not found at designated path: ${mongodumpPath}`);
-        }
-    } catch (e) {
-        console.error(`❌ Error: ${e.message}`);
-        console.error('💡 Tip: On Ubuntu/Debian, install with: sudo apt install mongodb-database-tools');
-        process.exit(1);
-    }
+        client = new MongoClient(MONGODB_URI);
+        await client.connect();
+        const db = client.db();
 
-    exec(dumpCommand, async (error, stdout, stderr) => {
-        if (error) {
-            console.error(`❌ mongodump error: ${error.message}`);
-            if (stderr) console.error(`Stderr: ${stderr}`);
-            process.exit(1); // Exit with error so parent knows it failed
+        // 3. Create GZIP stream
+        const fileWriter = fs.createWriteStream(localFilePath);
+        const gzip = zlib.createGzip();
+        gzip.pipe(fileWriter);
+
+        // 4. Fetch all collections and dump as NDJSON
+        const collections = await db.listCollections().toArray();
+        for (const colInfo of collections) {
+            // Optional: Skip system views or purely transient collections if needed
+            if (colInfo.name.startsWith('system.')) continue;
+            
+            console.log(`   - Dumping collection: ${colInfo.name}...`);
+            const col = db.collection(colInfo.name);
+            const cursor = col.find({});
+            
+            for await (const doc of cursor) {
+                const line = { __collection__: colInfo.name, doc: doc };
+                gzip.write(EJSON.stringify(line) + '\n');
+            }
         }
-        
-        console.log('✅ Local backup created successfully.');
+
+        // Close stream cleanly
+        await new Promise((resolve, reject) => {
+            fileWriter.on('finish', resolve);
+            fileWriter.on('error', reject);
+            gzip.end();
+        });
+
+        console.log('✅ Local JSON archive created successfully.');
         console.log(`📤 Uploading to S3 bucket: ${S3_BUCKET_NAME}...`);
 
-        // 4. Upload to S3
+        // 5. Upload to S3
+        const fileStream = fs.createReadStream(localFilePath);
+        const upload = new Upload({
+            client: s3Client,
+            params: {
+                Bucket: S3_BUCKET_NAME,
+                Key: `backups/${filename}`,
+                Body: fileStream,
+            },
+        });
+
+        await upload.done();
+        console.log(`✨ Backup uploaded successfully to cloud: ${filename}`);
+
+        // 6. Store Metadata in MongoDB
         try {
-            const fileStream = fs.createReadStream(localFilePath);
-            const upload = new Upload({
-                client: s3Client,
-                params: {
-                    Bucket: S3_BUCKET_NAME,
-                    Key: `backups/${filename}`,
-                    Body: fileStream,
-                },
+            const stats = fs.statSync(localFilePath);
+            const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+
+            await db.collection('Backup').insertOne({
+                fileName: filename,
+                date: new Date(),
+                sizeMB: parseFloat(sizeMB),
+                status: "success",
+                s3Url: `https://${S3_BUCKET_NAME}.s3.amazonaws.com/backups/${filename}`,
+                createdAt: new Date()
             });
+            console.log('📝 Backup metadata saved to database.');
+        } catch (mongoError) {
+            console.error('⚠️ Could not save metadata to database:', mongoError.message);
+        }
 
-            await upload.done();
-            console.log(`✨ Backup uploaded successfully to cloud: ${filename}`);
-
-            // 5. Store Metadata in MongoDB
-            try {
-                const client = new MongoClient(MONGODB_URI);
-                await client.connect();
-                const db = client.db(); // Uses the DB name from the URI
-                const stats = fs.statSync(localFilePath);
-                const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-
-                await db.collection('Backup').insertOne({
-                    fileName: filename,
-                    date: new Date(),
-                    sizeMB: parseFloat(sizeMB),
-                    status: "success",
-                    s3Url: `https://${S3_BUCKET_NAME}.s3.amazonaws.com/backups/${filename}`,
-                    createdAt: new Date()
-                });
-                console.log('📝 Backup metadata saved to database.');
-                await client.close();
-            } catch (mongoError) {
-                console.error('⚠️ Could not save metadata to database:', mongoError.message);
-            }
-
-            // 6. Cleanup local file
+        // 7. Cleanup local file
+        if (fs.existsSync(localFilePath)) {
             fs.unlinkSync(localFilePath);
-            console.log('🧹 Local temporary file cleaned up.');
-            
-            console.log('🏁 Backup process completed successfully!');
-        } catch (uploadError) {
-            console.error('❌ S3 Upload Error:', uploadError);
-            // Optional: Log failure to DB
-            try {
-                const client = new MongoClient(MONGODB_URI);
-                await client.connect();
+        }
+        console.log('🧹 Local temporary file cleaned up.');
+        console.log('🏁 Backup process completed successfully!');
+
+    } catch (error) {
+        console.error(`❌ Backup Process Error: ${error.message}`);
+        console.error(error);
+        if (client) {
+             try {
                 const db = client.db();
                 await db.collection('Backup').insertOne({
                     fileName: filename,
                     date: new Date(),
                     sizeMB: 0,
                     status: "failed",
-                    error: uploadError.message,
+                    error: error.message,
                     createdAt: new Date()
                 });
-                await client.close();
-            } catch (e) {}
+             } catch(e) {}
         }
-    });
+        process.exit(1);
+    } finally {
+        if (client) await client.close();
+    }
 }
 
 runBackup();
