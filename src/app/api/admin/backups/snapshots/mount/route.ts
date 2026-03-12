@@ -113,13 +113,25 @@ export async function POST(req: NextRequest) {
         const urlParts = MONGODB_URI.split("/");
         const originalDbName = urlParts[3]?.split("?")[0] || "clickup_clone";
 
-        let restoreCmd = "mongorestore";
-        const commonPaths = ["/usr/bin/mongorestore", "/usr/local/bin/mongorestore", "/opt/homebrew/bin/mongorestore"];
+        let restoreCmd = null;
+        const commonPaths = ["/usr/bin/mongorestore", "/usr/local/bin/mongorestore", "/opt/homebrew/bin/mongorestore", "mongorestore"];
         for (const p of commonPaths) {
-            if (fs.existsSync(p)) {
-                restoreCmd = p;
-                break;
-            }
+            try {
+                // If it's just 'mongorestore', execSync will find it in PATH or throw
+                if (p === 'mongorestore') {
+                   require('child_process').execSync('which mongorestore', { stdio: 'ignore' });
+                   restoreCmd = p;
+                   break;
+                }
+                if (fs.existsSync(p)) {
+                    restoreCmd = p;
+                    break;
+                }
+            } catch(e) {}
+        }
+
+        if (!restoreCmd) {
+            throw new Error(`This server does not have 'mongorestore' installed. Legacy backups (.gz) cannot be mounted here. Please download it and restore locally, or use the new Backup system (.json.gz) which works perfectly here.`);
         }
 
         const command = `${restoreCmd} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip --nsInclude="${originalDbName}.*" --nsFrom="${originalDbName}.*" --nsTo="${tempDbName}.*" --drop`;
