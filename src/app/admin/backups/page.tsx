@@ -41,8 +41,11 @@ export default function BackupDashboard() {
   const [mountingId, setMountingId] = useState<string | null>(null);
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [snapshotDb, setSnapshotDb] = useState<string | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
 
-  useEffect(() => {
+
+  const fetchBackups = () => {
+    setLoading(true);
     fetch("/api/admin/backups")
       .then((res) => res.json())
       .then((data) => {
@@ -53,7 +56,12 @@ export default function BackupDashboard() {
         console.error(err);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchBackups();
   }, []);
+
 
   const handleDownload = async (id: string, fileName: string) => {
     try {
@@ -104,6 +112,29 @@ export default function BackupDashboard() {
     window.open(url, "_blank");
   };
 
+  const handleManualBackup = async () => {
+    try {
+      setBackingUp(true);
+      const res = await fetch("/api/admin/backups/create", {
+        method: "POST",
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert("Success: Manual backup created and uploaded to S3!");
+        fetchBackups(); // Refresh list
+      } else {
+        alert("Backup failed: " + (data.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Backup trigger error:", error);
+      alert("Failed to connect to backup service");
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+
   const [collections, setCollections] = useState<{name: string, count: number}[]>([]);
   const [collectionSearch, setCollectionSearch] = useState("");
   const [loadingCols, setLoadingCols] = useState(true);
@@ -148,14 +179,34 @@ export default function BackupDashboard() {
           </div>
         </div>
 
-        <button 
-          onClick={() => setShowDocs(true)}
-          className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-medium transition-all group"
-        >
-          <AlertCircle className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
-          System Guide (Docs)
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleManualBackup}
+            disabled={backingUp}
+            className={`flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all font-medium ${
+              backingUp 
+              ? 'bg-purple-500/20 border-purple-500/30 text-purple-400 cursor-not-allowed' 
+              : 'bg-gradient-to-r from-purple-600/10 to-blue-600/10 border-white/10 hover:border-purple-500/30 text-white hover:shadow-lg hover:shadow-purple-500/10'
+            }`}
+          >
+            {backingUp ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Cloud className="w-4 h-4 text-purple-400" />
+            )}
+            {backingUp ? 'Backing up...' : 'Create Manual Backup'}
+          </button>
+
+          <button 
+            onClick={() => setShowDocs(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-medium transition-all group"
+          >
+            <AlertCircle className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
+            System Guide (Docs)
+          </button>
+        </div>
       </div>
+
 
       {/* DOCUMENTATION MODAL */}
       {showDocs && (
@@ -230,7 +281,19 @@ export default function BackupDashboard() {
               {/* Feature 5 */}
               <section className="space-y-3">
                 <h3 className="text-red-300 font-bold flex items-center gap-2">
-                  <HardDrive className="w-4 h-4" /> 5. Data Safety & Restore
+                  <Cloud className="w-4 h-4" /> 5. Hybrid Strategy (Auto + Manual)
+                </h3>
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  System mein <span className="text-white font-medium">Automatic</span> aur <span className="text-white font-medium">Manual</span> dono options hain. 
+                  Auto-backup har raat schedule pe chalta hai, aur agar aapne koi important change kiya hai jo aap turant save karna chahte hain, toh aap <span className="text-white font-medium">"Create Manual Backup"</span> button use kar sakte hain. 
+                  Dono backups safe cloud bucket mein store hote hain.
+                </p>
+              </section>
+
+              {/* Feature 6 */}
+              <section className="space-y-3">
+                <h3 className="text-orange-300 font-bold flex items-center gap-2">
+                  <HardDrive className="w-4 h-4" /> 6. Data Safety & Restore
                 </h3>
                 <p className="text-sm text-gray-400 leading-relaxed">
                   Backup archive file <span className="text-white font-medium">.archive.gz</span> format mein hoti hai. 
@@ -287,6 +350,16 @@ export default function BackupDashboard() {
                   <h3 className="font-medium text-emerald-300">Targeted Export</h3>
                   <p className="text-sm text-gray-400 mt-1">
                     Purane backup se kisi bhi table ka <b>Excel/JSON</b> nikalein bina full restore kiye.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <div className="h-8 w-8 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-400 font-bold border border-orange-500/20 shrink-0">4</div>
+                <div>
+                  <h3 className="font-medium text-orange-300">Instant Manual Backup</h3>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Bina raat ka wait kiye, jab chahe tab <b>S3 Cloud</b> par backup upload karein ek click mein.
                   </p>
                 </div>
               </div>
