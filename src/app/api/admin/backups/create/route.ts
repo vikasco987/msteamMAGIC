@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
+import fs from "fs";
 import path from "path";
 
 export async function POST(req: NextRequest) {
@@ -13,21 +14,33 @@ export async function POST(req: NextRequest) {
     // If it takes > 30s it might timeout the request.
     
     console.log(`Starting manual backup via script: ${scriptPath}`);
+
+    if (!fs.existsSync(scriptPath)) {
+      console.error(`Backup script not found at: ${scriptPath}`);
+      return NextResponse.json({ 
+        error: "Backup configuration error", 
+        details: `Script not found at ${scriptPath}. Please ensure scripts/backup/mongodb-backup.js exists in the project root.`
+      }, { status: 500 });
+    }
     
     return new Promise((resolve) => {
       exec(`node ${scriptPath}`, (error, stdout, stderr) => {
         if (error) {
           console.error(`Backup script error: ${error.message}`);
+          console.error(`Script stderr: ${stderr}`);
+          console.error(`Script stdout: ${stdout}`);
+          
           resolve(NextResponse.json({ 
-            error: "Backup failed", 
+            error: "Backup process failed", 
             details: error.message,
-            stderr 
+            stderr: stderr,
+            stdout: stdout
           }, { status: 500 }));
           return;
         }
         
         console.log(`Backup script output: ${stdout}`);
-        if (stderr) console.error(`Backup script stderr: ${stderr}`);
+        if (stderr) console.warn(`Backup script warning/stderr: ${stderr}`);
         
         resolve(NextResponse.json({ 
           message: "Backup completed successfully", 

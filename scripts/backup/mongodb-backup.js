@@ -1,7 +1,10 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
-const { exec } = require('child_process');
 const fs = require('fs');
+const envPath = path.resolve(__dirname, '../../.env');
+if (fs.existsSync(envPath)) {
+    require('dotenv').config({ path: envPath });
+}
+const { exec } = require('child_process');
 const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const { MongoClient } = require('mongodb');
@@ -10,7 +13,9 @@ const { MongoClient } = require('mongodb');
 const MONGODB_URI = process.env.DATABASE_URL;
 const S3_BUCKET_NAME = process.env.AWS_S3_BACKUP_BUCKET;
 const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
-const BACKUP_DIR = path.join(__dirname, 'temp-backups');
+const BACKUP_DIR = process.env.NODE_ENV === 'production' 
+    ? '/tmp/temp-backups' 
+    : path.join(__dirname, 'temp-backups');
 
 // Initialize S3 Client
 const s3Client = new S3Client({
@@ -44,10 +49,13 @@ async function runBackup() {
     const filename = `kravy-pos-backup-${timestamp}.gz`;
     const localFilePath = path.join(BACKUP_DIR, filename);
 
-    // 3. Run mongodump
     // Try to find mongodump if not in PATH
     let mongodumpPath = 'mongodump';
-    const commonPaths = ['/usr/local/bin/mongodump', '/opt/homebrew/bin/mongodump'];
+    const commonPaths = [
+        '/usr/bin/mongodump',
+        '/usr/local/bin/mongodump', 
+        '/opt/homebrew/bin/mongodump'
+    ];
     for (const p of commonPaths) {
         if (fs.existsSync(p)) {
             mongodumpPath = p;
@@ -60,10 +68,22 @@ async function runBackup() {
     // Using --archive to create a single compressed file
     const dumpCommand = `${mongodumpPath} --uri="${MONGODB_URI}" --archive="${localFilePath}" --gzip`;
 
+    // Pre-check: does the mongodump executable exist?
+    try {
+        if (mongodumpPath !== 'mongodump' && !fs.existsSync(mongodumpPath)) {
+            throw new Error(`mongodump not found at designated path: ${mongodumpPath}`);
+        }
+    } catch (e) {
+        console.error(`❌ Error: ${e.message}`);
+        console.error('💡 Tip: On Ubuntu/Debian, install with: sudo apt install mongodb-database-tools');
+        process.exit(1);
+    }
+
     exec(dumpCommand, async (error, stdout, stderr) => {
         if (error) {
             console.error(`❌ mongodump error: ${error.message}`);
-            return;
+            if (stderr) console.error(`Stderr: ${stderr}`);
+            process.exit(1); // Exit with error so parent knows it failed
         }
         
         console.log('✅ Local backup created successfully.');
