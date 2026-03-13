@@ -39,38 +39,55 @@ export async function GET(req: Request) {
         return NextResponse.json({ tls });
     }
 
-    // Determine whose team we are looking at
-    let leaderId = userId;
-    if (targetTlId && isPrivileged) {
-        leaderId = targetTlId;
+    let teamUserIds: string[] = [];
+    let leaderName = "";
+
+    if (targetTlId === "all" && isPrivileged) {
+        // Aggregated view for all TLs
+        const allTls = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { isTeamLeader: true },
+                    { role: { equals: "TL", mode: "insensitive" } }
+                ]
+            },
+            select: { clerkId: true }
+        });
+        const tlIds = allTls.map(t => t.clerkId);
+        const members = await prisma.user.findMany({
+            where: { leaderId: { in: tlIds } },
+            select: { clerkId: true }
+        });
+        teamUserIds = [...tlIds, ...members.map(m => m.clerkId)];
+        leaderName = "All Teams";
+    } else {
+        // Individual TL view
+        let leaderId = userId;
+        if (targetTlId && isPrivileged) {
+            leaderId = targetTlId;
+        }
+
+        const leaderUser = targetTlId ? await prisma.user.findUnique({ where: { clerkId: leaderId } }) : dbUser;
+        const members = await prisma.user.findMany({
+            where: { leaderId: leaderId },
+            select: { clerkId: true, name: true, email: true }
+        });
+        
+        teamUserIds = [leaderId, ...members.map(m => m.clerkId)];
+        leaderName = leaderUser?.name || "Unknown";
     }
 
-    // Get the leader's actual DB details (if different from requester)
-    const leaderUser = targetTlId ? await prisma.user.findUnique({ where: { clerkId: leaderId } }) : dbUser;
-
-    // 1. Get Team Members
-    const members = await prisma.user.findMany({
-        where: { leaderId: leaderId },
+    // Fetch details for member performance
+    const usersInTeam = await prisma.user.findMany({
+        where: { clerkId: { in: teamUserIds } },
         select: { clerkId: true, name: true, email: true }
     });
-    
-    // Add the leader themselves to the "team" for stats
-    const teamUserIds = [leaderId, ...members.map(m => m.clerkId)];
+
     const memberMap: Record<string, any> = {};
-    
-    // Initialize member map
-    memberMap[leaderId] = {
-        name: leaderUser?.name || "Team Leader",
-        email: leaderUser?.email || "",
-        revenue: 0,
-        received: 0,
-        sales: 0
-    };
-    
-    members.forEach(m => {
-        memberMap[m.clerkId] = {
-            name: m.name || "Unknown",
-            email: m.email || "",
+    usersInTeam.forEach(u => {
+        memberMap[u.clerkId] = {
+            name: u.name || "Unknown",
+            email: u.email || "",
             revenue: 0,
             received: 0,
             sales: 0
@@ -104,7 +121,6 @@ export async function GET(req: Request) {
         const amount = task.amount || 0;
         const received = task.received || 0;
         
-        // Count for creator
         if (memberMap[task.createdByClerkId]) {
             memberMap[task.createdByClerkId].revenue += amount;
             memberMap[task.createdByClerkId].received += received;
@@ -114,7 +130,7 @@ export async function GET(req: Request) {
 
     // 4. Calculate Team Totals
     const teamStats = {
-        leaderName: leaderUser?.name || "Unknown",
+        leaderName,
         totalRevenue: tasks.reduce((sum, t) => sum + (t.amount || 0), 0),
         totalReceived: tasks.reduce((sum, t) => sum + (t.received || 0), 0),
         totalSales: tasks.length,

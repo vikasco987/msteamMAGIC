@@ -103,10 +103,12 @@ export default function TLDashboard() {
       }
 
       if (privileged) {
+        setSelectedTlId("all");
         fetchTlList();
+        fetchTeamStats("all");
+      } else {
+        fetchTeamStats();
       }
-      
-      fetchTeamStats();
     }
   }, [isLoaded, user]);
 
@@ -193,6 +195,7 @@ export default function TLDashboard() {
                     onChange={handleTlChange}
                     className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
                 >
+                    <option value="all">All Teams</option>
                     <option value="">My Own Team</option>
                     {tlList.map(tl => (
                         <option key={tl.clerkId} value={tl.clerkId}>{tl.name}</option>
