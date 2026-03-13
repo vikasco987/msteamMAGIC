@@ -1,93 +1,49 @@
-
-// import { prisma } from "@/lib/prisma";
-
-
-
-
-// import { NextResponse } from "next/server";
-// import { prisma } from "@/lib/prisma";
-
-// export async function GET(req: Request) {
-//   try {
-//     const { searchParams } = new URL(req.url);
-//     const page = parseInt(searchParams.get("page") || "1");
-//     const limit = parseInt(searchParams.get("limit") || "10");
-//     const skip = (page - 1) * limit;
-
-//     const tasks = await prisma.task.findMany({
-//       select: {
-//         createdAt: true,
-//         amount: true,
-//         received: true,
-//       },
-//       orderBy: {
-//         createdAt: "desc",
-//       },
-//     });
-
-//     const dayMap: Record<string, { totalRevenue: number; amountReceived: number; totalLeads: number }> = {};
-
-//     for (const task of tasks) {
-//       if (!task.createdAt) continue;
-
-//       const dateKey = new Date(task.createdAt).toISOString().split("T")[0]; // "YYYY-MM-DD"
-//       if (!dayMap[dateKey]) {
-//         dayMap[dateKey] = {
-//           totalRevenue: 0,
-//           amountReceived: 0,
-//           totalLeads: 0,
-//         };
-//       }
-
-//       dayMap[dateKey].totalRevenue += task.amount || 0;
-//       dayMap[dateKey].amountReceived += task.received || 0;
-//       dayMap[dateKey].totalLeads += 1;
-//     }
-
-//     const allDays = Object.entries(dayMap)
-//       .sort(([a], [b]) => b.localeCompare(a)) // Newest first
-//       .map(([date, stats]) => ({
-//         date,
-//         totalRevenue: stats.totalRevenue,
-//         amountReceived: stats.amountReceived,
-//         pendingAmount: stats.totalRevenue - stats.amountReceived,
-//         totalLeads: stats.totalLeads,
-//       }));
-
-//     const paginatedData = allDays.slice(skip, skip + limit);
-
-//     return NextResponse.json({
-//       data: paginatedData,
-//       total: allDays.length,
-//       totalPages: Math.ceil(allDays.length / limit),
-//       currentPage: page,
-//     });
-//   } catch (error) {
-//     console.error("Error in day-report:", error);
-//     return NextResponse.json({ error: "Failed to generate day report" }, { status: 500 });
-//   }
-// }
-
-
-
-
-//recent
-
-
-
-
-// /api/stats/user-performance/day-report/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 export async function GET(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
 
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    
+    const role = String(clerkUser.publicMetadata?.role || dbUser?.role || "user").toLowerCase();
+    const isTL = dbUser?.isTeamLeader || role === 'tl';
+    const isPrivileged = ['admin', 'master'].includes(role);
+
+    let filter: any = {};
+
+    if (!isPrivileged) {
+      let userIds = [userId];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId },
+              select: { clerkId: true }
+          });
+          userIds = [userId, ...members.map(m => m.clerkId)];
+      }
+      
+      filter = {
+          OR: [
+              { createdByClerkId: { in: userIds } },
+              { assigneeId: { in: userIds } },
+              { assigneeIds: { hasSome: userIds } }
+          ]
+      };
+    }
+
     const tasks = await prisma.task.findMany({
+      where: filter,
       select: {
         createdAt: true,
         amount: true,
@@ -101,6 +57,7 @@ export async function GET(req: NextRequest) {
         totalRevenue: number;
         amountReceived: number;
         totalLeads: number;
+        cumulativeRevenue?: number;
       }
     > = {};
 
@@ -124,9 +81,12 @@ export async function GET(req: NextRequest) {
       .map(([date, stats], index, arr) => {
         // Calculate cumulative revenue in reverse order
         const prevCumulative =
-          index > 0 ? arr[index - 1][1].cumulativeRevenue ?? 0 : 0;
+          index > 0 ? (arr[index - 1][1] as any).cumulativeRevenue ?? 0 : 0;
         const currentRevenue = stats.totalRevenue;
         const cumulativeRevenue = prevCumulative + currentRevenue;
+
+        // Store cumulative in the source array slice so next iteration can see it
+        (arr[index][1] as any).cumulativeRevenue = cumulativeRevenue;
 
         return {
           date,

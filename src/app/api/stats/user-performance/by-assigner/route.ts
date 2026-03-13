@@ -1,9 +1,15 @@
 // FILE: src/app/api/stats/user-performance/by-assigner/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 export async function GET(req: Request) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const monthParam = searchParams.get("month"); // format: YYYY-MM
 
@@ -22,14 +28,45 @@ export async function GET(req: Request) {
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     }
 
+    // Role and Team check
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    
+    const role = String(clerkUser.publicMetadata?.role || dbUser?.role || "user").toLowerCase();
+    const isTL = dbUser?.isTeamLeader || role === 'tl';
+    const isPrivileged = ['admin', 'master'].includes(role);
+
+    let filter: any = {
+      createdAt: {
+        gte: startDate,
+        lt: endDate,
+      },
+    };
+
+    if (!isPrivileged) {
+      let userIds = [userId];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId },
+              select: { clerkId: true }
+          });
+          userIds = [userId, ...members.map(m => m.clerkId)];
+      }
+      
+      filter = {
+          ...filter,
+          OR: [
+              { createdByClerkId: { in: userIds } },
+              { assigneeId: { in: userIds } },
+              { assigneeIds: { hasSome: userIds } }
+          ]
+      };
+    }
+
     // ✅ Fetch tasks within selected month
     const tasks = await prisma.task.findMany({
-      where: {
-        createdAt: {
-          gte: startDate,
-          lt: endDate,
-        },
-      },
+      where: filter,
       select: {
         assignerName: true,
         assignerEmail: true,

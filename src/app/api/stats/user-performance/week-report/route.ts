@@ -1,7 +1,6 @@
-// /api/stats/user-performance/week-report/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 function getWeekKey(date: Date): string {
   const temp = new Date(date);
@@ -23,11 +22,46 @@ function formatDate(dateStr: string): string {
 
 export async function GET(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = req.nextUrl;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "1000"); // higher limit for chart
 
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    
+    const role = String(clerkUser.publicMetadata?.role || dbUser?.role || "user").toLowerCase();
+    const isTL = dbUser?.isTeamLeader || role === 'tl';
+    const isPrivileged = ['admin', 'master'].includes(role);
+
+    let filter: any = {};
+
+    if (!isPrivileged) {
+      let userIds = [userId];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId },
+              select: { clerkId: true }
+          });
+          userIds = [userId, ...members.map(m => m.clerkId)];
+      }
+      
+      filter = {
+          OR: [
+              { createdByClerkId: { in: userIds } },
+              { assigneeId: { in: userIds } },
+              { assigneeIds: { hasSome: userIds } }
+          ]
+      };
+    }
+
     const tasks = await prisma.task.findMany({
+      where: filter,
       select: {
         createdAt: true,
         amount: true,
