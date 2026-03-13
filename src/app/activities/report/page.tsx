@@ -106,7 +106,7 @@ export default function DeepAnalysisPage() {
 
     // Permissions
     const userRole = (user?.publicMetadata?.role as string || "user").toLowerCase();
-    const isMaster = userRole === "master" || userRole === "admin";
+    const isMaster = userRole === "master" || userRole === "admin" || userRole === "tl";
 
     useEffect(() => {
         setIsMounted(true);

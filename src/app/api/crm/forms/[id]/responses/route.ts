@@ -108,13 +108,28 @@ export async function GET(
         const userPerms = gac.users?.[userId] || {};
         const colAccess = { ...rolePerms, ...userPerms };
 
+        // Team Leader Logic: If user is TL, they can see their team's data
+        const isTL = dbUser?.isTeamLeader || userRole?.toUpperCase() === 'TL';
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId },
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
+
         // Construct where clause for filtering based on permissions
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
                 { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
                 { visibleToRoles: { has: userRole } },
-                { visibleToUsers: { has: userId } }
+                { visibleToUsers: { has: userId } },
+                ...(isTL && teamMemberIds.length > 0 ? [
+                    { assignedTo: { hasSome: teamMemberIds } },
+                    { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
+                ] : [])
             ]
         };
 

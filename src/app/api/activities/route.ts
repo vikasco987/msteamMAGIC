@@ -6,8 +6,9 @@ export async function GET(req: NextRequest) {
     const { userId, sessionClaims } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const role = (sessionClaims?.role as string) || "user";
-    const isAdmin = role === "admin" || role === "master";
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const userRole = String(dbUser?.role || "user").toLowerCase();
+    const isAdmin = userRole === "admin" || userRole === "master";
 
     try {
         const { searchParams } = new URL(req.url);
@@ -18,9 +19,23 @@ export async function GET(req: NextRequest) {
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
+        const isTL = (dbUser as any)?.isTeamLeader || userRole === "tl";
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId } as any,
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
+
         const where: any = {};
         if (!isAdmin) {
-            where.authorId = userId;
+            if (isTL) {
+                where.authorId = { in: [userId, ...teamMemberIds] };
+            } else {
+                where.authorId = userId;
+            }
         }
 
         const [activities, total, todayCount, typeDistribution] = await Promise.all([

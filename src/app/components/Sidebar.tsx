@@ -41,45 +41,46 @@ const NAVIGATION_GROUPS = [
   {
     title: "Core Fleet",
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'master', 'seller'] },
-      { label: 'Team Board', icon: Users, href: '/team-board', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Create Task', icon: ClipboardList, href: '/create-task', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller'] },
+      { label: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Team Board', icon: Users, href: '/team-board', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Create Task', icon: ClipboardList, href: '/create-task', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Intelligence",
     items: [
-      { label: 'Recovery Hub', icon: HandCoins, href: '/payments/recovery', roles: ['admin', 'master', 'seller'] },
-      { label: 'KAM Strategy', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller'] },
+      { label: 'Recovery Hub', icon: HandCoins, href: '/payments/recovery', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'KAM Strategy', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller', 'tl'] },
       { label: 'Sales Matrix', icon: TrendingUp, href: '/sales-dashboard', roles: ['master'] },
-      { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master'] },
-      { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'user', 'guest', 'intern', 'manager'] },
-      { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'manager'] },
-      { label: 'Call Report', icon: PhoneCall, href: '/call-report', roles: ['admin', 'master', 'seller'] },
+      { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master', 'tl'] },
+      { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'tl', 'user', 'guest', 'intern', 'manager'] },
+      { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'tl', 'manager'] },
+      { label: 'Call Report', icon: PhoneCall, href: '/call-report', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Operations",
     items: [
-      { label: 'Attendance', icon: CalendarCheck, href: '/dashboard/attendance', roles: ['admin', 'master', 'seller'] },
-      { label: 'Tish Control', icon: ShieldCheck, href: '/dashboard/attendance/tish', roles: ['admin', 'master'] },
-      { label: 'Activity Log', icon: History, href: '/activities', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Lifecycle Report', icon: LineChart, href: '/activities/report', roles: ['admin', 'master'] },
-      { label: 'Customers', icon: UserSquare2, href: '/customers', roles: ['admin', 'master', 'seller'] },
+      { label: 'Attendance', icon: CalendarCheck, href: '/dashboard/attendance', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Tish Control', icon: ShieldCheck, href: '/dashboard/attendance/tish', roles: ['admin', 'master', 'tl'] },
+      { label: 'Activity Log', icon: History, href: '/activities', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Lifecycle Report', icon: LineChart, href: '/activities/report', roles: ['admin', 'master', 'tl'] },
+      { label: 'Customers', icon: UserSquare2, href: '/customers', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Resources",
     items: [
-      { label: 'Agreements', icon: FileSpreadsheet, href: '/FullDashboard/agreement', roles: ['admin', 'master', 'seller'] },
-      { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller'] },
+      { label: 'Agreements', icon: FileSpreadsheet, href: '/FullDashboard/agreement', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "System",
     items: [
       { label: 'Access Control', icon: ShieldCheck, href: '/admin/roles', roles: ['master'] },
+      { label: 'Team Management', icon: Users, href: '/admin/teams', roles: ['master'] },
       { label: 'DB Backups', icon: Database, href: '/admin/backups', roles: ['master'] },
     ]
   }
@@ -280,13 +281,13 @@ export default function Sidebar() {
               const hasHardcodedRole = i.roles.includes(userRole);
 
               // If we have dynamic permissions, they override or restrict
-              if (dynamicPermissions) {
+              if (dynamicPermissions && dynamicPermissions.length > 0) {
                 // If the item is in the dynamic list, show it. 
-                // Exceptions: master always sees Access Control
-                if (userRole === 'master' && (i.label === 'Access Control' || i.label === 'DB Backups')) return true;
+                if (userRole === 'master' && (i.label === 'Access Control' || i.label === 'DB Backups' || i.label === 'Team Management')) return true;
                 return dynamicPermissions.includes(i.label);
               }
 
+              // Fallback to hardcoded roles if no dynamic permissions are fetched yet or they are empty
               return hasHardcodedRole;
             });
             if (visibleItems.length === 0) return null;

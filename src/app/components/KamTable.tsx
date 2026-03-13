@@ -662,11 +662,11 @@ export default function KamTableView() {
 
 
   const userEmail = user?.primaryEmailAddress?.emailAddress;
-  const userRole = user?.publicMetadata?.role as string | undefined;
+  const userRole = String(user?.publicMetadata?.role || "").toLowerCase();
 
   if (
     !userRole ||
-    (userRole !== "admin" && userRole !== "master" && userRole !== "seller")
+    (userRole !== "admin" && userRole !== "master" && userRole !== "seller" && userRole !== "tl")
   ) {
     return (
       <div className="p-8 text-center text-gray-500 bg-white rounded-2xl shadow-lg border border-gray-200 min-h-[300px] flex flex-col items-center justify-center">

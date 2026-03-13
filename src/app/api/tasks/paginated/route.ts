@@ -395,20 +395,49 @@ export async function GET(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const role = await getUserRole(userId);
-    const userIsPrivileged = role === "admin" || role === "master";
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUserForRole = await client.users.getUser(userId);
+    const metadataRole = (clerkUserForRole.publicMetadata as any)?.role || (clerkUserForRole.privateMetadata as any)?.role;
+    const normalizedRole = String(metadataRole || dbUser?.role || "user").toLowerCase();
+
+    const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+    const userIsPrivileged = normalizedRole === "admin" || normalizedRole === "master";
+
+    let teamMemberIds: string[] = [];
+    if (isTL) {
+        const members = await prisma.user.findMany({
+            where: { leaderId: userId } as any,
+            select: { clerkId: true }
+        });
+        teamMemberIds = members.map(m => m.clerkId);
+    }
 
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "10", 10);
     const skip = (page - 1) * limit;
 
+    const userFilter = userIsPrivileged
+      ? {}
+      : {
+          OR: [
+            { createdByClerkId: userId },
+            { assigneeIds: { has: userId } },
+            ...(isTL && teamMemberIds.length > 0 ? [
+              { createdByClerkId: { in: teamMemberIds } },
+              { assigneeIds: { hasSome: teamMemberIds } }
+            ] : [])
+          ]
+        };
+
+    console.log(`[Tasks Paginated API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, Privileged: ${userIsPrivileged}`);
+
     // ✅ Fetch tasks + top 5 latest paymentRemarks
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
-        where: userIsPrivileged
-          ? {}
-          : { OR: [{ createdByClerkId: userId }, { assigneeIds: { has: userId } }] },
+        where: userFilter as any,
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -422,9 +451,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.task.count({
-        where: userIsPrivileged
-          ? {}
-          : { OR: [{ createdByClerkId: userId }, { assigneeIds: { has: userId } }] },
+        where: userFilter as any,
       }),
     ]);
 

@@ -37,7 +37,7 @@ interface SidebarPermission {
     sidebarItems: string[];
 }
 
-const AVAILABLE_ROLES = ['MASTER', 'ADMIN', 'SELLER', 'USER', 'GUEST', 'MANAGER', 'INTERN'];
+const AVAILABLE_ROLES = ['MASTER', 'ADMIN', 'TL', 'SELLER', 'USER', 'GUEST', 'MANAGER', 'INTERN'];
 
 export default function RoleManagementPage() {
     const { user: currentUser, isLoaded } = useUser();

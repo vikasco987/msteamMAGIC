@@ -1,7 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 
 export async function GET(req: Request) {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const metadataRole = (clerkUser.publicMetadata as any)?.role || (clerkUser.privateMetadata as any)?.role;
+    const userRole = String(metadataRole || dbUser?.role || "USER").toUpperCase();
+    
+    const isTL = (dbUser as any)?.isTeamLeader || userRole === "TL";
+    const isPrivileged = userRole === "ADMIN" || userRole === "MASTER";
+
+    let teamMemberIds: string[] = [];
+    if (isTL) {
+      const members = await prisma.user.findMany({
+        where: { leaderId: userId } as any,
+        select: { clerkId: true }
+      });
+      teamMemberIds = members.map(m => m.clerkId);
+    }
+
   try {
     const { searchParams } = new URL(req.url);
 
@@ -21,14 +44,21 @@ export async function GET(req: Request) {
     const startDate = new Date(start);
     const endDate = new Date(end);
 
+    const where: any = {
+      createdAt: { gte: startDate, lte: endDate },
+    };
+
+    if (!isPrivileged) {
+      if (isTL) {
+        where.createdByClerkId = { in: [userId, ...teamMemberIds] };
+      } else {
+        where.createdByClerkId = userId;
+      }
+    }
+
     // Fetch tasks in date range
     const tasks = await prisma.task.findMany({
-      where: {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
+      where,
       select: {
         createdAt: true,
         amount: true,

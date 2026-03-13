@@ -967,9 +967,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const role = await getUserRole(userId);
-
-    const userIsPrivileged = role === "admin" || role === "master";
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUserForRole = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const metadataRole = (clerkUserForRole.publicMetadata as any)?.role || (clerkUserForRole.privateMetadata as any)?.role;
+    const normalizedRole = String(metadataRole || dbUser?.role || "user").toLowerCase();
+    const userIsPrivilegedFixed = normalizedRole === "admin" || normalizedRole === "master";
 
     const url = new URL(req.url);
     const taskId = url.searchParams.get('id'); // Get the optional task ID from query params
@@ -1007,14 +1011,34 @@ export async function GET(req: NextRequest) {
       totalCount = task ? 1 : 0;
     } else {
       // Build where clause
-      const userFilter = userIsPrivileged
+      // Team Leader Logic: If user is TL, they can see their team's tasks
+      const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+
+      let teamMemberIds: string[] = [];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId } as any,
+              select: { clerkId: true }
+          });
+          teamMemberIds = members.map(m => m.clerkId);
+      }
+
+      console.log(`[Tasks API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, Privileged: ${userIsPrivilegedFixed}`);
+
+      const userFilter = userIsPrivilegedFixed
         ? {}
         : {
           OR: [
             { createdByClerkId: userId },
             { assigneeIds: { has: userId } },
+            ...(isTL && teamMemberIds.length > 0 ? [
+              { createdByClerkId: { in: teamMemberIds } },
+              { assigneeIds: { hasSome: teamMemberIds } }
+            ] : [])
           ],
         };
+      
+      console.log(`[Tasks API Debug] Filter Applied: ${JSON.stringify(userFilter)}`);
 
       const where: any = {
         AND: [
@@ -1214,7 +1238,7 @@ export async function GET(req: NextRequest) {
     });
 
     console.log(
-      `📄 GET /api/tasks – Role: ${role || "unknown"} – fetched ${enrichedTasks.length} tasks`
+      `📄 GET /api/tasks – Role: ${normalizedRole || "unknown"} – fetched ${enrichedTasks.length} tasks`
     );
 
     return NextResponse.json({

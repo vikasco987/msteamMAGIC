@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const role = (sessionClaims?.role as string) || "user";
 
     // Fallback: Check publicMetadata directly if role isn't in session claims
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
     let finalRole = role;
     if (role === "user") {
         const client = await clerkClient();
@@ -16,14 +17,38 @@ export async function GET(req: NextRequest) {
         finalRole = (user.publicMetadata?.role as string) || "user";
     }
 
-    const isAdmin = finalRole === "admin" || finalRole === "master" || finalRole === "ADMIN" || finalRole === "MASTER";
+    const normalizedRole = finalRole.toLowerCase();
+    const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+    const isPrivileged = normalizedRole === "admin" || normalizedRole === "master";
 
-    if (!isAdmin) {
+    if (!isPrivileged && !isTL) {
         return NextResponse.json({ error: `Access denied. Role: ${finalRole}` }, { status: 403 });
     }
 
     try {
+        let teamMemberIds: string[] = [];
+        if (isTL && !isPrivileged) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId } as any,
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
+
+        const where: any = {};
+        if (!isPrivileged && isTL) {
+            where.OR = [
+                { createdByClerkId: userId },
+                { assigneeIds: { has: userId } },
+                ...(teamMemberIds.length > 0 ? [
+                    { createdByClerkId: { in: teamMemberIds } },
+                    { assigneeIds: { hasSome: teamMemberIds } }
+                ] : [])
+            ];
+        }
+
         const tasks = await prisma.task.findMany({
+            where,
             include: {
                 activities: {
                     orderBy: { createdAt: "asc" }

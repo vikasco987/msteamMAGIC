@@ -59,9 +59,9 @@ export default function KamPage() {
 
   if (!isLoaded) return <div className="p-6">Loading user...</div>;
 
-  const role = user?.publicMetadata?.role;
+  const role = String(user?.publicMetadata?.role || "").toLowerCase();
 
-   if (role !== "admin" && role !== "seller" && role !== "master") {
+   if (role !== "admin" && role !== "seller" && role !== "master" && role !== "tl") {
     return (
       <div className="p-6 text-red-500">
         ⛔ Access Denied: You are not authorized to view this page.
