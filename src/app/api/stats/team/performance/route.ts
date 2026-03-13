@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { searchParams } = new URL(req.url);
+    const targetTlId = searchParams.get("tlId");
+    const getTlList = searchParams.get("getTlList") === "true";
 
     const client = await clerkClient();
     const clerkUser = await client.users.getUser(userId);
@@ -21,33 +25,43 @@ export async function GET() {
       return NextResponse.json({ error: "Access Denied" }, { status: 403 });
     }
 
-    // 1. Get Team Members
-    // If Admin/Master, they might want to see a specific TL's team, but for now we default to the requester.
-    // Actually, let's allow passing a tlId if privileged.
-    
-    let members = [];
-    if (isPrivileged) {
-        // For now, if admin, show all users as a "super team"? 
-        // Or just let them see the current TL's team.
-        members = await prisma.user.findMany({
-            where: { leaderId: userId },
+    // If MASTER asks for the list of TLs
+    if (getTlList && isPrivileged) {
+        const tls = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { isTeamLeader: true },
+                    { role: { equals: "TL", mode: "insensitive" } }
+                ]
+            },
             select: { clerkId: true, name: true, email: true }
         });
-    } else {
-        members = await prisma.user.findMany({
-            where: { leaderId: userId },
-            select: { clerkId: true, name: true, email: true }
-        });
+        return NextResponse.json({ tls });
     }
+
+    // Determine whose team we are looking at
+    let leaderId = userId;
+    if (targetTlId && isPrivileged) {
+        leaderId = targetTlId;
+    }
+
+    // Get the leader's actual DB details (if different from requester)
+    const leaderUser = targetTlId ? await prisma.user.findUnique({ where: { clerkId: leaderId } }) : dbUser;
+
+    // 1. Get Team Members
+    const members = await prisma.user.findMany({
+        where: { leaderId: leaderId },
+        select: { clerkId: true, name: true, email: true }
+    });
     
     // Add the leader themselves to the "team" for stats
-    const teamUserIds = [userId, ...members.map(m => m.clerkId)];
+    const teamUserIds = [leaderId, ...members.map(m => m.clerkId)];
     const memberMap: Record<string, any> = {};
     
     // Initialize member map
-    memberMap[userId] = {
-        name: dbUser?.name || "Team Leader",
-        email: dbUser?.email || "",
+    memberMap[leaderId] = {
+        name: leaderUser?.name || "Team Leader",
+        email: leaderUser?.email || "",
         revenue: 0,
         received: 0,
         sales: 0
@@ -96,14 +110,11 @@ export async function GET() {
             memberMap[task.createdByClerkId].received += received;
             memberMap[task.createdByClerkId].sales += 1;
         }
-        
-        // Note: Avoiding double counting if same person is creator and assignee
-        // But if different members are involved, we might want to split or just attribute to creator/assignee.
-        // For now, let's attribute to the "creator" as the main seller/assigner in this context.
     });
 
     // 4. Calculate Team Totals
     const teamStats = {
+        leaderName: leaderUser?.name || "Unknown",
         totalRevenue: tasks.reduce((sum, t) => sum + (t.amount || 0), 0),
         totalReceived: tasks.reduce((sum, t) => sum + (t.received || 0), 0),
         totalSales: tasks.length,

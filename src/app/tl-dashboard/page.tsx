@@ -3,11 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { 
   Users, 
-  TrendingUp, 
   IndianRupee, 
   Target, 
   ArrowUpRight, 
-  UserPlus, 
   Trophy,
   Filter,
   Calendar,
@@ -15,7 +13,8 @@ import {
   Zap,
   CheckCircle2,
   Clock,
-  Briefcase
+  Briefcase,
+  UserCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -26,9 +25,7 @@ import {
   CartesianGrid, 
   Tooltip as RechartsTooltip, 
   ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie
+  Cell
 } from "recharts";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -45,10 +42,17 @@ interface MemberPerformance {
 }
 
 interface TeamStats {
+  leaderName: string;
   totalRevenue: number;
   totalReceived: number;
   totalSales: number;
   memberPerformance: MemberPerformance[];
+}
+
+interface TL {
+  clerkId: string;
+  name: string;
+  email: string;
 }
 
 // --- Components ---
@@ -72,7 +76,7 @@ const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
     <div className="relative z-10">
       <p className="text-slate-500 dark:text-slate-400 text-xs font-black uppercase tracking-widest mb-1">{title}</p>
       <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-        {typeof value === 'number' && title.includes('Revenue') ? `₹${value.toLocaleString()}` : value}
+        {typeof value === 'number' && (title.includes('Revenue') || title.includes('Received') || title.includes('Pending')) ? `₹${value.toLocaleString()}` : value}
       </h3>
     </div>
   </motion.div>
@@ -83,22 +87,46 @@ export default function TLDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TeamStats | null>(null);
+  const [tlList, setTlList] = useState<TL[]>([]);
+  const [selectedTlId, setSelectedTlId] = useState<string>("");
+  const [isPrivileged, setIsPrivileged] = useState(false);
 
   useEffect(() => {
     if (isLoaded && user) {
       const role = String(user.publicMetadata?.role || "").toLowerCase();
-      if (!["tl", "admin", "master"].includes(role)) {
+      const privileged = ["admin", "master"].includes(role);
+      setIsPrivileged(privileged);
+
+      if (!["tl", ...(["admin", "master"] as string[])].includes(role)) {
         router.push("/unauthorized");
         return;
       }
+
+      if (privileged) {
+        fetchTlList();
+      }
+      
       fetchTeamStats();
     }
   }, [isLoaded, user]);
 
-  const fetchTeamStats = async () => {
+  const fetchTlList = async () => {
+    try {
+      const res = await fetch("/api/stats/team/performance?getTlList=true");
+      if (res.ok) {
+        const data = await res.json();
+        setTlList(data.tls || []);
+      }
+    } catch (error) {
+      console.error("Error fetching TL list:", error);
+    }
+  };
+
+  const fetchTeamStats = async (tlId?: string) => {
     try {
       setLoading(true);
-      const res = await fetch("/api/stats/team/performance");
+      const url = tlId ? `/api/stats/team/performance?tlId=${tlId}` : "/api/stats/team/performance";
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch team stats");
       const data = await res.json();
       setStats(data);
@@ -110,7 +138,13 @@ export default function TLDashboard() {
     }
   };
 
-  if (loading) {
+  const handleTlChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const tlId = e.target.value;
+    setSelectedTlId(tlId);
+    fetchTeamStats(tlId);
+  };
+
+  if (loading && !stats) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0b0f19]">
         <motion.div 
@@ -145,15 +179,35 @@ export default function TLDashboard() {
             </div>
             <h1 className="text-3xl lg:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Team Sales Commander</h1>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 font-bold ml-14">Monitoring performance for {user?.firstName}&apos;s Squad</p>
+          <p className="text-slate-500 dark:text-slate-400 font-bold ml-14">
+            Monitoring performance for {stats?.leaderName}&apos;s Squad
+          </p>
         </motion.div>
 
-        <div className="flex items-center gap-3 ml-auto lg:ml-0">
-          <button className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-300 shadow-sm hover:shadow-xl transition-all">
-            <Calendar size={18} /> Current Month
-          </button>
+        <div className="flex flex-wrap items-center gap-3 ml-auto lg:ml-0">
+          {isPrivileged && tlList.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                <UserCircle size={18} className="text-indigo-500" />
+                <select 
+                    value={selectedTlId}
+                    onChange={handleTlChange}
+                    className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                >
+                    <option value="">My Own Team</option>
+                    {tlList.map(tl => (
+                        <option key={tl.clerkId} value={tl.clerkId}>{tl.name}</option>
+                    ))}
+                </select>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-300 shadow-sm">
+            <Calendar size={18} className="text-indigo-500" /> 
+            <span>Current Month</span>
+          </div>
+
           <button 
-            onClick={fetchTeamStats}
+            onClick={() => fetchTeamStats(selectedTlId)}
             className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all"
           >
             <Zap size={20} fill="currentColor" />
@@ -165,14 +219,14 @@ export default function TLDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Team Revenue" 
-          value={stats?.totalRevenue} 
+          value={stats?.totalRevenue || 0} 
           icon={IndianRupee} 
           color="bg-indigo-500 text-indigo-500 shadow-indigo-500/20" 
           trend="+12.5%"
         />
         <StatCard 
           title="Team Received" 
-          value={stats?.totalReceived} 
+          value={stats?.totalReceived || 0} 
           icon={CheckCircle2} 
           color="bg-emerald-500 text-emerald-500 shadow-emerald-500/20" 
           trend="+8.2%"
@@ -185,7 +239,7 @@ export default function TLDashboard() {
         />
         <StatCard 
           title="Total Projects" 
-          value={stats?.totalSales} 
+          value={stats?.totalSales || 0} 
           icon={Target} 
           color="bg-purple-500 text-purple-500 shadow-purple-500/20" 
           trend="42 New"
