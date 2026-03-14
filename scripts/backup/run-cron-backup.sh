@@ -1,30 +1,27 @@
 #!/bin/bash
 
-# Configuration
-PROJECT_DIR="/Users/vikas/msteamMAGIC"
+# Configuration - Auto detect project directory
+# This makes it work in production where the path might not be /Users/vikas/
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$( cd "$SCRIPT_DIR/../.." && pwd )"
 LOG_FILE="$PROJECT_DIR/scripts/backup/backup.log"
 
-# Add standard paths for Mac (Homebrew, NVM, etc.)
+# Add standard paths for Mac/Linux (Homebrew, NVM, etc.)
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-# If using NVM, try to load it (optional but keeps it robust)
+# If using NVM, try to load it
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
 # Navigate to project directory
 cd "$PROJECT_DIR"
 
-echo "DEBUG: Path is $PATH" >> "$LOG_FILE"
-echo "DEBUG: Node is at $(which node)" >> "$LOG_FILE"
-echo "DEBUG: NPM is at $(which npm)" >> "$LOG_FILE"
-
-echo "DEBUG: Script started at $(date)" >> /tmp/backup-debug.log
 echo "------------------------------------------" >> "$LOG_FILE"
 echo "📅 Backup started at: $(date)" >> "$LOG_FILE"
+echo "📂 Project Dir: $PROJECT_DIR" >> "$LOG_FILE"
+echo "👤 User: $(whoami)" >> "$LOG_FILE"
 
 # Run the backup script using npm
-# Sourcing .env is usually handled by the node script itself, 
-# but we ensure node and npm are available.
 npm run db:backup >> "$LOG_FILE" 2>&1
 
 if [ $? -eq 0 ]; then

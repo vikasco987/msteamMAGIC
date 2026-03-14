@@ -43,6 +43,7 @@ export default function BackupDashboard() {
   const [snapshotDb, setSnapshotDb] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
   const [timeLeft, setTimeLeft] = useState("");
+  const [testTimeLeft, setTestTimeLeft] = useState(60);
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -64,6 +65,17 @@ export default function BackupDashboard() {
 
     const timer = setInterval(calculateTimeLeft, 1000);
     calculateTimeLeft();
+    return () => clearInterval(timer);
+  }, []);
+
+  // Test Timer Logic (60s countdown)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTestTimeLeft((prev) => {
+        if (prev <= 1) return 60;
+        return prev - 1;
+      });
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -201,9 +213,15 @@ export default function BackupDashboard() {
             </h1>
             <div className="flex items-center gap-4 mt-2">
               <p className="text-gray-400">Kravy POS Ultimate Security System</p>
-              <div className="flex items-center gap-2 text-orange-400 font-mono text-[10px] bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
-                <Clock size={12} className="animate-pulse" />
-                <span>Next Auto-Backup In: {timeLeft}</span>
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-orange-400 font-mono text-[10px] bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20 shadow-lg shadow-orange-500/5">
+                  <Clock size={12} className="animate-pulse" />
+                  <span>Auto-Backup In: {timeLeft}</span>
+                </div>
+                <div className="flex items-center gap-2 text-blue-400 font-mono text-[10px] bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 shadow-lg shadow-blue-500/5">
+                  <AlertCircle size={12} />
+                  <span>Test Cycle: {testTimeLeft}s</span>
+                </div>
               </div>
             </div>
           </div>
