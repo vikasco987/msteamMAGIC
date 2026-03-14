@@ -47,7 +47,7 @@ export default function BackupDashboard() {
   const [logs, setLogs] = useState("");
   const [testingScript, setTestingScript] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
-  const [pulse, setPulse] = useState<{ lastRun: string | null; status: string }>({ lastRun: null, status: 'inactive' });
+  const [pulse, setPulse] = useState<{ lastRun: string | null; status: string; error?: string }>({ lastRun: null, status: 'inactive' });
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -263,10 +263,17 @@ export default function BackupDashboard() {
                   <span>Test Cycle: {testTimeLeft}s</span>
                 </div>
                 <div className={`flex items-center gap-2 font-mono text-[10px] px-3 py-1 rounded-full border shadow-lg ${
+                  pulse.status === 'failed' ? 'text-red-400 bg-red-400/10 border-red-400/20' :
                   pulse.lastRun ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shadow-emerald-500/5' : 'text-gray-500 bg-gray-500/10 border-gray-500/20'
                 }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${pulse.lastRun ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
-                  <span>Production Pulse: {pulse.lastRun ? new Date(pulse.lastRun).toLocaleTimeString() : 'No Signal'}</span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    pulse.status === 'failed' ? 'bg-red-400 animate-pulse' :
+                    pulse.lastRun ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
+                  }`} />
+                  <span>
+                    {pulse.status === 'failed' ? `FAILED: ${pulse.error?.slice(0, 30)}...` : 
+                     pulse.lastRun ? `Pulse: ${new Date(pulse.lastRun).toLocaleTimeString()}` : 'No Signal'}
+                  </span>
                 </div>
               </div>
             </div>
