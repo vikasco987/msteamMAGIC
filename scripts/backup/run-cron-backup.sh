@@ -14,6 +14,11 @@ export NVM_DIR="$HOME/.nvm"
 # Navigate to project directory
 cd "$PROJECT_DIR"
 
+echo "DEBUG: Path is $PATH" >> "$LOG_FILE"
+echo "DEBUG: Node is at $(which node)" >> "$LOG_FILE"
+echo "DEBUG: NPM is at $(which npm)" >> "$LOG_FILE"
+
+echo "DEBUG: Script started at $(date)" >> /tmp/backup-debug.log
 echo "------------------------------------------" >> "$LOG_FILE"
 echo "📅 Backup started at: $(date)" >> "$LOG_FILE"
 

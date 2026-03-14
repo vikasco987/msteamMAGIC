@@ -42,6 +42,30 @@ export default function BackupDashboard() {
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [snapshotDb, setSnapshotDb] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [timeLeft, setTimeLeft] = useState("");
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const nextBackup = new Date();
+      nextBackup.setHours(2, 0, 0, 0);
+      
+      if (now.getHours() >= 2) {
+        nextBackup.setDate(nextBackup.getDate() + 1);
+      }
+      
+      const diff = nextBackup.getTime() - now.getTime();
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    const timer = setInterval(calculateTimeLeft, 1000);
+    calculateTimeLeft();
+    return () => clearInterval(timer);
+  }, []);
 
 
   const fetchBackups = () => {
@@ -175,7 +199,13 @@ export default function BackupDashboard() {
             <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
               Database Backup Center
             </h1>
-            <p className="text-gray-400 mt-1">Kravy POS Ultimate Security System</p>
+            <div className="flex items-center gap-4 mt-2">
+              <p className="text-gray-400">Kravy POS Ultimate Security System</p>
+              <div className="flex items-center gap-2 text-orange-400 font-mono text-[10px] bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20">
+                <Clock size={12} className="animate-pulse" />
+                <span>Next Auto-Backup In: {timeLeft}</span>
+              </div>
+            </div>
           </div>
         </div>
 
