@@ -10,29 +10,29 @@ const { Upload } = require("@aws-sdk/lib-storage");
 const { MongoClient, BSON } = require('mongodb');
 const { EJSON } = BSON;
 
-// Configuration
-const MONGODB_URI = process.env.DATABASE_URL;
-const S3_BUCKET_NAME = process.env.AWS_S3_BACKUP_BUCKET;
-const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
-const BACKUP_DIR = process.env.NODE_ENV === 'production' 
-    ? '/tmp/temp-backups' 
-    : path.join(__dirname, 'temp-backups');
-
-// Initialize S3 Client
-const s3Client = new S3Client({
-    region: AWS_REGION,
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    }
-});
-
 async function runBackup() {
     console.log('🚀 Starting Kravy POS Pure-JS Backup...');
 
+    const MONGODB_URI = process.env.DATABASE_URL;
+    const S3_BUCKET_NAME = process.env.AWS_S3_BACKUP_BUCKET;
+    const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
+    const BACKUP_DIR = process.env.NODE_ENV === 'production' 
+        ? '/tmp/temp-backups' 
+        : path.join(__dirname, 'temp-backups');
+
+    // Initialize S3 Client
+    const s3Client = new S3Client({
+        region: AWS_REGION,
+        credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        }
+    });
+
     if (!MONGODB_URI) {
         console.error('❌ Error: DATABASE_URL is not defined in .env');
-        process.exit(1);
+        if (require.main === module) process.exit(1);
+        throw new Error('DATABASE_URL is not defined');
     }
 
     if (!S3_BUCKET_NAME) {
@@ -150,4 +150,9 @@ async function runBackup() {
     }
 }
 
-runBackup();
+module.exports = { runBackup };
+
+// Run if called directly
+if (require.main === module) {
+    runBackup();
+}
