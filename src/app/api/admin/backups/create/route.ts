@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-
-// Using require for the legacy script
-const { runBackup } = require("../../../../../scripts/backup/mongodb-backup");
+import { runBackup } from "@/lib/backup/mongodb-backup";
 
 export async function POST(req: NextRequest) {
   try {
-    console.log("Starting manual backup via direct module call...");
+    console.log("Starting manual backup via direct TS module call...");
     
     // Call the logic directly!
     await runBackup();

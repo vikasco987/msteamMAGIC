@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "db:backup": "node scripts/backup/mongodb-backup.js",
+    "db:backup": "ts-node src/lib/backup/mongodb-backup.ts",
     "db:restore": "node scripts/backup/mongodb-restore.js"
   },
   "dependencies": {

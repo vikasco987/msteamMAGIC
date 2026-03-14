@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MongoClient } from 'mongodb';
-
-// Using require for the legacy script
-const { runBackup } = require("../../../../../../scripts/backup/mongodb-backup");
+import { runBackup } from "@/lib/backup/mongodb-backup";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,9 +18,9 @@ export async function GET(req: NextRequest) {
       { upsert: true }
     );
 
-    console.log("Starting production backup logic...");
+    console.log("Starting production backup logic via TS module...");
     
-    // Call the logic directly! No exec, no fetch.
+    // Call the logic directly!
     await runBackup();
 
     await client.close();
