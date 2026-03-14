@@ -47,6 +47,7 @@ export default function BackupDashboard() {
   const [logs, setLogs] = useState("");
   const [testingScript, setTestingScript] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [pulse, setPulse] = useState<{ lastRun: string | null; status: string }>({ lastRun: null, status: 'inactive' });
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -100,7 +101,17 @@ export default function BackupDashboard() {
   useEffect(() => {
     fetchBackups();
     fetchLogs();
+    fetchHeartbeat();
+    const interval = setInterval(fetchHeartbeat, 30000); // Check every 30s
+    return () => clearInterval(interval);
   }, []);
+
+  const fetchHeartbeat = () => {
+    fetch("/api/admin/backups/heartbeat")
+      .then(res => res.json())
+      .then(data => setPulse(data))
+      .catch(() => {});
+  };
 
   const fetchLogs = () => {
     fetch("/api/admin/backups/logs")
@@ -250,6 +261,12 @@ export default function BackupDashboard() {
                 <div className="flex items-center gap-2 text-blue-400 font-mono text-[10px] bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 shadow-lg shadow-blue-500/5">
                   <AlertCircle size={12} />
                   <span>Test Cycle: {testTimeLeft}s</span>
+                </div>
+                <div className={`flex items-center gap-2 font-mono text-[10px] px-3 py-1 rounded-full border shadow-lg ${
+                  pulse.lastRun ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shadow-emerald-500/5' : 'text-gray-500 bg-gray-500/10 border-gray-500/20'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${pulse.lastRun ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+                  <span>Production Pulse: {pulse.lastRun ? new Date(pulse.lastRun).toLocaleTimeString() : 'No Signal'}</span>
                 </div>
               </div>
             </div>
