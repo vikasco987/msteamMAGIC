@@ -175,7 +175,7 @@ export default function TishPage() {
           </div>
         </div>
         <div className="p-4">
-          <AttendanceTable />
+          <AttendanceTable all={true} />
         </div>
       </div>
     </div>
