@@ -14,7 +14,10 @@ import {
   CheckCircle2,
   Clock,
   Briefcase,
-  UserCircle
+  UserCircle,
+  TrendingUp,
+  TrendingDown,
+  Minus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -30,15 +33,26 @@ import {
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import TeamDayReportTable from "../components/tables/TeamDayReportTable";
+import TeamWeekReportTable from "../components/tables/TeamWeekReportTable";
 
 // --- Types ---
 
 interface MemberPerformance {
+  clerkId: string;
   name: string;
   email: string;
   revenue: number;
   received: number;
   sales: number;
+  todaySales: number;
+  yesterdaySales: number;
+  thisWeekSales: number;
+  lastWeekSales: number;
+  todayRevenue: number;
+  yesterdayRevenue: number;
+  thisWeekRevenue: number;
+  lastWeekRevenue: number;
 }
 
 interface TeamStats {
@@ -89,6 +103,7 @@ export default function TLDashboard() {
   const [stats, setStats] = useState<TeamStats | null>(null);
   const [tlList, setTlList] = useState<TL[]>([]);
   const [selectedTlId, setSelectedTlId] = useState<string>("");
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [isPrivileged, setIsPrivileged] = useState(false);
 
   useEffect(() => {
@@ -143,7 +158,12 @@ export default function TLDashboard() {
   const handleTlChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const tlId = e.target.value;
     setSelectedTlId(tlId);
+    setSelectedMemberId(""); // Reset member when TL changes
     fetchTeamStats(tlId);
+  };
+
+  const handleMemberChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedMemberId(e.target.value);
   };
 
   if (loading && !stats) {
@@ -199,6 +219,22 @@ export default function TLDashboard() {
                     <option value="">My Own Team</option>
                     {tlList.map(tl => (
                         <option key={tl.clerkId} value={tl.clerkId}>{tl.name}</option>
+                    ))}
+                </select>
+            </div>
+          )}
+
+          {stats?.memberPerformance && stats.memberPerformance.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+                <Users size={18} className="text-purple-500" />
+                <select 
+                    value={selectedMemberId}
+                    onChange={handleMemberChange}
+                    className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+                >
+                    <option value="">Full Team View</option>
+                    {stats.memberPerformance.map(member => (
+                        <option key={member.clerkId} value={member.clerkId}>{member.name}</option>
                     ))}
                 </select>
             </div>
@@ -414,7 +450,9 @@ export default function TLDashboard() {
             <thead>
               <tr className="border-b border-slate-50 dark:border-slate-800">
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Member</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Projects</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Month Projects</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">DoD Sales</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">WoW Sales</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] text-right">Target Revenue</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] text-right">Achievement</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] text-right">Recovery Status</th>
@@ -440,6 +478,36 @@ export default function TLDashboard() {
                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full">
                           <Zap size={10} className="text-amber-500 fill-amber-500" />
                           <span className="text-[11px] font-black text-slate-700 dark:text-slate-300">{member.sales} ACTIVE</span>
+                       </div>
+                    </td>
+                    <td className="px-8 py-6">
+                       <div className="flex items-center gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-black text-slate-900 dark:text-white">{member.todaySales}</span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Yest: {member.yesterdaySales}</span>
+                          </div>
+                          {member.todaySales > member.yesterdaySales ? (
+                            <TrendingUp size={14} className="text-emerald-500" />
+                          ) : member.todaySales < member.yesterdaySales ? (
+                            <TrendingDown size={14} className="text-red-500" />
+                          ) : (
+                            <Minus size={14} className="text-slate-300" />
+                          )}
+                       </div>
+                    </td>
+                    <td className="px-8 py-6">
+                       <div className="flex items-center gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-black text-slate-900 dark:text-white">{member.thisWeekSales}</span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">L.Week: {member.lastWeekSales}</span>
+                          </div>
+                          {member.thisWeekSales > member.lastWeekSales ? (
+                            <TrendingUp size={14} className="text-emerald-500" />
+                          ) : member.thisWeekSales < member.lastWeekSales ? (
+                            <TrendingDown size={14} className="text-red-500" />
+                          ) : (
+                            <Minus size={14} className="text-slate-300" />
+                          )}
                        </div>
                     </td>
                     <td className="px-8 py-6 text-right">
@@ -473,6 +541,25 @@ export default function TLDashboard() {
           </table>
         </div>
       </motion.div>
+
+      {/* Team Reports Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <TeamDayReportTable tlId={selectedTlId} memberId={selectedMemberId} />
+        </motion.div>
+        
+        <motion.div
+           initial={{ opacity: 0, y: 20 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ delay: 0.6 }}
+        >
+          <TeamWeekReportTable tlId={selectedTlId} memberId={selectedMemberId} />
+        </motion.div>
+      </div>
     </div>
   );
 }
