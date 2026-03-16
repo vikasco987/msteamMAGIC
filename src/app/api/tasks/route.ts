@@ -978,7 +978,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const taskId = url.searchParams.get('id'); // Get the optional task ID from query params
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const limit = parseInt(url.searchParams.get('limit') || '100');
     const listView = url.searchParams.get('listView') === 'true';
     const skip = (page - 1) * limit;
 

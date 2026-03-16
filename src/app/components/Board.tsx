@@ -122,7 +122,7 @@ export default function Board() {
     setUserRole(role);
 
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks?limit=200");
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
@@ -317,7 +317,7 @@ export default function Board() {
       const dir = sortDirection === "asc" ? 1 : -1;
       return valA < valB ? -1 * dir : valA > valB ? 1 * dir : 0;
     });
-  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds]);
+  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds, pendingChanges]);
 
   const allStatuses = useMemo(() => Array.from(new Set(tasks.map(t => t.status))), [tasks]);
   const allAssignees = useMemo(() => {
@@ -396,7 +396,7 @@ export default function Board() {
 
               <Droppable droppableId={col.id}>
                 {(provided) => (
-                  <div {...provided.droppableProps} ref={provided.innerRef} className="min-h-[500px] flex flex-col gap-4">
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="max-h-[75vh] overflow-y-auto pr-2 flex flex-col gap-4 custom-scrollbar">
                     {filteredTasks.filter(t => (t.status || "").toLowerCase() === col.id.toLowerCase()).map((task, index) => (
                       <Draggable key={task.id} draggableId={task.id} index={index}>
                         {(provided) => (
