@@ -103,11 +103,17 @@ export default function Board() {
     saveHiddenCardIds(newSet);
   };
 
+  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+  const lastUpdateRef = useRef<number>(0);
+
   const fetchTasks = useCallback(async (isInitial = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
+
+    // Skip auto-refresh if we just did an update (3s cooldown)
+    if (!isInitial && Date.now() - lastUpdateRef.current < 3000) return;
 
     if (isInitial) setLoading(true);
 
@@ -146,13 +152,22 @@ export default function Board() {
       }
 
       relevantTasks.forEach(task => seenTaskIds.add(task.id));
-      setTasks(relevantTasks);
+      
+      // Update tasks while preserving pending changes
+      setTasks(currentTasks => {
+        return relevantTasks.map(incomingTask => {
+          if (pendingChanges[incomingTask.id]) {
+            return { ...incomingTask, status: pendingChanges[incomingTask.id] };
+          }
+          return incomingTask;
+        });
+      });
     } catch (err) {
       console.error("Fetch tasks error:", err);
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [user, showAllTasksMode]);
+  }, [user, showAllTasksMode, pendingChanges]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -172,26 +187,47 @@ export default function Board() {
     const { destination, source, draggableId } = result;
     if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) return;
 
-    const updatedTasks = tasks.map(t => t.id === draggableId ? { ...t, status: destination.droppableId } : t);
-    setTasks(updatedTasks);
+    const newStatus = destination.droppableId;
+    lastUpdateRef.current = Date.now();
+
+    // 1. Update pending changes to prevent rubber-banding
+    setPendingChanges(prev => ({ ...prev, [draggableId]: newStatus }));
+
+    // 2. Optimistically update local state
+    setTasks(prev => prev.map(t => t.id === draggableId ? { ...t, status: newStatus } : t));
 
     try {
       const res = await fetch(`/api/tasks/${draggableId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: destination.droppableId }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error("Update failed");
-      toast.success("Task updated!");
+      toast.success(`Task moved to ${newStatus}`);
     } catch (err) {
-      toast.error("Failed to update task");
+      toast.error("Failed to update task. Reverting...");
       fetchTasks(false);
+    } finally {
+      // Small delay before clearing pending status to allow server state to propagate to GET requests
+      setTimeout(() => {
+        setPendingChanges(prev => {
+          const next = { ...prev };
+          delete next[draggableId];
+          return next;
+        });
+      }, 5000);
     }
   };
 
   const handleFieldUpdate = async (taskId: string, updatedFields: Partial<TaskType>) => {
-    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updatedFields } : t);
-    setTasks(updatedTasks);
+    lastUpdateRef.current = Date.now();
+    
+    // If updating status, track it as pending
+    if (updatedFields.status) {
+      setPendingChanges(prev => ({ ...prev, [taskId]: updatedFields.status! }));
+    }
+
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updatedFields } : t));
 
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -200,11 +236,21 @@ export default function Board() {
         body: JSON.stringify(updatedFields),
       });
       if (!res.ok) throw new Error("Update failed");
-      toast.success("Task synchronized");
+      toast.success("Changes saved");
     } catch (err) {
       console.error("Field update error:", err);
-      toast.error("Cloud sync failed");
+      toast.error("Cloud sync failed. Reverting...");
       fetchTasks(false);
+    } finally {
+      if (updatedFields.status) {
+        setTimeout(() => {
+          setPendingChanges(prev => {
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        }, 5000);
+      }
     }
   };
 
@@ -259,7 +305,8 @@ export default function Board() {
       })();
 
       const matchesStatus = selectedStatuses.length === 0 ||
-        selectedStatuses.includes((task.status || "").toLowerCase());
+        selectedStatuses.includes((task.status || "").toLowerCase()) ||
+        !!pendingChanges[task.id]; // Always show if we just moved it locally
 
       const isHidden = !showAllTasksMode && hiddenCardIds.has(task.id);
 

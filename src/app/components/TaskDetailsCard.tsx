@@ -218,6 +218,17 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Action Group */}
           <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
+            <AnimatedIconButton 
+              onClick={() => {
+                const newStatus = task.status === "done" ? "todo" : "done";
+                onUpdateTask?.(task.id, { status: newStatus });
+              }} 
+              title={task.status === "done" ? "Mark as To Do" : "Mark as Done"}
+            >
+              <span className={`text-lg ${task.status === "done" ? "opacity-50" : "animate-pulse"}`}>
+                {task.status === "done" ? "🔄" : "✅"}
+              </span>
+            </AnimatedIconButton>
             <AnimatedIconButton onClick={() => setShowReassignModal(true)} title="Reassign Task">
               <FaUserEdit size={14} />
             </AnimatedIconButton>
