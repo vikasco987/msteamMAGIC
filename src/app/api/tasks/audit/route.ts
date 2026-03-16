@@ -58,12 +58,52 @@ export async function GET(req: NextRequest) {
             take: 200 // Increased limit for better analysis
         });
 
+        // ✅ ENRICH ASSIGNEE NAMES
+        const allUserIds = new Set<string>();
+        tasks.forEach(task => {
+            if (Array.isArray(task.assigneeIds)) {
+                task.assigneeIds.forEach(id => allUserIds.add(id));
+            }
+        });
+
+        const userMap: Record<string, { name: string; email: string; imageUrl: string }> = {};
+        if (allUserIds.size > 0) {
+            try {
+                const client = await clerkClient();
+                const userList = await client.users.getUserList({
+                    userId: Array.from(allUserIds),
+                    limit: 500,
+                });
+
+                userList.data.forEach((u: any) => {
+                    const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+                    userMap[u.id] = { name, email: u.emailAddresses[0]?.emailAddress || "", imageUrl: u.imageUrl };
+                });
+            } catch (err) {
+                console.error("Clerk user lookup error in audit:", err);
+            }
+        }
+
         // For Bottleneck Analysis
         const statusAccumulator: { [key: string]: { totalMs: number; count: number } } = {};
 
         const auditData = tasks.map(task => {
             const activities = task.activities;
             const lastActivity = activities.length > 0 ? activities[activities.length - 1].createdAt : task.createdAt;
+
+            // Enrich Assignees
+            const enrichedAssignees = Array.isArray(task.assigneeIds)
+                ? task.assigneeIds.map(id => ({
+                    id,
+                    name: userMap[id]?.name || "—",
+                    email: userMap[id]?.email || "",
+                    imageUrl: userMap[id]?.imageUrl || ""
+                }))
+                : [];
+
+            const displayAssigneeName = enrichedAssignees.length > 0 
+                ? enrichedAssignees.map(a => a.name).join(", ")
+                : (task.assigneeName || "Unassigned");
 
             // Calculate status durations
             const statusHistory: { status: string; enterTime: Date; exitTime: Date | null; durationMs: number }[] = [];
@@ -72,7 +112,6 @@ export async function GET(req: NextRequest) {
 
             activities.forEach(act => {
                 if (act.type === "STATUS_CHANGE") {
-                    // Match "to status" - handles "to In Progress", "to Done", etc.
                     const match = act.content.match(/to\s+([\w\s]+?)(?:\s+\(Duration|$)/i);
                     const newStatus = match ? match[1].trim().toLowerCase() : currentStatusBucket;
 
@@ -86,7 +125,6 @@ export async function GET(req: NextRequest) {
                             durationMs: duration
                         });
 
-                        // Accumulate for averages
                         if (!statusAccumulator[currentStatusBucket]) statusAccumulator[currentStatusBucket] = { totalMs: 0, count: 0 };
                         statusAccumulator[currentStatusBucket].totalMs += duration;
                         statusAccumulator[currentStatusBucket].count += 1;
@@ -97,7 +135,6 @@ export async function GET(req: NextRequest) {
                 }
             });
 
-            // Add the current/last status
             const currentDuration = Date.now() - lastStatusChangeTime.getTime();
             statusHistory.push({
                 status: currentStatusBucket,
@@ -106,7 +143,6 @@ export async function GET(req: NextRequest) {
                 durationMs: currentDuration
             });
 
-            // Reassignment history
             const reassignments = activities
                 .filter(act => act.content.toLowerCase().includes("reassigned"))
                 .map(act => ({
@@ -120,13 +156,16 @@ export async function GET(req: NextRequest) {
 
             return {
                 id: task.id,
-                task, // Full task object for the modal
+                task: {
+                    ...task,
+                    assignees: enrichedAssignees
+                },
                 title: task.title,
                 createdAt: task.createdAt,
                 lastActivityAt: lastActivity,
                 createdByName: task.createdByName || task.createdByEmail || "Unknown",
                 currentStatus: task.status,
-                assigneeName: task.assigneeName || "Unassigned",
+                assigneeName: displayAssigneeName,
                 assignerName: task.assignerName || "Unknown",
                 priority: task.priority || "Normal",
                 tags: task.tags || [],

@@ -7285,19 +7285,34 @@ export default function TaskTableView({
                     )}
                     {visibleColumns.includes("assignerName") && (
                       <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-left text-gray-500">
-                        <span className="font-semibold text-gray-800">
-                          {task.assignerName || "—"}
-                        </span>{" "}
-                        <span className="text-blue-500">→</span>{" "}
-                        <span className="text-blue-600 font-medium">
-                          {Array.isArray(task.assignees) &&
-                            task.assignees.length > 0
-                            ? task.assignees
-                              .map((a) => a?.name || a?.email || "—")
-                              .filter(Boolean)
-                              .join(", ")
-                            : task.assigneeEmail || "—"}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase text-gray-400">By</span>
+                            <span className="text-xs font-bold text-gray-800 tracking-tight">
+                              {task.assignerName || "—"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {Array.isArray(task.assignees) && task.assignees.length > 0 ? (
+                              task.assignees.map((a, idx) => (
+                                <div key={idx} className="flex items-center gap-1 bg-indigo-50/50 pr-2 rounded-full border border-indigo-100/50 hover:bg-indigo-100 transition-colors">
+                                  {a.imageUrl ? (
+                                    <img src={a.imageUrl} className="w-5 h-5 rounded-full border border-white shadow-sm" alt={a.name || ""} />
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-black uppercase border border-white">
+                                      {(a.name || "U")[0]}
+                                    </div>
+                                  )}
+                                  <span className="text-[10px] font-bold text-indigo-900">{a.name || a.email || "—"}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-blue-600 font-medium text-xs">
+                                {task.assigneeEmail || "—"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                     )}
                     {visibleColumns.includes("shopName") && (

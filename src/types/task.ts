@@ -344,6 +344,6 @@ export interface Task {
 
   // Optional nested structure for easier rendering of assigner/assignee details
   assigner?: { name: string; email: string };
-  assignees?: { name?: string; email?: string }[];
+  assignees?: { id?: string; name?: string; email?: string; imageUrl?: string }[];
   assignee?: { name: string; email: string };
 }

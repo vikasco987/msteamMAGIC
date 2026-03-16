@@ -150,7 +150,7 @@ export async function GET(req: Request) {
       }
     });
 
-    const userMap: Record<string, { name: string; email: string }> = {};
+    const userMap: Record<string, { name: string; email: string; imageUrl: string }> = {};
     if (allUserIds.size > 0) {
       try {
         const userList = await client.users.getUserList({
@@ -160,7 +160,7 @@ export async function GET(req: Request) {
 
         userList.data.forEach((u: any) => {
           const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
-          userMap[u.id] = { name, email: u.emailAddresses[0]?.emailAddress || "" };
+          userMap[u.id] = { name, email: u.emailAddresses[0]?.emailAddress || "", imageUrl: u.imageUrl };
         });
       } catch (err) {
         console.error("Clerk user lookup error:", err);
@@ -174,7 +174,8 @@ export async function GET(req: Request) {
       const assignees = Array.isArray(task.assigneeIds)
         ? task.assigneeIds.map(id => ({
           name: userMap[id]?.name || "—",
-          email: userMap[id]?.email || ""
+          email: userMap[id]?.email || "",
+          imageUrl: userMap[id]?.imageUrl || ""
         }))
         : [];
 

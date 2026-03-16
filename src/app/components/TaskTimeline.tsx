@@ -812,10 +812,21 @@ export default function TaskTimeline() {
                     </td>
                     <td
                       onClick={() => handleTaskClick(task)}
-                      className="p-2 border-r cursor-pointer leading-tight max-w-[250px]"
+                      className="p-2 border-r cursor-pointer leading-tight min-w-[150px] max-w-[250px]"
                     >
-                      <div className="font-semibold text-xs text-gray-800 truncate">📁 {task.name}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{task.shop}</div>
+                      <div className="font-semibold text-sm text-gray-800 truncate">📁 {task.name}</div>
+                      <div className="text-[11px] text-gray-500 truncate font-medium">{task.shop}</div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {task.assigneeIds?.map((id) => (
+                          <div key={id} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md text-[9px] font-bold border border-indigo-100 uppercase tracking-tight">
+                            <Image 
+                              src={assigneeMap[id]?.imageUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`} 
+                              alt="A" width={10} height={10} className="rounded-full" unoptimized 
+                            />
+                            {assigneeMap[id]?.name || "..."}
+                          </div>
+                        ))}
+                      </div>
                     </td>
                     {Array.from({ length: totalDays }).map((_, i) => {
                       const isBar = i >= startOffset && i < startOffset + duration;
