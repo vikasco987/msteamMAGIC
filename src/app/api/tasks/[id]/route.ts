@@ -123,10 +123,69 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       }
     }
 
-    // Custom fields merging
+    // --- 🔄 FIELD SYNC LOGIC ---
+    
+    // 1. Sync Assignee IDs
+    if (updateData.assigneeId && !updateData.assigneeIds) {
+      updateData.assigneeIds = [updateData.assigneeId as string];
+    }
+
+    // 2. Sync Assignee Details if assigneeIds changed
+    if (updateData.assigneeIds !== undefined) {
+      const ids = updateData.assigneeIds as string[];
+      if (ids && ids.length > 0) {
+        try {
+          const client = await clerkClient();
+          const leadUser = await client.users.getUser(ids[0]);
+          updateData.assigneeId = leadUser.id;
+          updateData.assigneeName = `${leadUser.firstName || ""} ${leadUser.lastName || ""}`.trim() || leadUser.username || "Unknown";
+          updateData.assigneeEmail = leadUser.emailAddresses[0]?.emailAddress || "Unknown";
+          
+          // Also handle the case where they are in customFields
+          if (updateData.customFields === undefined) {
+            const cf = { ...(currentTask.customFields as any || {}) };
+            let cfChanged = false;
+            if (cf.assigneeName !== undefined) { cf.assigneeName = updateData.assigneeName; cfChanged = true; }
+            if (cf.assigneeEmail !== undefined) { cf.assigneeEmail = updateData.assigneeEmail; cfChanged = true; }
+            if (cf.assigneeId !== undefined) { cf.assigneeId = updateData.assigneeId; cfChanged = true; }
+            if (cfChanged) updateData.customFields = cf;
+          }
+        } catch (err) {
+          console.error("Failed to sync lead user on reassignment:", err);
+        }
+      } else {
+        updateData.assigneeId = null;
+        updateData.assigneeName = null;
+        updateData.assigneeEmail = null;
+      }
+    }
+
+    // 3. Sync Other Redundant Fields (Top-level <-> customFields)
+    const syncableFields = [
+      "phone", "email", "shopName", "location", "accountNumber", "ifscCode", 
+      "restId", "customerName", "packageAmount", "startDate", "endDate", "timeline"
+    ];
+    
+    const existingCF = { ...(currentTask.customFields as any || {}) };
+    let cfNeedsUpdate = false;
+    
+    for (const f of syncableFields) {
+      if ((updateData as any)[f] !== undefined && existingCF[f] !== undefined) {
+        existingCF[f] = (updateData as any)[f];
+        cfNeedsUpdate = true;
+      }
+    }
+    
+    if (cfNeedsUpdate && updateData.customFields === undefined) {
+      updateData.customFields = existingCF;
+    } else if (cfNeedsUpdate && updateData.customFields !== undefined) {
+      updateData.customFields = { ...(updateData.customFields as any), ...existingCF };
+    }
+
+    // Execution Logic
     if (body.customFields !== undefined) {
       const existingCustomFields = (currentTask.customFields as Prisma.JsonObject) || {};
-      updateData.customFields = { ...existingCustomFields, ...body.customFields };
+      updateData.customFields = { ...existingCustomFields, ...body.customFields, ...(updateData.customFields as any || {}) };
     }
 
     // Execute update

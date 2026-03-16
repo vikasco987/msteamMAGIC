@@ -103,36 +103,73 @@ export default function DeepAnalysisPage() {
     // Modals & Panels
     const [selectedTaskForModal, setSelectedTaskForModal] = useState<Task | null>(null);
     const [trackingTask, setTrackingTask] = useState<TaskAudit | null>(null);
+    const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; email: string }[]>([]);
+    const [isEditMode, setIsEditMode] = useState(false);
 
     // Permissions
     const userRole = (user?.publicMetadata?.role as string || "user").toLowerCase();
     const isMaster = userRole === "master" || userRole === "admin" || userRole === "tl";
 
+    const refetchAudit = async (showToast = false) => {
+        try {
+            const res = await fetch("/api/tasks/audit");
+            const data = await res.json();
+
+            if (res.ok) {
+                setAuditData(data.auditData || []);
+                setBottleneckData(data.bottleneckData || []);
+                setStaleTasks(data.staleTasks || []);
+                if (showToast) toast.success("Data refreshed");
+            }
+        } catch (err) {
+            console.error("Refetch error:", err);
+        }
+    };
+
+    const handleUpdateField = async (taskId: string, field: string, value: any, updates?: any) => {
+        try {
+            const res = await fetch("/api/tasks/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ taskId, field, value, updates })
+            });
+
+            if (res.ok) {
+                toast.success(updates ? "Task updated" : `${field} updated`);
+                await refetchAudit();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || `Failed to update ${field}`);
+            }
+        } catch (err) {
+            toast.error("Network error");
+        }
+    };
+
     useEffect(() => {
         setIsMounted(true);
-        const fetchAudit = async () => {
+        const fetchTeamMembers = async () => {
             try {
-                const res = await fetch("/api/tasks/audit");
-                const data = await res.json();
-
+                const res = await fetch("/api/team-members");
                 if (res.ok) {
-                    setAuditData(data.auditData || []);
-                    setBottleneckData(data.bottleneckData || []);
-                    setStaleTasks(data.staleTasks || []);
-                    if (data.auditData?.length === 0) {
-                        setError("No task data found. Try creating or updating some tasks first.");
-                    }
-                } else {
-                    setError(data.error || "Failed to fetch audit data");
+                    const data = await res.json();
+                    setTeamMembers(data);
                 }
             } catch (err) {
-                console.error("Fetch audit error:", err);
-                setError("Network error: Could not reach the audit server.");
+                console.error("Failed to fetch team members:", err);
+            }
+        };
+        fetchTeamMembers();
+
+        const initializeData = async () => {
+            setLoading(true);
+            try {
+                await refetchAudit();
             } finally {
                 setLoading(false);
             }
         };
-        fetchAudit();
+        initializeData();
     }, []);
 
     const assignees = useMemo(() => Array.from(new Set(auditData.map(t => t.assigneeName || "Unassigned"))).sort(), [auditData]);
@@ -277,6 +314,20 @@ export default function DeepAnalysisPage() {
                             {assigners.map(a => <option key={a} value={a}>{a}</option>)}
                         </select>
 
+                        {isMaster && (
+                            <button
+                                onClick={() => setIsEditMode(!isEditMode)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    isEditMode 
+                                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                                    : "bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100"
+                                }`}
+                            >
+                                <History size={14} className={isEditMode ? "animate-pulse" : ""} />
+                                {isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"}
+                            </button>
+                        )}
+
                         <button
                             onClick={() => {
                                 setSearchTerm(""); setSelectedStatus("all"); setSelectedPriority("all");
@@ -388,34 +439,77 @@ export default function DeepAnalysisPage() {
                                                                 {task.currentStatus || "N/A"}
                                                             </span>
                                                         </td>
-                                                        <td className="px-4 md:px-8 py-4 md:py-6">
-                                                            <div className="flex flex-col">
-                                                                <div className="flex flex-wrap items-center gap-1.5 min-w-[120px]">
-                                                                    {task.task.assignees && task.task.assignees.length > 0 ? (
-                                                                        task.task.assignees.map((assignee, idx) => (
-                                                                            <div key={idx} className="flex items-center gap-1.5 bg-slate-50 pr-2 rounded-full border border-slate-100 hover:bg-indigo-50 transition-colors">
-                                                                                {assignee.imageUrl ? (
-                                                                                    <img src={assignee.imageUrl} className="w-6 h-6 rounded-full border border-white shadow-sm" alt={assignee.name || ""} />
-                                                                                ) : (
-                                                                                    <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[8px] font-black uppercase border border-white shadow-sm">
-                                                                                        {(assignee.name || "U")[0]}
-                                                                                    </div>
-                                                                                )}
-                                                                                <span className="text-[10px] font-black text-slate-700 whitespace-nowrap">{assignee.name}</span>
-                                                                            </div>
-                                                                        ))
+                                                          <td className="px-4 md:px-8 py-4 md:py-6">
+                                                             <div className="flex flex-col">
+                                                                 <div className="flex flex-wrap items-center gap-1.5 min-w-[120px]">
+                                                                     {isMaster && isEditMode ? (
+                                                                         <div className="flex flex-col gap-1 w-full">
+                                                                             <select 
+                                                                                 multiple
+                                                                                 className="text-[10px] font-black text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-1 min-h-[60px] w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                                                                 value={task.task.assigneeIds || []}
+                                                                                 onChange={(e) => {
+                                                                                     const selectedIds = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                                                                                     handleUpdateField(task.id, "assigneeIds", selectedIds);
+                                                                                 }}
+                                                                             >
+                                                                                 {teamMembers.map(m => (
+                                                                                     <option key={m.id} value={m.id}>{m.name}</option>
+                                                                                 ))}
+                                                                             </select>
+                                                                             <span className="text-[8px] text-slate-400 font-bold uppercase">Cmd+Click to Change</span>
+                                                                         </div>
+                                                                     ) : (
+                                                                         task.task.assignees && task.task.assignees.length > 0 ? (
+                                                                             task.task.assignees.map((assignee, idx) => (
+                                                                                 <div key={idx} className="flex items-center gap-1.5 bg-slate-50 pr-2 rounded-full border border-slate-100 hover:bg-indigo-50 transition-colors">
+                                                                                     {assignee.imageUrl ? (
+                                                                                         <img src={assignee.imageUrl} className="w-6 h-6 rounded-full border border-white shadow-sm" alt={assignee.name || ""} />
+                                                                                     ) : (
+                                                                                         <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[8px] font-black uppercase border border-white shadow-sm">
+                                                                                             {(assignee.name || "U")[0]}
+                                                                                         </div>
+                                                                                     )}
+                                                                                     <span className="text-[10px] font-black text-slate-700 whitespace-nowrap">{assignee.name}</span>
+                                                                                 </div>
+                                                                             ))
+                                                                         ) : (
+                                                                             <div className="flex items-center gap-2">
+                                                                                 <div className="w-6 h-6 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center text-[10px] font-black uppercase border border-slate-100">
+                                                                                     {(task.assigneeName || "U")[0]}
+                                                                                 </div>
+                                                                                 <span className="text-[11px] font-black text-slate-500">{task.assigneeName || "Unassigned"}</span>
+                                                                             </div>
+                                                                         )
+                                                                     )}
+                                                                 </div>
+                                                                 <div className="flex items-center gap-1 mt-1 ml-1">
+                                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">By:</span>
+                                                                    {isMaster && isEditMode ? (
+                                                                        <select 
+                                                                            className="text-[10px] font-black text-slate-600 bg-transparent border border-slate-200 rounded-md p-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer hover:bg-slate-50"
+                                                                            value={teamMembers.find(m => m.name === task.assignerName)?.id || ""}
+                                                                            onChange={(e) => {
+                                                                                const member = teamMembers.find(m => m.id === e.target.value);
+                                                                                if (member) {
+                                                                                    handleUpdateField(task.id, "assigner", null, {
+                                                                                        assignerName: member.name,
+                                                                                        assignerEmail: member.email
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <option value="">Select Assigner</option>
+                                                                            {teamMembers.map(m => (
+                                                                                <option key={m.id} value={m.id}>{m.name}</option>
+                                                                            ))}
+                                                                        </select>
                                                                     ) : (
-                                                                        <div className="flex items-center gap-2">
-                                                                            <div className="w-6 h-6 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center text-[10px] font-black uppercase border border-slate-100">
-                                                                                {(task.assigneeName || "U")[0]}
-                                                                            </div>
-                                                                            <span className="text-[11px] font-black text-slate-500">{task.assigneeName || "Unassigned"}</span>
-                                                                        </div>
+                                                                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tight">{task.assignerName || "Unknown"}</span>
                                                                     )}
-                                                                </div>
-                                                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tight mt-1 ml-1">By: {task.assignerName || "Unknown"}</span>
-                                                            </div>
-                                                        </td>
+                                                                 </div>
+                                                             </div>
+                                                         </td>
                                                         <td className="px-8 py-6">
                                                             <div className="flex flex-col">
                                                                 <div className="flex items-center gap-1 text-[10px] font-bold text-slate-600">
