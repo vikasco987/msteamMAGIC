@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
-import { users as clerkUsers } from "@clerk/clerk-sdk-node";
+
 import { Prisma } from "@prisma/client";
 import { logActivity } from "@/lib/activity";
 
@@ -209,79 +209,100 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     if (updateData.amount !== undefined || updateData.received !== undefined) {
       console.log("DEBUG: Payment update detected. Fetching admins from Clerk...");
 
-      const allClerkUsers = await clerkUsers.getUserList({ limit: 500 });
-      const adminMasterIds = allClerkUsers
-        .filter(u => {
-          const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
-          return role === "admin" || role === "master";
-        })
-        .map(u => u.id)
-        .filter(id => id !== userId);
+      try {
+        const client = await clerkClient();
+        const allClerkUsersRes = await client.users.getUserList({ limit: 500 });
+        const adminMasterIds = allClerkUsersRes.data
+          .filter(u => {
+            const role = ((u.publicMetadata?.role as string) || (u.privateMetadata?.role as string) || "").toLowerCase();
+            return role === "admin" || role === "master";
+          })
+          .map(u => u.id)
+          .filter(id => id !== userId);
 
-      console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from Clerk:`, adminMasterIds);
+        console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from Clerk:`, adminMasterIds);
 
-      const cf = (updated.customFields as any) || {};
-      const taskDetails = `[${cf.shopName || "N/A"}] - ${updated.title}`;
-      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-
-      if (adminMasterIds.length === 0) {
-        console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
-      }
-
-      await Promise.all(adminMasterIds.map(async recipientId => {
+        const cf = (updated.customFields as any) || {};
+        const taskDetails = `[${cf.shopName || "N/A"}] - ${updated.title}`;
+        let timestamp = "";
         try {
-          const notif = await prisma.notification.create({
-            data: {
-              userId: recipientId,
-              type: "PAYMENT_ADDED",
-              content: `💳 PAYMENT UPDATE: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
-              taskId: updated.id
-            } as any
-          });
-          console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
-        } catch (err) {
-          console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
+          timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        } catch (e) {
+          timestamp = new Date().toISOString();
         }
-      }));
+
+        if (adminMasterIds.length === 0) {
+          console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
+        }
+
+        await Promise.all(adminMasterIds.map(async recipientId => {
+          try {
+            const notif = await prisma.notification.create({
+              data: {
+                userId: recipientId,
+                type: "PAYMENT_ADDED",
+                content: `💳 PAYMENT UPDATE: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+                taskId: updated.id
+              } as any
+            });
+            console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
+          } catch (err) {
+            console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
+          }
+        }));
+      } catch (clerkErr) {
+        console.error("DEBUG: Clerk lookup or notification failed:", clerkErr);
+      }
     }
 
     // Trigger notification if status becomes "done"
-    if (updateData.status === "done" && currentTask.status !== "done") {
-      const recipientIds = new Set<string>();
+    try {
+      if (updateData.status === "done" && currentTask.status !== "done") {
+        const recipientIds = new Set<string>();
 
-      // 1. Add assignee(s)
-      if (updated.assigneeIds && updated.assigneeIds.length > 0) {
-        updated.assigneeIds.forEach(id => { if (id) recipientIds.add(id); });
-      } else if (updated.assigneeId) {
-        recipientIds.add(updated.assigneeId);
+        // 1. Add assignee(s)
+        if (updated.assigneeIds && updated.assigneeIds.length > 0) {
+          updated.assigneeIds.forEach(id => { if (id && typeof id === 'string') recipientIds.add(id); });
+        } else if (updated.assigneeId && typeof updated.assigneeId === 'string') {
+          recipientIds.add(updated.assigneeId);
+        }
+
+        // 2. Add creator (The person who needs to be notified)
+        if (currentTask.createdByClerkId && typeof currentTask.createdByClerkId === 'string') {
+          recipientIds.add(currentTask.createdByClerkId);
+        }
+
+        // 3. Remove the person who performed the action
+        recipientIds.delete(userId);
+
+        const cf = (updated.customFields as any) || {};
+        const shopName = cf.shopName || "N/A";
+        // Safe timestamp formatting
+        let timestamp = "";
+        try {
+          timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        } catch (e) {
+          timestamp = new Date().toISOString();
+        }
+
+        const notificationTitle = "✅ Task Completed";
+        const notificationContent = `Task Finished: "${updated.title}"\nShop: ${shopName}\nCompleted By: ${userName}\nDate: ${timestamp}`;
+
+        await Promise.all(Array.from(recipientIds).map(recipientId =>
+          prisma.notification.create({
+            data: {
+              userId: recipientId,
+              type: "TASK_COMPLETED",
+              title: notificationTitle,
+              content: notificationContent,
+              taskId: updated.id
+            } as any
+          }).catch(err => console.error(`Completion alert error for ${recipientId}:`, err))
+        ));
       }
-
-      // 2. Add creator (The person who needs to be notified)
-      if (currentTask.createdByClerkId) {
-        recipientIds.add(currentTask.createdByClerkId);
-      }
-
-      // 3. Remove the person who performed the action
-      recipientIds.delete(userId);
-
-      const cf = (updated.customFields as any) || {};
-      const shopName = cf.shopName || "N/A";
-      const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-
-      const notificationTitle = "✅ Task Completed";
-      const notificationContent = `Task Finished: "${updated.title}"\nShop: ${shopName}\nCompleted By: ${userName}\nDate: ${timestamp}`;
-
-      await Promise.all(Array.from(recipientIds).map(recipientId =>
-        prisma.notification.create({
-          data: {
-            userId: recipientId,
-            type: "TASK_COMPLETED",
-            title: notificationTitle,
-            content: notificationContent,
-            taskId: updated.id
-          } as any
-        }).catch(err => console.error("Completion alert error:", err))
-      ));
+    } catch (notifErr) {
+      console.error("❌ Failed to process 'done' notifications:", notifErr);
+      // We don't want to fail the whole request if notifications fail
     }
 
     return NextResponse.json({ success: true, task: updated }, { status: 200 });

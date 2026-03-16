@@ -120,7 +120,9 @@ export default function Board() {
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
-      const relevantTasks = showAllTasksMode
+      const isAdminOrMaster = role.toLowerCase() === "admin" || role.toLowerCase() === "master";
+
+      const relevantTasks = (showAllTasksMode || isAdminOrMaster)
         ? taskArray
         : taskArray.filter(task =>
           (task.assigneeIds && task.assigneeIds.includes(userId)) ||
@@ -256,9 +258,12 @@ export default function Board() {
         return false;
       })();
 
+      const matchesStatus = selectedStatuses.length === 0 ||
+        selectedStatuses.includes((task.status || "").toLowerCase());
+
       const isHidden = !showAllTasksMode && hiddenCardIds.has(task.id);
 
-      return matchesSearch && matchesCategory && matchesDate && !isHidden;
+      return matchesSearch && matchesCategory && matchesDate && matchesStatus && !isHidden;
     }).sort((a, b) => {
       const valA = a[sortBy] || "";
       const valB = b[sortBy] || "";
@@ -339,13 +344,13 @@ export default function Board() {
             <div key={col.id} className="flex flex-col gap-4">
               <div className={`flex items-center justify-between p-4 rounded-2xl border-l-4 ${col.color} bg-white shadow-sm font-black text-slate-700 uppercase tracking-widest text-xs`}>
                 <span>{col.title}</span>
-                <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-[10px]">{filteredTasks.filter(t => t.status === col.id).length}</span>
+                <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-[10px]">{filteredTasks.filter(t => (t.status || "").toLowerCase() === col.id.toLowerCase()).length}</span>
               </div>
 
               <Droppable droppableId={col.id}>
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} className="min-h-[500px] flex flex-col gap-4">
-                    {filteredTasks.filter(t => t.status === col.id).map((task, index) => (
+                    {filteredTasks.filter(t => (t.status || "").toLowerCase() === col.id.toLowerCase()).map((task, index) => (
                       <Draggable key={task.id} draggableId={task.id} index={index}>
                         {(provided) => (
                           <div
