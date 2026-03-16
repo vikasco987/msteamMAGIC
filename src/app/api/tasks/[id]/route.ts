@@ -138,6 +138,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           const client = await clerkClient();
           const leadUser = await client.users.getUser(ids[0]);
           updateData.assigneeId = leadUser.id;
+          updateData.createdByClerkId = leadUser.id; // Sync creator ID with new assignee as requested
           updateData.assigneeName = `${leadUser.firstName || ""} ${leadUser.lastName || ""}`.trim() || leadUser.username || "Unknown";
           updateData.assigneeEmail = leadUser.emailAddresses[0]?.emailAddress || "Unknown";
           
