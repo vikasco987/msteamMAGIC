@@ -1409,7 +1409,7 @@ export default function CRMSpreadsheetPage() {
                             const targetId = (cond.val || "").toString();
                             const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
                             const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
-                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
+                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId) || (r.submittedBy === targetId && rawAssigned.length === 0);
                             const isUnassigned = rawAssigned.length === 0;
                             const isSubmitter = r.submittedBy === targetId;
 
@@ -1447,7 +1447,7 @@ export default function CRMSpreadsheetPage() {
                             case "not_equals": return val !== targetVal;
                             case "contains": return val.includes(targetVal);
                             case "one_of": {
-                                const targets = (cond.val || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+                                const targets = (cond.val || "").split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean);
                                 return targets.includes(val);
                             }
                             case "starts_with": return val.startsWith(targetVal);
@@ -2500,7 +2500,7 @@ export default function CRMSpreadsheetPage() {
                                 const phoneField = data?.form?.fields?.find(f =>
                                     f.label.toLowerCase().includes("phone") || f.label.toLowerCase().includes("number") || f.label.toLowerCase().includes("contact")
                                 );
-                                const phone = res.values?.find(v => v.fieldId === phoneField?.id)?.value || "—";
+                                const phone = res.values?.find((v: any) => v.fieldId === phoneField?.id)?.value || "—";
                                 const latestRemarkFull = res.remarks?.[0];
                                 const latestRemark = latestRemarkFull?.remark || "Waiting for interaction protocol...";
                                 const followUpCount = res.remarks?.length || 0;
@@ -2876,27 +2876,36 @@ export default function CRMSpreadsheetPage() {
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
                                                                                     });
-                                                                                } else {
-                                                                                    const vals = new Set<string>();
-                                                                                    (data?.responses || []).forEach(res => {
-                                                                                        if (col.id === "__contributor") {
-                                                                                            if (res.submittedByName) vals.add(res.submittedByName);
-                                                                                        } else {
-                                                                                            const v = getCellValue(res.id, col.id, col.isInternal);
-                                                                                            if (v) vals.add(v.toString());
-                                                                                        }
-                                                                                    });
-                                                                                    availableValues = Array.from(vals)
-                                                                                        .filter(Boolean)
-                                                                                        .sort()
-                                                                                        .map(v => {
-                                                                                            let label = v;
-                                                                                            if (col.type === "date") {
-                                                                                                label = safeFormat(v, "dd MMM yyyy");
-                                                                                            }
-                                                                                            return { label, value: v };
-                                                                                        });
-                                                                                }
+                                                                                } else if (col.id === "__assigned") {
+                                                    availableValues = teamMembers.map(m => ({
+                                                        label: m.email.split('@')[0],
+                                                        value: m.clerkId
+                                                    })).sort((a, b) => a.label.localeCompare(b.label));
+                                                    availableValues.unshift({ label: "Unassigned", value: "" });
+                                                } else if (col.id === "__contributor") {
+                                                    const vals = new Set<string>();
+                                                    (data?.responses || []).forEach(res => {
+                                                        if (res.submittedByName) vals.add(res.submittedByName);
+                                                    });
+                                                    teamMembers.forEach(m => vals.add(m.email.split('@')[0]));
+                                                    availableValues = Array.from(vals).filter(Boolean).sort().map(v => ({ label: v, value: v }));
+                                                } else {
+                                                    const vals = new Set<string>();
+                                                    (data?.responses || []).forEach(res => {
+                                                        const v = getCellValue(res.id, col.id, col.isInternal);
+                                                        if (v) vals.add(v.toString());
+                                                    });
+                                                    availableValues = Array.from(vals)
+                                                        .filter(Boolean)
+                                                        .sort()
+                                                        .map(v => {
+                                                            let label = v;
+                                                            if (col.type === "date") {
+                                                                label = safeFormat(v, "dd MMM yyyy");
+                                                            }
+                                                            return { label, value: v };
+                                                        });
+                                                }
 
                                                                                 if (availableValues.length === 0) {
                                                                                     return <div className="px-3 py-4 text-center text-xs text-slate-400">No data found</div>;
@@ -3624,9 +3633,9 @@ export default function CRMSpreadsheetPage() {
                                                                 return <img src={getFallbackAvatar(fallbackId, author?.imageUrl)} title={author?.name || latestRemark?.authorName || item.submittedByName || "User"} className="w-full h-full object-cover" />;
                                                             })()}
                                                         </div>
-                                                        {item.remarks?.length > 0 && (
+                                                        {(item.remarks?.length || 0) > 0 && (
                                                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Interactions">
-                                                                {item.remarks.length}
+                                                                {item.remarks?.length}
                                                             </div>
                                                         )}
                                                     </div>
@@ -4206,7 +4215,7 @@ export default function CRMSpreadsheetPage() {
 
                             <div className="h-6 w-[1px] bg-slate-800 mx-2" />
 
-                            {isPureMaster && (
+                            {(isMaster || isPureMaster) && (
                                 <button
                                     onClick={handleBulkDelete}
                                     className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
@@ -4711,7 +4720,7 @@ export default function CRMSpreadsheetPage() {
                                     </div>
                                 </div>
                             )}
-                            {messages.map(m => (
+                            {messages.map((m: any) => (
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
