@@ -2957,11 +2957,19 @@ export default function CRMSpreadsheetPage() {
                                                         });
                                                 }
 
-                                                                                if (availableValues.length === 0) {
-                                                                                    return <div className="px-3 py-4 text-center text-xs text-slate-400">No data found</div>;
+                                                                                // Apply search filter
+                                                                                const displayValues = activeColumnFilterSearch
+                                                                                    ? availableValues.filter(opt =>
+                                                                                        opt.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase()) ||
+                                                                                        opt.value.toLowerCase().includes(activeColumnFilterSearch.toLowerCase())
+                                                                                    )
+                                                                                    : availableValues;
+
+                                                                                if (displayValues.length === 0) {
+                                                                                    return <div className="px-3 py-4 text-center text-xs text-slate-400">{activeColumnFilterSearch ? `No match for "${activeColumnFilterSearch}"` : 'No data found'}</div>;
                                                                                 }
 
-                                                                                return availableValues.map(opt => {
+                                                                                return displayValues.map(opt => {
                                                                                     const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
                                                                                     return (
                                                                                         <button
