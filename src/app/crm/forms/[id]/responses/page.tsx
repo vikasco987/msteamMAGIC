@@ -565,6 +565,11 @@ export default function CRMSpreadsheetPage() {
     const [teamMemberSearch, setTeamMemberSearch] = useState("");
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, conditions, filterConjunction]);
+
     useEffect(() => {
         fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
     }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id]);
@@ -1054,10 +1059,25 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleBulkDelete = async () => {
-        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
-        if (selectedRows.length === 0) return;
-        if (!confirm(`PURGE PROTOCOL: Are you sure you want to permanently delete ${selectedRows.length} records? This action cannot be undone.`)) return;
+        console.log("[BulkDelete] Button clicked. selectedRows:", selectedRows.length);
+        console.log("[BulkDelete] Role status - isMaster:", isMaster, "isPureMaster:", isPureMaster);
+        
+        if (!isMaster && !isPureMaster) {
+            console.error("[BulkDelete] Permission denied: Not a Master or PureMaster");
+            return toast.error("MASTER MODE REQUIRED");
+        }
+        if (selectedRows.length === 0) {
+            console.warn("[BulkDelete] Aborted: No rows selected");
+            return;
+        }
 
+        const confirmMsg = `PURGE PROTOCOL: Are you sure you want to permanently delete ${selectedRows.length} records? This action cannot be undone.`;
+        if (!window.confirm(confirmMsg)) {
+            console.log("[BulkDelete] Aborted by user via confirm dialog");
+            return;
+        }
+
+        toast.loading(`Initializing purge of ${selectedRows.length} records...`, { id: "bulk-delete-start" });
         setDeleteProgress({ current: 0, total: selectedRows.length });
         const batchSize = 100;
         const total = selectedRows.length;
@@ -2877,18 +2897,27 @@ export default function CRMSpreadsheetPage() {
                                                                                         return { label, value: label };
                                                                                     });
                                                                                 } else if (col.id === "__assigned") {
-                                                    availableValues = teamMembers.map(m => ({
-                                                        label: m.email.split('@')[0],
-                                                        value: m.clerkId
-                                                    })).sort((a, b) => a.label.localeCompare(b.label));
+                                                    availableValues = teamMembers.map(m => {
+                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                        return {
+                                                            label: name,
+                                                            value: m.clerkId
+                                                        };
+                                                    }).sort((a, b) => a.label.localeCompare(b.label));
                                                     availableValues.unshift({ label: "Unassigned", value: "" });
                                                 } else if (col.id === "__contributor") {
-                                                    const vals = new Set<string>();
+                                                    const vals = new Map<string, string>(); // name -> value
                                                     (data?.responses || []).forEach(res => {
-                                                        if (res.submittedByName) vals.add(res.submittedByName);
+                                                        if (res.submittedByName) vals.set(res.submittedByName, res.submittedByName);
                                                     });
-                                                    teamMembers.forEach(m => vals.add(m.email.split('@')[0]));
-                                                    availableValues = Array.from(vals).filter(Boolean).sort().map(v => ({ label: v, value: v }));
+                                                    teamMembers.forEach(m => {
+                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim();
+                                                        if (name) vals.set(name, name);
+                                                        vals.set(m.email.split('@')[0], m.email.split('@')[0]);
+                                                    });
+                                                    availableValues = Array.from(vals.entries())
+                                                        .map(([label, value]) => ({ label, value }))
+                                                        .sort((a, b) => a.label.localeCompare(b.label));
                                                 } else {
                                                     const vals = new Set<string>();
                                                     (data?.responses || []).forEach(res => {
