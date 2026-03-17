@@ -140,9 +140,9 @@ export async function POST(
         // Helper to run batches
         // Helper to generate Mongo IDs if needed
         const generateId = () => {
-            const timestamp = Math.floor(Date.now() / 1000).toString(16);
-            const random = Math.random().toString(16).substring(2, 18);
-            return (timestamp + random).substring(0, 24);
+            const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+            const random = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            return (timestamp + random);
         };
 
         // Helper to run batches
