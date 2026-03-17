@@ -256,7 +256,7 @@ export async function POST(
                             if (existing.value !== valueToMap) {
                                 individualOps.push(prisma.internalValue.update({
                                     where: { id: existing.id },
-                                    data: { value: valueToMap, updatedBy: user.id, updatedByName: userName }
+                                    data: { value: valueToMap, updatedBy: user.id, updatedByName: userName, updatedAt: new Date() }
                                 }));
                                 if (!disableActivityLogs) {
                                     activitiesToCreate.push({
@@ -269,7 +269,7 @@ export async function POST(
                         } else {
                             internalValuesToCreate.push({
                                 responseId: item.responseId, columnId: colIdToUpdate, value: valueToMap,
-                                updatedBy: user.id, updatedByName: userName
+                                updatedBy: user.id, updatedByName: userName, updatedAt: new Date()
                             });
                         }
                     } else {
@@ -298,25 +298,29 @@ export async function POST(
             }
 
             // 4. Batch Database Operations
+            // For FormResponse, using individual creates in parallel batches to be safer with ID generation
             if (responsesToCreate.length > 0) {
-                await prisma.formResponse.createMany({ data: responsesToCreate });
+                const responseBatches = [];
+                for (let j = 0; j < responsesToCreate.length; j += 100) {
+                    const batchSlice = responsesToCreate.slice(j, j + 100);
+                    responseBatches.push(Promise.all(batchSlice.map(r => prisma.formResponse.create({ data: r }))));
+                }
+                await Promise.all(responseBatches);
             }
+
+            const otherOps: any[] = [...individualOps];
             if (internalValuesToCreate.length > 0) {
-                await prisma.internalValue.createMany({ data: internalValuesToCreate });
+                otherOps.push(prisma.internalValue.createMany({ data: internalValuesToCreate }));
             }
             if (responseValuesToCreate.length > 0) {
-                await prisma.responseValue.createMany({ data: responseValuesToCreate });
+                otherOps.push(prisma.responseValue.createMany({ data: responseValuesToCreate }));
             }
             if (activitiesToCreate.length > 0) {
-                await prisma.formActivity.createMany({ data: activitiesToCreate });
+                otherOps.push(prisma.formActivity.createMany({ data: activitiesToCreate }));
             }
-            if (individualOps.length > 0) {
-                // Execute updates in parallel batches to avoid overloading
-                const updateBatches = [];
-                for (let j = 0; j < individualOps.length; j += 50) {
-                    updateBatches.push(prisma.$transaction(individualOps.slice(j, j + 50)));
-                }
-                await Promise.all(updateBatches);
+
+            if (otherOps.length > 0) {
+                await prisma.$transaction(otherOps);
             }
 
             successCount += validItems.length;
@@ -332,8 +336,8 @@ export async function POST(
             errorCount: errors.length
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Bulk Import Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }
 }
