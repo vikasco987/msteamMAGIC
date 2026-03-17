@@ -39,9 +39,10 @@ export async function POST(
             updateColumnMap: Record<string, { id: string; isInternal: boolean }>;
             isInternalMatch: boolean;
             importMode?: 'update' | 'create' | 'upsert';
+            disableActivityLogs?: boolean;
         };
 
-        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update' } = payload;
+        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update', disableActivityLogs = false } = payload;
 
         if (!data || data.length === 0 || ((importMode === 'update' || importMode === 'upsert') && !matchColumnId)) {
             return NextResponse.json({ error: "Invalid data or match column missing" }, { status: 400 });
@@ -137,14 +138,29 @@ export async function POST(
         const respValMap = new Map(existingResponseValues.map(v => [`${v.responseId}_${v.fieldId}`, v]));
 
         // Helper to run batches
-        const BATCH_SIZE = 100;
+        // Helper to generate Mongo IDs if needed
+        const generateId = () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString(16);
+            const random = Math.random().toString(16).substring(2, 18);
+            return (timestamp + random).substring(0, 24);
+        };
+
+        // Helper to run batches
+        const BATCH_SIZE = 500;
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
             const batch = data.slice(i, i + BATCH_SIZE);
-            console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} rows)...`);
+            
+            const internalValuesToCreate: any[] = [];
+            const responseValuesToCreate: any[] = [];
+            const activitiesToCreate: any[] = [];
+            const responsesToCreate: any[] = [];
+            const individualOps: any[] = [];
 
-            const batchResults = await Promise.all(batch.map(async (row, idx) => {
+            // 1. Identify what to update and what to create
+            const batchItems = await Promise.all(batch.map(async (row, idx) => {
                 const rowIndex = i + idx;
-                let responseIdToUpdate: string | null = null;
+                let responseId: string | null = null;
+                let isNew = false;
 
                 if (importMode === 'update' || importMode === 'upsert') {
                     const matchValueRaw = row[matchExcelHeader]?.toString().trim() || "";
@@ -156,62 +172,54 @@ export async function POST(
                     if (!matchedId && norm.length >= 10 && /^\d+$/.test(norm)) matchedId = phoneMap.get(norm.slice(-10));
 
                     if (matchedId) {
-                        responseIdToUpdate = matchedId;
+                        responseId = matchedId;
+                    } else if (importMode === 'upsert') {
+                        isNew = true;
+                        responseId = generateId();
+                    } else {
+                        errors.push(`Row ${rowIndex + 1}: No match found for "${matchValueRaw}"`);
+                        return null;
                     }
-
-                    if (!responseIdToUpdate) {
-                        if (((importMode as string) === 'upsert' || (importMode as string) === 'create')) {
-                            // Will create
-                        } else {
-                            return { error: `Row ${rowIndex + 1}: No match found for "${matchValueRaw}"` };
-                        }
-                    }
+                } else {
+                    isNew = true;
+                    responseId = generateId();
                 }
 
-                return { row, responseIdToUpdate, rowIndex };
+                return { row, responseId, isNew, rowIndex };
             }));
 
-            const rowsToProcess = batchResults.filter(r => !r.error);
-            const batchErrors = batchResults.filter(r => r.error).map(r => r.error);
-            errors.push(...batchErrors as string[]);
-
-            if (rowsToProcess.length === 0) continue;
-
-            // 1. Create Responses in parallel for those that need it
-            const responsesWithIds = await Promise.all(rowsToProcess.map(async (item: any) => {
-                if (!item.responseIdToUpdate) {
-                    const newResp = await prisma.formResponse.create({
-                        data: {
-                            formId,
-                            submittedBy: user.id,
-                            submittedByName: userName,
-                            submittedAt: new Date(),
-                            assignedTo: [user.id]
-                        }
+            const validItems = batchItems.filter(item => item !== null) as { row: Record<string, string>; responseId: string; isNew: boolean; rowIndex: number }[];
+            
+            // 2. Queue Response creations
+            for (const item of validItems) {
+                if (item.isNew) {
+                    responsesToCreate.push({
+                        id: item.responseId,
+                        formId,
+                        submittedBy: user.id,
+                        submittedByName: userName,
+                        submittedAt: new Date(),
+                        assignedTo: [user.id]
                     });
                     createdCount++;
-                    return { ...item, currentResponseId: newResp.id, isNew: true };
+                    if (!disableActivityLogs) {
+                        activitiesToCreate.push({
+                            responseId: item.responseId, userId: user.id, userName: userName,
+                            type: "BULK_IMPORT_CREATE", columnName: "System",
+                            oldValue: "None", newValue: "New Record via Bulk Upload"
+                        });
+                    }
                 } else {
                     updatedCount++;
-                    return { ...item, currentResponseId: item.responseIdToUpdate, isNew: false };
                 }
-            }));
 
-            // 2. Build Value insertion/update maps
-            const internalValuesToCreate: any[] = [];
-            const responseValuesToCreate: any[] = [];
-            const activitiesToCreate: any[] = [];
-            const individualOps: any[] = [];
-
-            for (const item of responsesWithIds) {
-                const { row, currentResponseId, isNew, rowIndex } = item;
-
+                // 3. Build Column Values
                 for (const headerKey in updateColumnMap) {
                     if (importMode === 'update' && headerKey === matchExcelHeader) continue;
                     const mapping = updateColumnMap[headerKey];
-                    if (!mapping || row[headerKey] === undefined) continue;
+                    if (!mapping || item.row[headerKey] === undefined) continue;
 
-                    let valueToMap = row[headerKey]?.toString() || "";
+                    let valueToMap = item.row[headerKey]?.toString() || "";
                     const colIdToUpdate = mapping.id;
                     const isColInternal = mapping.isInternal;
 
@@ -219,7 +227,7 @@ export async function POST(
                         const foundUserId = findUser(valueToMap);
                         if (foundUserId) {
                             individualOps.push(prisma.formResponse.update({
-                                where: { id: currentResponseId },
+                                where: { id: item.responseId },
                                 data: { assignedTo: { set: [foundUserId] } }
                             }));
                         }
@@ -243,64 +251,75 @@ export async function POST(
                             if (!isNaN(parsedDate.getTime())) valueToMap = parsedDate.toISOString();
                         }
 
-                        const existing = intValMap.get(`${currentResponseId}_${colIdToUpdate}`);
+                        const existing = intValMap.get(`${item.responseId}_${colIdToUpdate}`);
                         if (existing) {
                             if (existing.value !== valueToMap) {
                                 individualOps.push(prisma.internalValue.update({
                                     where: { id: existing.id },
                                     data: { value: valueToMap, updatedBy: user.id, updatedByName: userName }
                                 }));
-                                activitiesToCreate.push({
-                                    responseId: currentResponseId, userId: user.id, userName: userName,
-                                    type: "BULK_IMPORT_UPDATE", columnName: internalCol?.label || headerKey,
-                                    oldValue: existing.value || "", newValue: valueToMap
-                                });
+                                if (!disableActivityLogs) {
+                                    activitiesToCreate.push({
+                                        responseId: item.responseId, userId: user.id, userName: userName,
+                                        type: "BULK_IMPORT_UPDATE", columnName: internalCol?.label || headerKey,
+                                        oldValue: existing.value || "", newValue: valueToMap
+                                    });
+                                }
                             }
                         } else {
                             internalValuesToCreate.push({
-                                responseId: currentResponseId, columnId: colIdToUpdate, value: valueToMap,
+                                responseId: item.responseId, columnId: colIdToUpdate, value: valueToMap,
                                 updatedBy: user.id, updatedByName: userName
                             });
                         }
                     } else {
-                        const existing = respValMap.get(`${currentResponseId}_${colIdToUpdate}`);
+                        const existing = respValMap.get(`${item.responseId}_${colIdToUpdate}`);
                         if (existing) {
                             if (existing.value !== valueToMap) {
                                 individualOps.push(prisma.responseValue.update({
                                     where: { id: existing.id },
                                     data: { value: valueToMap }
                                 }));
-                                activitiesToCreate.push({
-                                    responseId: currentResponseId, userId: user.id, userName: userName,
-                                    type: "BULK_IMPORT_UPDATE", columnName: headerKey,
-                                    oldValue: existing.value || "", newValue: valueToMap
-                                });
+                                if (!disableActivityLogs) {
+                                    activitiesToCreate.push({
+                                        responseId: item.responseId, userId: user.id, userName: userName,
+                                        type: "BULK_IMPORT_UPDATE", columnName: headerKey,
+                                        oldValue: existing.value || "", newValue: valueToMap
+                                    });
+                                }
                             }
                         } else {
                             responseValuesToCreate.push({
-                                responseId: currentResponseId, fieldId: colIdToUpdate, value: valueToMap
+                                responseId: item.responseId, fieldId: colIdToUpdate, value: valueToMap
                             });
                         }
                     }
                 }
-
-                if (isNew) {
-                    activitiesToCreate.push({
-                        responseId: currentResponseId, userId: user.id, userName: userName,
-                        type: "BULK_IMPORT_CREATE", columnName: "System",
-                        oldValue: "None", newValue: "New Record via Bulk Upload"
-                    });
-                }
             }
 
-            // 3. Fast Bulk Insert for the batch
-            const finalOps: any[] = [...individualOps];
-            if (internalValuesToCreate.length > 0) finalOps.push(prisma.internalValue.createMany({ data: internalValuesToCreate }));
-            if (responseValuesToCreate.length > 0) finalOps.push(prisma.responseValue.createMany({ data: responseValuesToCreate }));
-            if (activitiesToCreate.length > 0) finalOps.push(prisma.formActivity.createMany({ data: activitiesToCreate }));
+            // 4. Batch Database Operations
+            if (responsesToCreate.length > 0) {
+                await prisma.formResponse.createMany({ data: responsesToCreate });
+            }
+            if (internalValuesToCreate.length > 0) {
+                await prisma.internalValue.createMany({ data: internalValuesToCreate });
+            }
+            if (responseValuesToCreate.length > 0) {
+                await prisma.responseValue.createMany({ data: responseValuesToCreate });
+            }
+            if (activitiesToCreate.length > 0) {
+                await prisma.formActivity.createMany({ data: activitiesToCreate });
+            }
+            if (individualOps.length > 0) {
+                // Execute updates in parallel batches to avoid overloading
+                const updateBatches = [];
+                for (let j = 0; j < individualOps.length; j += 50) {
+                    updateBatches.push(prisma.$transaction(individualOps.slice(j, j + 50)));
+                }
+                await Promise.all(updateBatches);
+            }
 
-            await prisma.$transaction(finalOps);
-            successCount += rowsToProcess.length;
+            successCount += validItems.length;
         }
 
         return NextResponse.json({
