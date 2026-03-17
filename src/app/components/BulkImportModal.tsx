@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Trash2, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
 
@@ -22,7 +22,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     const [loading, setLoading] = useState(false);
     const [importErrors, setImportErrors] = useState<string[]>([]);
     const [successCount, setSuccessCount] = useState<number>(0);
-    const [importMode, setImportMode] = useState<'update' | 'create'>('update');
+    const [importMode, setImportMode] = useState<'update' | 'create' | 'upsert'>('upsert');
 
     // Status tracking per row for preview
     const [previewLimit] = useState(10);
@@ -149,7 +149,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
         const isInternalMatch = matchColDef?.isInternal ?? false;
 
         let matchExcelHeader = "";
-        if (importMode === 'update') {
+        if (importMode === 'update' || importMode === 'upsert') {
             if (!matchColumnId) {
                 return toast.error("Please select a Key Column to match records (e.g., Phone Number)");
             }
@@ -280,19 +280,35 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             <RefreshCw size={20} />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-black text-slate-800">Smart Update</p>
-                                            <p className="text-[10px] text-slate-500 font-bold">Update existing records by Phone/Email</p>
+                                            <p className="text-sm font-black text-slate-800">Only Update</p>
+                                            <p className="text-[10px] text-slate-500 font-bold">Update existing records only</p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setImportMode('upsert')}
+                                        className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-3 ${importMode === 'upsert'
+                                            ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-50'
+                                            : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'
+                                            }`}
+                                    >
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'upsert' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                            <Sparkles size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black text-slate-800">Smart Sync</p>
+                                            <p className="text-[10px] text-slate-500 font-bold">Update existing & Create new</p>
                                         </div>
                                     </button>
 
                                     <button
                                         onClick={() => setImportMode('create')}
                                         className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-3 ${importMode === 'create'
-                                            ? 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-50'
+                                            ? 'border-slate-300 bg-slate-50 ring-4 ring-slate-100'
                                             : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'
                                             }`}
                                     >
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'create' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'create' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}`}>
                                             <UploadCloud size={20} />
                                         </div>
                                         <div>
@@ -303,7 +319,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                 </div>
                             </div>
 
-                            {importMode === 'update' && (
+                            {(importMode === 'update' || importMode === 'upsert') && (
                                 <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                     <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
                                         <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs">2</span>
@@ -311,7 +327,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                     </h4>
                                     <div className="flex items-center gap-4">
                                         <p className="text-xs text-slate-500 flex-1">
-                                            Which column in the database should we use to match the rows from your Excel file? (Usually Phone or Email)
+                                            Which column in the database should we use to match the rows? (Usually Phone or Email). Records without a match will be {importMode === 'upsert' ? 'created' : 'skipped'}.
                                         </p>
                                         <select
                                             value={matchColumnId}
@@ -329,7 +345,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
 
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                 <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">{importMode === 'update' ? '3' : '2'}</span>
+                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">{(importMode === 'update' || importMode === 'upsert') ? '3' : '2'}</span>
                                     Map Excel Columns to Database Columns
                                 </h4>
 
@@ -399,7 +415,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {parsedData.slice(0, 100).map((row, i) => (
+                                            {parsedData.slice(0, 500).map((row, i) => (
                                                 <tr key={i} className="hover:bg-blue-50/30 transition-colors group">
                                                     <td className="p-3 border-b border-r border-slate-100 text-[10px] font-bold text-slate-400 text-center">
                                                         {i + 1}
@@ -426,10 +442,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                     ))}
                                                 </tr>
                                             ))}
-                                            {parsedData.length > 100 && (
+                                            {parsedData.length > 500 && (
                                                 <tr>
                                                     <td colSpan={headers.length + 2} className="p-4 text-center bg-slate-50 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                                        And {parsedData.length - 100} more rows...
+                                                        And {parsedData.length - 500} more rows will be matched and processed...
                                                     </td>
                                                 </tr>
                                             )}
@@ -486,10 +502,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                         </button>
                         <button
                             onClick={handleConfirm}
-                            disabled={loading || (importMode === 'update' && !matchColumnId) || Object.values(headerMapping).filter(v => v && v !== "SKIP").length === 0}
-                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                            disabled={loading || ((importMode === 'update' || importMode === 'upsert') && !matchColumnId) || Object.values(headerMapping).filter(v => v && v !== "SKIP").length === 0}
+                            className={`px-6 py-2.5 ${importMode === 'upsert' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2`}
                         >
-                            <CheckCircle2 size={16} /> {importMode === 'update' ? 'Confirm & Update' : 'Confirm & Upload'} ({parsedData.length} records)
+                            <CheckCircle2 size={16} /> {importMode === 'update' ? 'Confirm & Update' : (importMode === 'upsert' ? 'Confirm & Sync' : 'Confirm & Upload')} ({parsedData.length} records)
                         </button>
                     </div>
                 )}

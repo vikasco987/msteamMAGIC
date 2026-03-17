@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 
+export const maxDuration = 300; // Allow 5 minutes for large bulk imports
+
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -27,20 +29,24 @@ export async function POST(
         console.log(`Starting bulk import for form ${formId} by ${userName} (${userRole})`);
 
         const body = await req.json();
-        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update' } = body as {
+        const payload = body as {
             data: Record<string, string>[];
             matchColumnId: string;
             matchExcelHeader: string;
             updateColumnMap: Record<string, { id: string; isInternal: boolean }>;
             isInternalMatch: boolean;
-            importMode?: 'update' | 'create';
+            importMode?: 'update' | 'create' | 'upsert';
         };
 
-        if (!data || data.length === 0 || (importMode === 'update' && !matchColumnId)) {
+        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update' } = payload;
+
+        if (!data || data.length === 0 || ((importMode === 'update' || importMode === 'upsert') && !matchColumnId)) {
             return NextResponse.json({ error: "Invalid data or match column missing" }, { status: 400 });
         }
 
         let successCount = 0;
+        let createdCount = 0;
+        let updatedCount = 0;
         let errors: string[] = [];
 
         // For faster mapping
@@ -115,19 +121,23 @@ export async function POST(
                     }
 
                     if (!responseIdToUpdate) {
-                        console.warn(`Row ${i + 1}: No match found for value "${matchValue}"`);
-                        errors.push(`Row ${i + 1}: No existing record found matching "${matchValue}" in the Key Column.`);
-                        continue;
+                        if ((importMode as string) === 'upsert') {
+                            console.log(`Row ${i + 1}: No match for "${matchValue}", will create new record (Upsert Mode)`);
+                        } else {
+                            console.warn(`Row ${i + 1}: No match found for value "${matchValue}"`);
+                            errors.push(`Row ${i + 1}: No existing record found matching "${matchValue}" in the Key Column.`);
+                            continue;
+                        }
                     }
                 }
 
-                console.log(`Updating/Creating row ${i + 1} (${matchValue || 'New Row'})`);
+                console.log(`${responseIdToUpdate ? 'Updating' : 'Creating'} row ${i + 1} (${matchValue || 'New Row'})`);
 
                 // Apply Updates via Transaction
                 await prisma.$transaction(async (tx) => {
                     let finalResponseId = responseIdToUpdate;
 
-                    if (importMode === 'create') {
+                    if (importMode === 'create' || (importMode === 'upsert' && !responseIdToUpdate)) {
                         // Create new response
                         const newResp = await tx.formResponse.create({
                             data: {
@@ -271,6 +281,8 @@ export async function POST(
                     }
                 });
 
+                if (responseIdToUpdate) updatedCount++;
+                else createdCount++;
                 successCount++;
             } catch (err: any) {
                 console.error(`Error processing row ${i + 1}:`, err);
@@ -280,9 +292,11 @@ export async function POST(
 
         return NextResponse.json({
             success: true,
-            message: `Successfully processed ${successCount} records.`,
+            message: `Processed ${successCount} records: ${updatedCount} updated, ${createdCount} created.`,
             errors: errors.length > 0 ? errors : undefined,
             successCount,
+            createdCount,
+            updatedCount,
             errorCount: errors.length
         });
 

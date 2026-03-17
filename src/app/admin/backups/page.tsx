@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { 
   Database, 
   Cloud, 
@@ -48,6 +48,7 @@ export default function BackupDashboard() {
   const [testingScript, setTestingScript] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [pulse, setPulse] = useState<{ lastRun: string | null; status: string; error?: string }>({ lastRun: null, status: 'inactive' });
+  const explorerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -170,6 +171,10 @@ export default function BackupDashboard() {
         setSnapshotDb(data.tempDbName);
         setSnapshotLabel(new Date(date).toLocaleString());
         setViewMode('snapshot');
+        // Scroll to explorer
+        setTimeout(() => {
+          explorerRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       } else {
         alert("Mounting failed: " + (data.details || "Unknown error"));
       }
@@ -607,7 +612,7 @@ export default function BackupDashboard() {
       </div>
 
       {/* FOOTER: COLLECTIONS EXPLORER */}
-      <div className="max-w-7xl mx-auto mt-12 grid grid-cols-1 gap-8">
+      <div ref={explorerRef} className="max-w-7xl mx-auto mt-12 grid grid-cols-1 gap-8">
         <div className={`p-8 rounded-3xl border transition-all duration-500 ${
           viewMode === 'snapshot' 
           ? 'bg-blue-500/5 border-blue-500/30' 
@@ -624,21 +629,24 @@ export default function BackupDashboard() {
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-semibold">
-                    {viewMode === 'snapshot' ? 'Backup Snapshot Viewer' : 'Live Analytics Explorer'}
+                  <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                    Database Explorer
                   </h2>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${
                     viewMode === 'snapshot' 
-                    ? 'bg-blue-500 text-white animate-pulse' 
+                    ? 'bg-blue-500 text-white animate-pulse shadow-lg shadow-blue-500/20' 
                     : 'bg-emerald-500 text-white'
                   }`}>
-                    {viewMode === 'snapshot' ? `RESTORED: ${snapshotLabel}` : 'LIVE REALTIME'}
+                    {viewMode === 'snapshot' ? `BACKUP SOURCE: ${snapshotLabel}` : 'LIVE REALTIME'}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  {viewMode === 'snapshot' 
-                    ? `Showing data exactly as it was on ${snapshotLabel}` 
-                    : 'Showing exact database state right now. Use history above for past versions.'}
+                <p className="text-sm text-gray-400 mt-1">
+                  Inspect and export individual tables directly from MongoDB. 
+                  {viewMode === 'snapshot' && (
+                    <span className="block text-blue-400 font-medium mt-1">
+                      Showing results from Backup: {snapshotLabel}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
