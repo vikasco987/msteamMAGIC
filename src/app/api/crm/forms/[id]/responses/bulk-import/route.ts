@@ -54,34 +54,59 @@ export async function POST(
 
         // For faster mapping
         const processedInternalColumns = await prisma.internalColumn.findMany({ where: { formId } });
+        const intColMap = new Map(processedInternalColumns.map(c => [c.id, c]));
         const allSystemUsers = await prisma.user.findMany({ select: { clerkId: true, name: true, email: true } });
 
-        // Helper to find user by name or email
+        // Pre-index users for fast lookup
+        const userByName = new Map<string, string>();
+        const userByEmail = new Map<string, string>();
+        for (const u of allSystemUsers) {
+            if (u.name) userByName.set(u.name.toLowerCase().trim(), u.clerkId);
+            userByEmail.set(u.email.toLowerCase().trim(), u.clerkId);
+        }
+
         const findUser = (val: string) => {
             const v = val.toLowerCase().trim();
             if (!v) return null;
-            return allSystemUsers.find(u =>
-                (u.name || "").toLowerCase() === v ||
-                u.email.toLowerCase() === v ||
-                (u.name || "").toLowerCase().includes(v)
-            );
+            const byEmail = userByEmail.get(v);
+            if (byEmail) return byEmail;
+            const byName = userByName.get(v);
+            if (byName) return byName;
+            
+            // Fuzzy name check (only if really needed, but keep it minimal)
+            return allSystemUsers.find(u => (u.name || "").toLowerCase().includes(v))?.clerkId || null;
         };
 
         // Pre-fetch all target values for matching to avoid N queries and support fuzzy matching
         let allCurrentValues: { responseId: string; value: string }[] = [];
-        if (importMode === 'update') {
+        if (importMode === 'update' || importMode === 'upsert') {
             if (isInternalMatch) {
-                const recs = await prisma.internalValue.findMany({
+                allCurrentValues = await prisma.internalValue.findMany({
                     where: { columnId: matchColumnId, response: { formId } },
                     select: { responseId: true, value: true }
                 });
-                allCurrentValues = recs;
             } else {
-                const recs = await prisma.responseValue.findMany({
+                allCurrentValues = await prisma.responseValue.findMany({
                     where: { fieldId: matchColumnId, response: { formId } },
                     select: { responseId: true, value: true }
                 });
-                allCurrentValues = recs;
+            }
+        }
+
+        // Index all current values for ultra-fast $O(1)$ lookups
+        const exactMap = new Map<string, string>();
+        const normMap = new Map<string, string>();
+        const phoneMap = new Map<string, string>();
+
+        for (const v of allCurrentValues) {
+            const val = (v.value || "").trim().toLowerCase();
+            const norm = val.replace(/[^a-z0-9]/g, "");
+            
+            if (val && !exactMap.has(val)) exactMap.set(val, v.responseId);
+            if (norm && !normMap.has(norm)) normMap.set(norm, v.responseId);
+            if (norm.length >= 10 && /^\d+$/.test(norm)) {
+                const last10 = norm.slice(-10);
+                if (!phoneMap.has(last10)) phoneMap.set(last10, v.responseId);
             }
         }
 
@@ -92,18 +117,13 @@ export async function POST(
                 const matchValue = row[matchExcelHeader]?.toString().trim()?.toLowerCase() || "";
                 if (!matchValue) continue;
 
-                const searchNorm = matchValue.replace(/[^a-z0-9]/g, "");
+                const norm = matchValue.replace(/[^a-z0-9]/g, "");
 
-                let matched = allCurrentValues.find(v => (v.value || "").trim().toLowerCase() === matchValue);
-                if (!matched && searchNorm) matched = allCurrentValues.find(v => (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase() === searchNorm);
-                if (!matched && searchNorm.length >= 10 && /^\d+$/.test(searchNorm)) {
-                    const last10 = searchNorm.slice(-10);
-                    matched = allCurrentValues.find(v => {
-                        const vNorm = (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase();
-                        return /^\d+$/.test(vNorm) && vNorm.length >= 10 && vNorm.slice(-10) === last10;
-                    });
-                }
-                if (matched) matchedResponseIds.push(matched.responseId);
+                let matchedId = exactMap.get(matchValue);
+                if (!matchedId && norm) matchedId = normMap.get(norm);
+                if (!matchedId && norm.length >= 10 && /^\d+$/.test(norm)) matchedId = phoneMap.get(norm.slice(-10));
+                
+                if (matchedId) matchedResponseIds.push(matchedId);
             }
         }
 
@@ -117,7 +137,7 @@ export async function POST(
         const respValMap = new Map(existingResponseValues.map(v => [`${v.responseId}_${v.fieldId}`, v]));
 
         // Helper to run batches
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 100;
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
             const batch = data.slice(i, i + BATCH_SIZE);
             console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} rows)...`);
@@ -128,21 +148,15 @@ export async function POST(
 
                 if (importMode === 'update' || importMode === 'upsert') {
                     const matchValueRaw = row[matchExcelHeader]?.toString().trim() || "";
-                    const searchValLower = matchValueRaw.toLowerCase();
-                    const searchNorm = searchValLower.replace(/[^a-z0-9]/g, "");
+                    const val = matchValueRaw.toLowerCase();
+                    const norm = val.replace(/[^a-z0-9]/g, "");
 
-                    let matched = allCurrentValues.find(v => (v.value || "").trim().toLowerCase() === searchValLower);
-                    if (!matched && searchNorm) matched = allCurrentValues.find(v => (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase() === searchNorm);
-                    if (!matched && searchNorm.length >= 10 && /^\d+$/.test(searchNorm)) {
-                        const last10 = searchNorm.slice(-10);
-                        matched = allCurrentValues.find(v => {
-                            const vNorm = (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase();
-                            return /^\d+$/.test(vNorm) && vNorm.length >= 10 && vNorm.slice(-10) === last10;
-                        });
-                    }
+                    let matchedId = exactMap.get(val);
+                    if (!matchedId && norm) matchedId = normMap.get(norm);
+                    if (!matchedId && norm.length >= 10 && /^\d+$/.test(norm)) matchedId = phoneMap.get(norm.slice(-10));
 
-                    if (matched) {
-                        responseIdToUpdate = matched.responseId;
+                    if (matchedId) {
+                        responseIdToUpdate = matchedId;
                     }
 
                     if (!responseIdToUpdate) {
@@ -202,21 +216,21 @@ export async function POST(
                     const isColInternal = mapping.isInternal;
 
                     if (colIdToUpdate === "__assigned") {
-                        const foundUser = findUser(valueToMap);
-                        if (foundUser) {
+                        const foundUserId = findUser(valueToMap);
+                        if (foundUserId) {
                             individualOps.push(prisma.formResponse.update({
                                 where: { id: currentResponseId },
-                                data: { assignedTo: { set: [foundUser.clerkId] } }
+                                data: { assignedTo: { set: [foundUserId] } }
                             }));
                         }
                         continue;
                     }
 
                     if (isColInternal) {
-                        const internalCol = processedInternalColumns.find((c: any) => c.id === colIdToUpdate);
+                        const internalCol = intColMap.get(colIdToUpdate);
                         if (internalCol?.type === 'user') {
-                            const foundUser = findUser(valueToMap);
-                            if (foundUser) valueToMap = foundUser.clerkId;
+                            const foundUserId = findUser(valueToMap);
+                            if (foundUserId) valueToMap = foundUserId;
                         }
                         if (internalCol?.type === 'dropdown' && internalCol.options) {
                             const opts = internalCol.options as any[];
