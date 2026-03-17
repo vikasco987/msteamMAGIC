@@ -42,8 +42,8 @@ export async function PATCH(
         const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
         const dbRole = (dbUser?.role as string || "").toUpperCase();
 
-        const isMaster = metaRole === "ADMIN" || metaRole === "MASTER" ||
-            dbRole === "ADMIN" || dbRole === "MASTER";
+        const isMaster = metaRole === "ADMIN" || metaRole === "MASTER" || metaRole === "TL" ||
+            dbRole === "ADMIN" || dbRole === "MASTER" || dbRole === "TL";
         const isOwner = form?.createdBy === userId;
 
         if (!isMaster && !isOwner) {

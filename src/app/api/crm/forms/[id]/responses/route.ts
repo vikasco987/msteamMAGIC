@@ -84,7 +84,7 @@ export async function GET(
 
         const isFormOwner = form.createdBy === userId;
         const isMasterRole = userRole === "MASTER"; // Ultimate Authority
-        const isMaster = isMasterRole || userRole === "ADMIN" || isFormOwner;
+        const isMaster = isMasterRole || userRole === "ADMIN" || userRole === "TL" || isFormOwner;
 
         const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get("page") || "1");
@@ -502,7 +502,7 @@ export async function PATCH(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         if (!isMaster) {
             const form = await prisma.dynamicForm.findUnique({
@@ -633,7 +633,7 @@ export async function PUT(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
         const userName = `${user.firstName} ${user.lastName}`;
 
         // Process updates in a transaction or loop (Prisma transaction is safer)

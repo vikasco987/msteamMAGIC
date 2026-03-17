@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
         const isFormOwner = form.createdBy === userId;
         const userRole = (user?.role || "GUEST").toUpperCase();
-        const isMaster = userRole === "MASTER" || userRole === "ADMIN" || isFormOwner || userRole === "PURE_MASTER";
+        const isMaster = userRole === "MASTER" || userRole === "ADMIN" || userRole === "TL" || isFormOwner || userRole === "PURE_MASTER";
 
         if (!isMaster) {
             return NextResponse.json({ error: "Only admins can manage system columns" }, { status: 403 });

@@ -26,7 +26,7 @@ export async function GET() {
         const isMasterOfAll = userRole === "MASTER" || dbRole === "MASTER";
 
         // Admin is authorized to build but only sees what's shared or created by them
-        const isAdminBuilder = userRole === "ADMIN" || dbRole === "ADMIN";
+        const isAdminBuilder = userRole === "ADMIN" || dbRole === "ADMIN" || userRole === "TL" || dbRole === "TL";
 
         let whereClause = {};
         if (!isMasterOfAll) {
@@ -108,8 +108,8 @@ export async function POST(req: NextRequest) {
         });
         const dbRole = (dbUser?.role || "GUEST").toUpperCase();
 
-        const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" ||
-            dbRole === "ADMIN" || dbRole === "MASTER";
+        const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" || metaRole === "TL" ||
+            dbRole === "ADMIN" || dbRole === "MASTER" || dbRole === "TL";
 
         console.log(`🔐 Authorization Check: User=${userId}, Meta=${metaRole}, DB=${dbRole}, Auth=${isAuthorized}`);
 

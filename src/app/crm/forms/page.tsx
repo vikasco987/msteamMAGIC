@@ -80,7 +80,7 @@ export default function CRMFormsList() {
         if (isLoaded && user) {
             const role = (user.publicMetadata?.role as string || "user").toUpperCase();
             setUserRole(role);
-            if (role === "ADMIN" || role === "MASTER") {
+            if (role === "ADMIN" || role === "MASTER" || role === "TL") {
                 setIsMaster(true);
             }
             if (role === "MASTER") {
@@ -429,7 +429,7 @@ export default function CRMFormsList() {
                                         <Database size={12} /> Institutional Roles
                                     </h4>
                                     <div className="grid grid-cols-2 gap-3">
-                                        {["ADMIN", "STAFF", "GUEST"].map(role => {
+                                        {["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN", "TL"].map(role => {
                                             const isSelected = permRoles.includes(role);
                                             return (
                                                 <button

@@ -21,7 +21,7 @@ export async function POST(
 
         const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress || "User";
         
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "PURE_MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "PURE_MASTER" || userRole === "TL";
         const isStaff = isMaster || userRole === "TL" || userRole === "SELLER" || userRole === "MANAGER";
 
         if (!isStaff) {

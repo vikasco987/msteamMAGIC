@@ -265,7 +265,7 @@ const COLUMN_TYPES = [
     { title: "Attachment Hub", id: "file", icon: Paperclip, color: "text-[#667085]" },
 ];
 
-const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
+const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN", "TL"];
 
 const FILTER_OPERATORS = {
     text: [
@@ -613,7 +613,7 @@ export default function CRMSpreadsheetPage() {
         const visibleRoles = data.form?.visibleToRoles || [];
         
         if (currentClerkId && visibleUsers.includes(currentClerkId)) return true;
-        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER"].includes(currentRole))) return true;
+        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER", "TL"].includes(currentRole))) return true;
         
         // 2. Assigned to any response in this form
         const isAssigned = data.responses?.some(r => r.assignedTo?.includes(currentClerkId || ""));
@@ -2997,7 +2997,7 @@ export default function CRMSpreadsheetPage() {
                                                         if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
                                                         const authorityIds = teamMembers.filter(m => {
                                                             const r = (m.role || "").toUpperCase();
-                                                            return r === "ADMIN" || r === "MASTER";
+                                                            return r === "ADMIN" || r === "MASTER" || r === "TL";
                                                         }).map(m => m.clerkId);
 
                                                         const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
@@ -4278,7 +4278,7 @@ export default function CRMSpreadsheetPage() {
                                                 <ShieldCheck size={12} /> Role Based Protocol
                                             </h4>
                                             <div className="grid grid-cols-2 gap-3">
-                                                {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
+                                                {["MASTER", "ADMIN", "TL", "STAFF", "GUEST"].map(role => {
                                                     const isActive = permRoles.includes(role);
                                                     return (
                                                         <button
@@ -4370,7 +4370,7 @@ export default function CRMSpreadsheetPage() {
                                             <div>
                                                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">Target Role Protocol</p>
                                                 <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                                    {["ADMIN", "MASTER", "STAFF", "GUEST"].map(role => (
+                                                    {["ADMIN", "MASTER", "TL", "STAFF", "GUEST"].map(role => (
                                                         <button
                                                             key={role}
                                                             onClick={() => { setSelectedRoleForGAC(role); setSelectedUserForGAC(null); }}

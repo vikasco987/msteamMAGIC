@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
         const user = await currentUser();
         const userRole = (user?.publicMetadata?.role as string || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
         const isTL = dbUser?.isTeamLeader || userRole === "TL";
@@ -78,7 +78,7 @@ export async function DELETE(req: NextRequest) {
 
         const user = await currentUser();
         const userRole = (user?.publicMetadata?.role as string || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         if (!isMaster) {
             return NextResponse.json({ error: "Permission denied: Only Admin/Master can remove follow-ups" }, { status: 403 });

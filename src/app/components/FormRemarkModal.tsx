@@ -244,7 +244,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         }
     };
 
-    const canDelete = userRole === "MASTER" || userRole === "ADMIN";
+    const canDelete = userRole === "MASTER" || userRole === "ADMIN" || userRole === "TL";
 
     return (
         <div 
