@@ -737,10 +737,26 @@ export async function DELETE(
 
         const { searchParams } = new URL(req.url);
         const responseId = searchParams.get("responseId");
-        const bulk = searchParams.get("bulk"); // comma separated list of IDs
+        let bulk = searchParams.get("bulk"); // comma separated list of IDs
 
+        let ids: string[] = [];
         if (bulk) {
-            const ids = bulk.split(",");
+            ids = bulk.split(",");
+        } else if (responseId) {
+            ids = [responseId];
+        } else {
+            // Check body for bulk delete
+            try {
+                const body = await req.json();
+                if (body.ids && Array.isArray(body.ids)) {
+                    ids = body.ids;
+                }
+            } catch (e) {
+                // No body or invalid json, continue
+            }
+        }
+
+        if (ids.length > 0) {
             await prisma.formResponse.deleteMany({
                 where: {
                     id: { in: ids },
@@ -748,14 +764,6 @@ export async function DELETE(
                 }
             });
             return NextResponse.json({ success: true, deleted: ids.length });
-        } else if (responseId) {
-            await prisma.formResponse.deleteMany({
-                where: {
-                    id: responseId,
-                    formId: formId
-                }
-            });
-            return NextResponse.json({ success: true });
         }
 
         return NextResponse.json({ error: "Missing responseId or bulk parameter" }, { status: 400 });

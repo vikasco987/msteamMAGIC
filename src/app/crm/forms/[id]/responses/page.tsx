@@ -1055,8 +1055,10 @@ export default function CRMSpreadsheetPage() {
         if (!confirm(`Are you sure you want to delete ${selectedRows.length} records? This action is irreversible.`)) return;
         const loadingToast = toast.loading(`Purging ${selectedRows.length} records...`);
         try {
-            const res = await fetch(`/api/crm/forms/${params.id}/responses?bulk=${selectedRows.join(",")}`, {
-                method: "DELETE"
+            const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: selectedRows })
             });
             if (res.ok) {
                 toast.success("Bulk purge complete", { id: loadingToast });
