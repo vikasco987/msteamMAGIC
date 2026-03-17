@@ -366,6 +366,7 @@ export default function CRMSpreadsheetPage() {
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
     const [deleteProgress, setDeleteProgress] = useState<{ current: number; total: number } | null>(null);
+    const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
@@ -1407,7 +1408,8 @@ export default function CRMSpreadsheetPage() {
                 (r.submittedByName || "").toLowerCase().includes(term) ||
                 (r.submittedBy || "").toLowerCase().includes(term) ||
                 (r.assignedTo || []).some(uid => uid.toLowerCase().includes(term)) ||
-                (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
+                (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term))) ||
+                (data.internalValues && Array.isArray(data.internalValues) && data.internalValues.some(iv => iv.responseId === r.id && (iv.value || "").toLowerCase().includes(term)))
             );
         }
 
@@ -2781,9 +2783,14 @@ export default function CRMSpreadsheetPage() {
                                                                 </button>
                                                                 <button title="Filter"
                                                                     onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
-                                                                    }}
+                                                                        if (activeColumnFilter === col.id) {
+                                                                             setActiveColumnFilter(null);
+                                                                             setActiveColumnFilterSearch("");
+                                                                         } else {
+                                                                             setActiveColumnFilter(col.id);
+                                                                             setActiveColumnFilterSearch("");
+                                                                         }
+                                                                     }}
                                                                     className={`ignore-click-outside p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
                                                                 >
                                                                     <Filter size={10} />
@@ -2799,6 +2806,18 @@ export default function CRMSpreadsheetPage() {
                                                                             <button onClick={() => setActiveColumnFilter(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors">
                                                                                 <X size={10} />
                                                                             </button>
+                                                                        </div>
+                                                                        <div className="px-3 py-2 border-b border-slate-100 bg-white sticky top-0 z-10">
+                                                                            <div className="relative">
+                                                                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={10} />
+                                                                                <input
+                                                                                    autoFocus
+                                                                                    placeholder="Find value..."
+                                                                                    value={activeColumnFilterSearch}
+                                                                                    onChange={(e) => setActiveColumnFilterSearch(e.target.value)}
+                                                                                    className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-100 rounded text-[10px] font-bold outline-none focus:bg-white focus:border-indigo-300 transition-all"
+                                                                                />
+                                                                            </div>
                                                                         </div>
                                                                         <div className="overflow-y-auto custom-scrollbar flex-1 py-1">
                                                                             {col.type === "date" && (
@@ -2907,7 +2926,8 @@ export default function CRMSpreadsheetPage() {
                                                     availableValues.unshift({ label: "Unassigned", value: "" });
                                                 } else if (col.id === "__contributor") {
                                                     const vals = new Map<string, string>(); // name -> value
-                                                    (data?.responses || []).forEach(res => {
+                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+                                                    dataSource.forEach(res => {
                                                         if (res.submittedByName) vals.set(res.submittedByName, res.submittedByName);
                                                     });
                                                     teamMembers.forEach(m => {
@@ -2920,7 +2940,8 @@ export default function CRMSpreadsheetPage() {
                                                         .sort((a, b) => a.label.localeCompare(b.label));
                                                 } else {
                                                     const vals = new Set<string>();
-                                                    (data?.responses || []).forEach(res => {
+                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+                                                    dataSource.forEach(res => {
                                                         const v = getCellValue(res.id, col.id, col.isInternal);
                                                         if (v) vals.add(v.toString());
                                                     });

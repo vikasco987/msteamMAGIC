@@ -306,7 +306,8 @@ export async function GET(
                 ...(search ? [{
                     OR: [
                         { submittedByName: { contains: search, mode: 'insensitive' } },
-                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } }
                     ]
                 }] : []),
                 ...(conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }])
