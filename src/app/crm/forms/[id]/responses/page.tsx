@@ -364,6 +364,7 @@ export default function CRMSpreadsheetPage() {
     const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
+    const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
@@ -666,9 +667,9 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
-            // 🔑 KEY FIX: Agar filters active hain to SAARE records fetch karo
-            // Warna sirf current page ke rows filter honge (Today, This Week sab miss hoga)
-            const effectiveLimit = conds.length > 0 ? 99999 : limit;
+            // 🔑 Performance Fix: Removed 99999 limit hack. 
+            // The backend already handles filtering, so we should always paginate.
+            const effectiveLimit = limit;
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
                 fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
@@ -856,25 +857,36 @@ export default function CRMSpreadsheetPage() {
         if (isLoaded && user) fetchData();
     }, [params.id, isLoaded, user]);
 
-    // Background mein saare responses fetch karo sirf Today Follow-ups ke liye
-    // Yeh paginated table se alag hai — pagination se affect nahi hoga
+    // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
+    // Yeh performance release ke liye zaroori hai
     useEffect(() => {
         if (!isLoaded || !user) return;
-        const fetchAllForFollowUps = async () => {
+        const fetchBackgroundData = async () => {
             try {
-                const res = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=99999&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
+                const followUpsRes = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
-                if (res.ok) {
-                    const json = await res.json();
+                if (followUpsRes.ok) {
+                    const json = await followUpsRes.json();
+                    setTodayFollowUpsData(json.responses || []);
+                }
+
+                // 2. Fetch Latest 500 records for Filter dropdowns and general data
+                const latestRes = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    { cache: 'no-store' }
+                );
+                if (latestRes.ok) {
+                    const json = await latestRes.json();
                     setAllResponsesForFollowUps(json.responses || []);
                 }
             } catch (err) {
-                console.error('Follow-up background fetch failed:', err);
+                console.error('Background fetch failed:', err);
             }
         };
-        fetchAllForFollowUps();
+        fetchBackgroundData();
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
@@ -1064,7 +1076,10 @@ export default function CRMSpreadsheetPage() {
 
     // ⚡ Flash Recovery Engine: Identify items needing attention TODAY
     const todayFollowUps = useMemo(() => {
-        // allResponsesForFollowUps use karo (saare records) — sirf data.responses (paginated) pe nahi
+        // use specifically fetched todayFollowUpsData
+        if (todayFollowUpsData.length > 0) return todayFollowUpsData;
+        
+        // Fallback to filtering from local data if background fetch hasn't finished
         const source = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1079,7 +1094,7 @@ export default function CRMSpreadsheetPage() {
             }
             return false;
         });
-    }, [allResponsesForFollowUps, data?.responses]);
+    }, [todayFollowUpsData, allResponsesForFollowUps, data?.responses]);
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -2062,16 +2077,21 @@ export default function CRMSpreadsheetPage() {
 
         const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-        const totalEntries = data.responses.length;
-        const newToday = data.responses.filter(r => new Date(r.createdAt) >= today).length;
-        const newThisMonth = data.responses.filter(r => new Date(r.createdAt) >= thisMonth).length;
+        const statsSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+        
+        const totalEntries = data.filteredCount || statsSource.length;
+        const newToday = statsSource.filter(r => new Date(r.createdAt) >= today).length;
+        const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
         const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
-        if (statusCol && data.internalValues) {
-            data.internalValues.filter(v => v.columnId === statusCol.id).forEach(v => {
+        if (statusCol && (data.internalValues || []).length > 0) {
+            const valuesToCount = statsSource === data.responses ? data.internalValues : data.internalValues; // Actually internalValues only match current responses
+            // This is tricky because internalValues only come for the current page
+            // For now, we'll only show status counts for the statsSource
+            (data.internalValues || []).filter(v => v.columnId === statusCol.id).forEach(v => {
                 statusCounts[v.value] = (statusCounts[v.value] || 0) + 1;
             });
         }
@@ -3410,12 +3430,16 @@ export default function CRMSpreadsheetPage() {
                                         <span className="text-[10px] font-black uppercase text-slate-400">Rows per page:</span>
                                         <select
                                             value={rowsPerPage}
-                                            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                                            onChange={(e) => { 
+                                                const newLimit = Number(e.target.value);
+                                                setRowsPerPage(newLimit); 
+                                                setCurrentPage(1); 
+                                            }}
                                             className="bg-slate-50 border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0"
                                         >
-                                            {[10, 25, 50, 100, 99999].map(v => (
+                                            {[10, 25, 50, 100, 200, 500].map(v => (
                                                 <option key={v} value={v}>
-                                                    {v === 99999 ? 'Full' : v}
+                                                    {v} Rows
                                                 </option>
                                             ))}
                                         </select>
