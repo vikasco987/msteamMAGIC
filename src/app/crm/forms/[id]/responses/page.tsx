@@ -365,6 +365,7 @@ export default function CRMSpreadsheetPage() {
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
+    const [deleteProgress, setDeleteProgress] = useState<{ current: number; total: number } | null>(null);
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
@@ -392,7 +393,7 @@ export default function CRMSpreadsheetPage() {
     const { messages, input, handleInputChange, handleSubmit: baseHandleSubmit, setMessages, isLoading: isAIFetching } = useChat({
         api: formId ? `/api/crm/forms/${formId}/chat` : undefined as any,
         body: chatBody
-    });
+    }) as any;
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         if (!(input || "").trim()) return;
@@ -407,7 +408,7 @@ export default function CRMSpreadsheetPage() {
         if (lastMessage && lastMessage.role === 'assistant') {
             const toolCals = lastMessage.toolInvocations;
             if (toolCals) {
-                toolCals.forEach(invocation => {
+                toolCals.forEach((invocation: any) => {
                     if (invocation.state === 'result' && !processedToolCallsRef.current.has(invocation.toolCallId)) {
                         processedToolCallsRef.current.add(invocation.toolCallId);
 
@@ -415,7 +416,7 @@ export default function CRMSpreadsheetPage() {
                             const result = invocation.result;
                             if (result?.filtersApplied && Array.isArray(result.filtersApplied)) {
                                 console.log("Applying AI filters:", result.filtersApplied);
-                                setConditions(result.filtersApplied.map((f: any) => ({
+                                setConditions(result.filtersApplied.map((f: { columnId?: string; colId?: string; operator?: string; op?: string; value?: any; val?: any }) => ({
                                     colId: f.columnId || f.colId,
                                     op: f.operator || f.op,
                                     val: String(f.value || f.val || "")
@@ -1025,6 +1026,7 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleDeleteRow = async (responseId: string) => {
+        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
         if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return;
         if (!data) return;
 
@@ -1052,24 +1054,68 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleBulkDelete = async () => {
-        if (!confirm(`Are you sure you want to delete ${selectedRows.length} records? This action is irreversible.`)) return;
-        const loadingToast = toast.loading(`Purging ${selectedRows.length} records...`);
+        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
+        if (selectedRows.length === 0) return;
+        if (!confirm(`PURGE PROTOCOL: Are you sure you want to permanently delete ${selectedRows.length} records? This action cannot be undone.`)) return;
+
+        setDeleteProgress({ current: 0, total: selectedRows.length });
+        const batchSize = 100;
+        const total = selectedRows.length;
+        let successCount = 0;
+        let failCount = 0;
+        const errors: string[] = [];
+
+        console.log(`[BulkDelete] Starting purge of ${total} records in batches of ${batchSize}`);
+
         try {
-            const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids: selectedRows })
-            });
-            if (res.ok) {
-                toast.success("Bulk purge complete", { id: loadingToast });
-                setSelectedRows([]);
-                await fetchData();
-            } else {
-                const error = await res.json();
-                toast.error(error.error || "Bulk execution failed", { id: loadingToast });
+            for (let i = 0; i < total; i += batchSize) {
+                const batch = selectedRows.slice(i, i + batchSize);
+                const currentBatchSize = batch.length;
+
+                console.log(`[BulkDelete] Deleting batch ${Math.floor(i / batchSize) + 1} (${batch.length} records)...`);
+                
+                try {
+                    const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ids: batch })
+                    });
+
+                    if (res.ok) {
+                        const result = await res.json();
+                        successCount += (result.deleted || batch.length);
+                        console.log(`[BulkDelete] Successfully deleted ${batch.length} records.`);
+                    } else {
+                        const errText = await res.text();
+                        console.error(`[BulkDelete] Batch failed:`, errText);
+                        errors.push(`Batch starting at ${i + 1}: ${errText}`);
+                        failCount += batch.length;
+                    }
+                } catch (batchErr: any) {
+                    console.error(`[BulkDelete] Network error for batch at ${i}:`, batchErr);
+                    errors.push(`Network error at ${i + 1}: ${batchErr.message}`);
+                    failCount += batch.length;
+                }
+
+                setDeleteProgress(prev => prev ? { ...prev, current: Math.min(i + batchSize, total) } : null);
             }
-        } catch (err) {
-            toast.error("Network failure during bulk purge", { id: loadingToast });
+
+            if (errors.length > 0) {
+                console.group("Bulk Delete Errors");
+                errors.forEach(e => console.error(e));
+                console.groupEnd();
+                toast.error(`Purge completed with ${errors.length} errors. See console for logs.`);
+            } else {
+                toast.success(`Successfully purged ${successCount} records.`);
+            }
+
+            setSelectedRows([]);
+            await fetchData();
+        } catch (globalErr: any) {
+            console.error("[BulkDelete] Critical failure:", globalErr);
+            toast.error(`Critical failure: ${globalErr.message}`);
+        } finally {
+            setTimeout(() => setDeleteProgress(null), 1000);
         }
     };
 
@@ -1151,7 +1197,7 @@ export default function CRMSpreadsheetPage() {
         const colAccess = { ...rolePerms, ...userPerms };
 
         let filtered = baseCols;
-        if (!isPureMaster) {
+        if (!isMaster && !isPureMaster) {
             filtered = baseCols.filter(col => {
                 const perm = colAccess[col.id];
                 if (perm === "hide") return false;
@@ -1905,7 +1951,7 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleDeleteColumn = async (columnId: string) => {
-        if (!isPureMaster) return toast.error("MASTER MODE REQUIRED");
+        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
         if (!confirm("PURGE PROTOCOL: This will permanently delete the entire column and all associated data. Continue?")) return;
         if (!data) return;
 
@@ -2143,6 +2189,56 @@ export default function CRMSpreadsheetPage() {
 
     return (
         <div className={`min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900 ${isFullScreen ? 'p-0' : ''}`}>
+            {/* Deletion Progress Overlay */}
+            <AnimatePresence>
+                {deleteProgress && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200"
+                        >
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="p-3 bg-rose-50 rounded-xl">
+                                    <Trash2 className="text-rose-600 animate-pulse" size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900">Purging Matrix Data</h3>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Operation in progress...</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-end mb-1">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        Deleting {deleteProgress.current} / {deleteProgress.total}
+                                    </span>
+                                    <span className="text-sm font-black text-indigo-600">
+                                        {Math.round((deleteProgress.current / deleteProgress.total) * 100)}%
+                                    </span>
+                                </div>
+                                <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
+                                    <motion.div 
+                                        className="h-full bg-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.3)]"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                        transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-center text-slate-400 font-bold italic">
+                                    Please do not close this window during the purge cycle.
+                                </p>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Premium Enterprise Header */}
             {!isFullScreen && (
                 <header className="h-[68px] bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
@@ -2399,7 +2495,7 @@ export default function CRMSpreadsheetPage() {
                             <span className="text-xl font-black tracking-tight text-slate-800">{todayFollowUps.length} Pending Actions</span>
                         </div>
                         <div className="flex items-center gap-4 py-1">
-                            {todayFollowUps.slice(0, 10).map((res) => {
+                            {todayFollowUps.slice(0, 10).map((res: any) => {
                                 // Smart Search for Number
                                 const phoneField = data?.form?.fields?.find(f =>
                                     f.label.toLowerCase().includes("phone") || f.label.toLowerCase().includes("number") || f.label.toLowerCase().includes("contact")

@@ -379,7 +379,7 @@ export async function GET(
             });
 
             // Filter form fields
-            (form as any).fields = (form.fields || []).filter(f => {
+            (form as any).fields = (form.fields || []).filter((f: any) => {
                 const perm = colAccess[f.id];
                 return perm !== "hide";
             });
@@ -421,7 +421,7 @@ export async function GET(
 
         const enrichedForm: any = {
             ...form,
-            visibleToUsersData: allUserIds.map(uid => ({
+            visibleToUsersData: allUserIds.map((uid: string) => ({
                 id: uid,
                 ...(usersMap[uid] || { email: "Unknown", name: "User", imageUrl: "" })
             }))
