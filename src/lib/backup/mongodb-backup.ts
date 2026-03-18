@@ -96,23 +96,9 @@ export async function runBackup() {
         await upload.done();
         console.log(`✨ Backup uploaded successfully to cloud: ${filename}`);
 
-        // 6. Store Metadata in MongoDB
-        try {
-            const stats = fs.statSync(localFilePath);
-            const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-
-            await db.collection('Backup').insertOne({
-                fileName: filename,
-                date: new Date(),
-                sizeMB: parseFloat(sizeMB),
-                status: "success",
-                s3Url: `https://${S3_BUCKET_NAME}.s3.amazonaws.com/backups/${filename}`,
-                createdAt: new Date()
-            });
-            console.log('📝 Backup metadata saved to database.');
-        } catch (mongoError: any) {
-            console.error('⚠️ Could not save metadata to database:', mongoError.message);
-        }
+        // SUCCESS: No longer storing metadata in MongoDB to save space. 
+        // Dashboard now lists objects directly from S3.
+        console.log('✨ Backup recorded successfully on Cloud storage (S3).');
 
         // 7. Cleanup local file
         if (fs.existsSync(localFilePath)) {
@@ -123,19 +109,8 @@ export async function runBackup() {
 
     } catch (error: any) {
         console.error(`❌ Backup Process Error: ${error.message}`);
-        if (client) {
-             try {
-                const db = client.db();
-                await db.collection('Backup').insertOne({
-                    fileName: filename,
-                    date: new Date(),
-                    sizeMB: 0,
-                    status: "failed",
-                    error: error.message,
-                    createdAt: new Date()
-                });
-             } catch(e) {}
-        }
+        // FAIL: No longer storing failure logs in MongoDB collection.
+        console.error('❌ Cloud upload failed. Check S3 permissions and logs.');
         throw error;
     } finally {
         if (client) await client.close();

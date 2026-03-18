@@ -22,6 +22,7 @@ import {
   UserMinus,
   ArrowUpCircle,
   Pencil,
+  Trash2,
   X,
   Save,
   Loader2,
@@ -358,6 +359,24 @@ export default function AttendanceTable({ all = false }: AttendanceTableProps) {
     setData((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
   };
 
+  const handleDeleteRecord = async (attendanceId: string, employeeName: string) => {
+    if (!confirm(`Are you sure you want to completely delete the attendance record for ${employeeName}?`)) return;
+    
+    try {
+      const res = await fetch("/api/attendance/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attendanceId }),
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      toast.success("Attendance deleted successfully");
+      setData((prev) => prev.filter((r) => r.id !== attendanceId));
+    } catch (err) {
+      toast.error("Failed to delete attendance record");
+      console.error(err);
+    }
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header and Controls */}
@@ -534,14 +553,24 @@ export default function AttendanceTable({ all = false }: AttendanceTableProps) {
                             </td>
                             {isMasterOrAdmin && (
                               <td className="px-6 py-4 text-center">
-                                <button
-                                  onClick={() => setEditingRecord(row)}
-                                  className="opacity-0 group-hover:opacity-100 inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200 hover:border-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
-                                  title="Edit Attendance"
-                                >
-                                  <Pencil size={11} />
-                                  Edit
-                                </button>
+                                <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => setEditingRecord(row)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200 hover:border-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                    title="Edit Attendance"
+                                  >
+                                    <Pencil size={11} />
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteRecord(row.id, row.employeeName || row.userId)}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                    title="Delete Attendance"
+                                  >
+                                    <Trash2 size={11} />
+                                    Delete
+                                  </button>
+                                </div>
                               </td>
                             )}
                           </tr>
