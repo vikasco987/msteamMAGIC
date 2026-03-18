@@ -85,20 +85,21 @@ function formatTime(dateString?: string): string {
 }
 
 // Convert ISO string to local "datetime-local" input value (IST)
+// Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in IST for datetime-local input
 function toLocalInputValue(isoStr?: string): string {
   if (!isoStr) return "";
   const d = new Date(isoStr);
-  const offset = 5.5 * 60 * 60 * 1000; // IST offset
-  const local = new Date(d.getTime() + offset);
-  return local.toISOString().slice(0, 16);
+  if (isNaN(d.getTime())) return "";
+  // sv-SE locale gives "YYYY-MM-DD HH:mm:ss" in the given timezone
+  const istStr = d.toLocaleString("sv-SE", { timeZone: "Asia/Kolkata" });
+  return istStr.slice(0, 16).replace(" ", "T"); // Convert to "YYYY-MM-DDTHH:mm"
 }
 
-// Convert local datetime-local value back to UTC ISO string
+// Convert datetime-local input value (IST) back to UTC ISO string
 function fromLocalInputValue(localStr: string): string {
   if (!localStr) return "";
-  const offset = 5.5 * 60 * 60 * 1000;
-  const utc = new Date(new Date(localStr).getTime() - offset);
-  return utc.toISOString();
+  // Append IST offset (+05:30) so Date.parse treats it as IST, not local browser time
+  return new Date(localStr + ":00+05:30").toISOString();
 }
 
 function formatDecimalHours(decimalHours?: number): string {
