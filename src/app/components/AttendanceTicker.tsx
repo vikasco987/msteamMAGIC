@@ -43,7 +43,7 @@ export default function AttendanceTicker() {
         <motion.div 
           animate={{ x: ["100%", "-100%"] }}
           transition={{ 
-            duration: 40, // Adjust speed based on content length
+            duration: 120, // Much slower for better readability
             repeat: Infinity,
             ease: "linear"
           }}
