@@ -9,14 +9,23 @@ export async function GET() {
     const nowIST = moment().tz("Asia/Kolkata");
     const startOfDay = nowIST.clone().startOf("day").toDate();
     const endOfDay = nowIST.clone().endOf("day").toDate();
+    const startOfMonth = nowIST.clone().startOf("month").toDate();
 
-    // 1. Fetch ALL active users from the system
-    const allUsers = await prisma.user.findMany({
-      select: { clerkId: true, name: true }
+    // 1. Find 'Active Users' (those who marked attendance at least once this month)
+    const activeAttendanceLogs = await prisma.attendance.findMany({
+      where: { date: { gte: startOfMonth } },
+      select: { userId: true, employeeName: true }
     });
 
-    // 2. Fetch all attendance logs for today
-    const attendanceRecords = await prisma.attendance.findMany({
+    const activeUserMap = new Map<string, string>();
+    activeAttendanceLogs.forEach(log => {
+      if (log.userId && !activeUserMap.has(log.userId)) {
+        activeUserMap.set(log.userId, log.employeeName || "Unknown User");
+      }
+    });
+
+    // 2. Fetch all attendance logs for TODAY
+    const todayLogs = await prisma.attendance.findMany({
       where: {
         OR: [
           { date: { gte: startOfDay, lte: endOfDay } },
@@ -37,15 +46,15 @@ export async function GET() {
     const lateMap = new Map<string, { name: string, latenessStr: string, minutesTotal: number }>();
     const presentUserIds = new Set<string>();
 
-    // 3. Process existing logs
-    attendanceRecords.forEach(r => {
+    // 3. Process existing logs (Early Birds and Late arrivals today)
+    todayLogs.forEach(r => {
       if (earlyMap.has(r.userId) || lateMap.has(r.userId)) return;
       
-      const name = r.employeeName || "Unknown User";
+      const name = r.employeeName || activeUserMap.get(r.userId) || "Unknown User";
 
       if (r.status === "Absent") {
           lateMap.set(r.userId, { name, latenessStr: "ABSENT", minutesTotal: 9999 });
-          presentUserIds.add(r.userId); // They are "accounted for"
+          presentUserIds.add(r.userId);
           return;
       }
 
@@ -72,14 +81,10 @@ export async function GET() {
       }
     });
 
-    // 4. Identify users who have NOT checked in at all
-    allUsers.forEach(u => {
-      if (!presentUserIds.has(u.clerkId)) {
-        lateMap.set(u.clerkId, { 
-          name: u.name || "Unknown User", 
-          latenessStr: "ABSENT", 
-          minutesTotal: 9999 
-        });
+    // 4. Identify 'Active' users who have NOT checked in today
+    activeUserMap.forEach((name, userId) => {
+      if (!presentUserIds.has(userId)) {
+        lateMap.set(userId, { name, latenessStr: "ABSENT", minutesTotal: 9999 });
       }
     });
 
