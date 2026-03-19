@@ -361,19 +361,38 @@ export async function POST(req: NextRequest) {
     const assignerEmail = clerkUser.emailAddresses?.[0]?.emailAddress || "unknown";
     const assignerName = clerkUser.firstName || clerkUser.username || "Unknown";
 
+    // Rule: Creator (current user) is the Assigner. Assignee is the one picked.
+    let assigneeName = assignerName;
+    let assigneeEmail = assignerEmail;
+    if (body.assigneeId && body.assigneeId !== userId) {
+      try {
+        const u = await users.getUser(body.assigneeId);
+        if (u) {
+          assigneeName = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+          assigneeEmail = u.emailAddresses?.[0]?.emailAddress || "Unknown";
+        }
+      } catch (err) {
+        console.error("Failed to fetch assignee details:", err);
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: body.title,
-        status: "todo",
-        assigneeIds: Array.isArray(body.assigneeIds)
-          ? body.assigneeIds
-          : [body.assigneeId],
-        assignerEmail,
-        assignerName,
+        status: body.status || "todo",
+        assigneeId: body.assigneeId,
+        assigneeIds: Array.isArray(body.assigneeIds) ? body.assigneeIds : (body.assigneeId ? [body.assigneeId] : []),
+        assigneeName,
+        assigneeEmail,
+        projectId: body.projectId || undefined,
+        assignerEmail: assignerEmail,
+        assignerName: assignerName,
+        assignerId: userId,
         createdByClerkId: userId,
+        createdByName: assignerName,
+        createdByEmail: assignerEmail,
         createdAt: new Date(),
         updatedAt: new Date(),
-        attachments: Array.isArray(body.attachments) ? body.attachments : [],
         tags: Array.isArray(body.tags) ? body.tags : [],
         priority: body.priority ?? null,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,

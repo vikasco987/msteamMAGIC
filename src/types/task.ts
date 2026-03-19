@@ -305,7 +305,8 @@ export interface Task {
   createdAt: string | Date;
   updatedAt?: string | Date;
   assigneeId?: string; // For single assignee (legacy or alternative)
-  assigneeIds?: string[]; // For multiple assignees (Clerk IDs)
+  assigneeIds?: string[];
+  assignerId?: string;
   createdByClerkId: string;
   createdByName?: string;
 

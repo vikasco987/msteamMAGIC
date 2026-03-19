@@ -238,13 +238,27 @@ export async function POST(req: NextRequest) {
     }
 
     const data: JsonTaskBody = await req.json();
+    if (!data.title) {
+      return NextResponse.json({ error: "Missing `title` field" }, { status: 400 });
+    }
     const clerkUser = await users.getUser(userId);
 
     const assignerEmail = clerkUser.emailAddresses?.[0]?.emailAddress || "";
     const assignerName = clerkUser.firstName || clerkUser.username || "Unknown";
 
-    if (!data.title) {
-      return NextResponse.json({ error: "Missing `title` field" }, { status: 400 });
+    // Rule: Creator (current user) is the Assigner. Assignee is the one picked.
+    let assigneeName = assignerName;
+    let assigneeEmail = assignerEmail;
+    if (data.assigneeId && data.assigneeId !== userId) {
+      try {
+        const u = await users.getUser(data.assigneeId);
+        if (u) {
+          assigneeName = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+          assigneeEmail = u.emailAddresses?.[0]?.emailAddress || "Unknown";
+        }
+      } catch (err) {
+        console.error("Failed to fetch assignee details:", err);
+      }
     }
 
     const task = await prisma.task.create({
@@ -254,12 +268,18 @@ export async function POST(req: NextRequest) {
         tags: Array.isArray(data.tags) ? data.tags : [],
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         priority: data.priority || undefined,
-        assigneeId: data.assigneeId || undefined,
+        assigneeId: data.assigneeId || userId,
+        assigneeIds: Array.isArray(data.assigneeId) ? [data.assigneeId] : (data.assigneeId ? [data.assigneeId] : [userId]),
+        assigneeName,
+        assigneeEmail,
         projectId: data.projectId || undefined,
-        assignerEmail: data.assignerEmail || assignerEmail,
-        assignerName: data.assignerName || assignerName,
+        assignerEmail: assignerEmail,
+        assignerName: assignerName,
+        assignerId: userId,
         customFields: data.customFields ?? {},  // safe fallback
         createdByClerkId: userId,
+        createdByName: assignerName,
+        createdByEmail: assignerEmail,
       },
     });
 

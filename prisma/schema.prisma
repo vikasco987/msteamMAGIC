@@ -22,6 +22,7 @@ model Task {
   assignerEmail   String?
   assigneeEmail   String?
   assignerName    String?
+  assignerId      String?
   assigneeName    String?
   assigneeId      String?
   assigneeIds     String[] @default([])

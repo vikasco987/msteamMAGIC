@@ -117,16 +117,24 @@ export default function Board() {
 
     if (isInitial) setLoading(true);
 
-    const role = (user.publicMetadata?.role as string) || "";
+    const role = (user.publicMetadata?.role as string || user.unsafeMetadata?.role as string || "").toLowerCase();
     const userId = user.id;
     setUserRole(role);
 
     try {
       const res = await fetch("/api/tasks?limit=200");
+      if (!res.ok) throw new Error("Fetch failed");
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
-      const isAdminOrMaster = role.toLowerCase() === "admin" || role.toLowerCase() === "master";
+      if (!isInitial && taskArray.length === 0 && tasks.length > 5) {
+         // 🛡️ Safeguard: If we had tasks but now got 0, it's likely a transient error or sync issue
+         // Skip update to prevent "Invisible Tasks"
+         console.warn("Fetch returned 0 tasks while state had data. Skipping wipe-out.");
+         return;
+      }
+
+      const isAdminOrMaster = role === "admin" || role === "master";
 
       const relevantTasks = (showAllTasksMode || isAdminOrMaster)
         ? taskArray
@@ -155,6 +163,11 @@ export default function Board() {
       
       // Update tasks while preserving pending changes
       setTasks(currentTasks => {
+        // Build a map of incoming tasks for faster lookup
+        const incomingTaskMap = new Map(relevantTasks.map(t => [t.id, t]));
+        
+        // Merge strategy: update existing, add new
+        // For simplicity here, we'll replace with relevantTasks but respect pendingChanges
         return relevantTasks.map(incomingTask => {
           if (pendingChanges[incomingTask.id]) {
             return { ...incomingTask, status: pendingChanges[incomingTask.id] };
@@ -167,7 +180,7 @@ export default function Board() {
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [user, showAllTasksMode, pendingChanges]);
+  }, [user, showAllTasksMode, pendingChanges, tasks.length]); // Added tasks.length to dependency for the safeguard check
 
   useEffect(() => {
     if (!user?.id) return;
@@ -228,6 +241,11 @@ export default function Board() {
     }
 
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updatedFields } : t));
+    
+    // Provide instant feedback for reassignments
+    if (updatedFields.assigneeId || updatedFields.assigneeIds) {
+      toast.success("Assignment updated!");
+    }
 
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -235,11 +253,16 @@ export default function Board() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedFields),
       });
-      if (!res.ok) throw new Error("Update failed");
-      toast.success("Changes saved");
-    } catch (err) {
+      if (!res.ok) {
+         const errorData = await res.json();
+         throw new Error(errorData.error || "Update failed");
+      }
+      if (!updatedFields.status && !updatedFields.assigneeId) {
+        toast.success("Changes saved");
+      }
+    } catch (err: any) {
       console.error("Field update error:", err);
-      toast.error("Cloud sync failed. Reverting...");
+      toast.error(err.message || "Failed to sync changes. Reverting...");
       fetchTasks(false);
     } finally {
       if (updatedFields.status) {
@@ -255,16 +278,21 @@ export default function Board() {
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    // 🗑️ Optimistic UI Delete
+    const originalTasks = [...tasks];
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    toast.success("Task deleted");
+
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) throw new Error("Delete failed");
-      setTasks(tasks.filter(t => t.id !== taskId));
-      toast.success("Task deleted");
     } catch (err) {
-      toast.error("Delete failed");
+      console.error("Delete failed:", err);
+      toast.error("Failed to delete from server. Reverting...");
+      setTasks(originalTasks);
     }
   };
 
@@ -412,7 +440,7 @@ export default function Board() {
                           >
                             <TaskDetailsCard
                               task={task}
-                              isAdmin={userRole === "master" || userRole === "admin"}
+                              isAdmin={userRole === "master"}
                               onDelete={handleDeleteTask}
                               onUpdateTask={handleFieldUpdate}
                               onFloatRequest={setFloatingTask}

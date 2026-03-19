@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
 // --- PATCH Task ---
 export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   const { id: taskId } = await context.params;
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
 
   if (!taskId) return NextResponse.json({ error: "Missing task ID" }, { status: 400 });
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
   try {
     const body: PatchRequestBody = await req.json();
 
-    // Fetch current state for logging
+    // Fetch current state for logging and validation
     const currentTask = await prisma.task.findUnique({
       where: { id: taskId },
     });
@@ -71,14 +71,20 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const user = await currentUser();
     const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
 
+    // ✅ Resolve Role for RBAC
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const userRole = (dbUser?.role || "USER").toUpperCase();
+    const isPowerUser = userRole === "MASTER" || userRole === "ADMIN";
+
     const allowedFields = [
       "title", "status", "amount", "received", "description",
       "highlightColor", "assignerEmail", "assigneeEmail",
-      "assignerName", "assigneeName", "assigneeId", "assigneeIds"
+      "assignerName", "assigneeName", "assigneeId", "assigneeIds", "assignerId"
     ];
 
     const logs: string[] = [];
 
+    // Process basic field updates
     for (const field of allowedFields) {
       if (Object.prototype.hasOwnProperty.call(body, field)) {
         const value = body[field as keyof PatchRequestBody];
@@ -96,18 +102,15 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         } else if (field === "assigneeIds") {
           const newIds = Array.isArray(value) ? value.map(String) : typeof value === "string" ? [value] : [];
           updateData.assigneeIds = newIds;
-          logs.push(`reassigned the task to ${newIds.length > 0 ? newIds.join(", ") : "nobody"}`);
+          // Log will be handled in sync logic
         } else if (value !== oldValue) {
-          (updateData as any)[field] = value;
+          updateData[field as keyof Prisma.TaskUpdateInput] = value;
+          
           if (field === "status") {
             const lastChange = await prisma.activity.findFirst({
-              where: {
-                taskId,
-                type: { in: ["STATUS_CHANGE", "TASK_CREATED"] }
-              },
+              where: { taskId, type: { in: ["STATUS_CHANGE", "TASK_CREATED"] } },
               orderBy: { createdAt: "desc" }
             });
-
             let timeInfo = "";
             if (lastChange) {
               const diffMs = Date.now() - new Date(lastChange.createdAt).getTime();
@@ -118,39 +121,64 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
             logs.push(`Status changed from ${oldValue || 'None'} to ${value}${timeInfo}`);
           } else if (field === "title") {
             logs.push(`Title changed to "${value}"`);
+          } else {
+            logs.push(`${field.toUpperCase()} changed from ${oldValue || "empty"} to ${value}`);
           }
         }
       }
     }
 
-    // --- 🔄 FIELD SYNC LOGIC ---
-    
-    // 1. Sync Assignee IDs
-    if (updateData.assigneeId && !updateData.assigneeIds) {
-      updateData.assigneeIds = [updateData.assigneeId as string];
+    // 🚀 ASSIGNER / OWNERSHIP LOGIC
+    if (userRole === "MASTER") {
+      if (body.assignerId) {
+        // Explicit transfer by Master to someone else
+        updateData.assignerId = body.assignerId;
+        updateData.assignerName = body.assignerName || "Updated User";
+        updateData.assignerEmail = body.assignerEmail || "";
+        logs.push(`OWNERSHIP transferred to ${updateData.assignerName}`);
+      } else if (Object.keys(body).some(k => ["assigneeId", "assigneeIds"].includes(k)) && Object.keys(body).every(k => ["assigneeId", "assigneeIds"].includes(k))) {
+        // Default: Power user taking ownership while reassigning
+        updateData.assignerId = userId;
+        updateData.assignerName = userName;
+        updateData.assignerEmail = user?.emailAddresses[0]?.emailAddress || "";
+        logs.push(`OWNERSHIP taken by ${userName}`);
+      }
     }
 
-    // 2. Sync Assignee Details if assigneeIds changed
+    // ✅ Assignment logic with RBAC
     if (updateData.assigneeIds !== undefined) {
       const ids = updateData.assigneeIds as string[];
+
       if (ids && ids.length > 0) {
+        // Validation Logic
+        const isChangingAssignee = ids[0] !== currentTask.assigneeId;
+        const isSelfInvolved = userId === currentTask.assigneeId || 
+                               userId === (currentTask as any).assignerId || 
+                               userId === currentTask.createdByClerkId;
+
+        // Rule: Only MASTER/ADMIN can "Take Ownership" (same assignee, but changing assigner)
+        if (!isPowerUser && !isChangingAssignee) {
+          return NextResponse.json({ error: "Only MASTER users can take ownership." }, { status: 403 });
+        }
+
+        // Rule: Only MASTER/ADMIN can force reassign if not involved in the task
+        if (!isPowerUser && !isSelfInvolved) {
+          return NextResponse.json({ error: "Access denied. Only MASTER can force reassign others' tasks." }, { status: 403 });
+        }
+
         try {
           const client = await clerkClient();
           const leadUser = await client.users.getUser(ids[0]);
           updateData.assigneeId = leadUser.id;
-          updateData.createdByClerkId = leadUser.id; // Sync creator ID with new assignee as requested
           updateData.assigneeName = `${leadUser.firstName || ""} ${leadUser.lastName || ""}`.trim() || leadUser.username || "Unknown";
           updateData.assigneeEmail = leadUser.emailAddresses[0]?.emailAddress || "Unknown";
           
-          // Also handle the case where they are in customFields
-          if (updateData.customFields === undefined) {
-            const cf = { ...(currentTask.customFields as any || {}) };
-            let cfChanged = false;
-            if (cf.assigneeName !== undefined) { cf.assigneeName = updateData.assigneeName; cfChanged = true; }
-            if (cf.assigneeEmail !== undefined) { cf.assigneeEmail = updateData.assigneeEmail; cfChanged = true; }
-            if (cf.assigneeId !== undefined) { cf.assigneeId = updateData.assigneeId; cfChanged = true; }
-            if (cfChanged) updateData.customFields = cf;
-          }
+          // Role: Sync Assigner details with the CURRENT user
+          updateData.assignerId = userId;
+          updateData.assignerName = userName;
+          updateData.assignerEmail = user?.emailAddresses[0]?.emailAddress || "Unknown";
+          
+          logs.push(`reassigned the task to ${updateData.assigneeName}`);
         } catch (err) {
           console.error("Failed to sync lead user on reassignment:", err);
         }
@@ -158,35 +186,35 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         updateData.assigneeId = null;
         updateData.assigneeName = null;
         updateData.assigneeEmail = null;
+        logs.push("removed all assignees");
       }
     }
 
-    // 3. Sync Other Redundant Fields (Top-level <-> customFields)
+    // 🔄 Sync Redundant Fields (Top-level <-> customFields)
     const syncableFields = [
       "phone", "email", "shopName", "location", "accountNumber", "ifscCode", 
-      "restId", "customerName", "packageAmount", "startDate", "endDate", "timeline"
+      "restId", "customerName", "packageAmount", "startDate", "endDate", "timeline",
+      "assigneeId", "assigneeName", "assigneeEmail",
+      "assignerId", "assignerName", "assignerEmail"
     ];
-    
-    const existingCF = { ...(currentTask.customFields as any || {}) };
-    let cfNeedsUpdate = false;
-    
+
+    const currentCF = { ...(currentTask.customFields as any || {}) };
+    let cfChanged = false;
+
     for (const f of syncableFields) {
-      if ((updateData as any)[f] !== undefined && existingCF[f] !== undefined) {
-        existingCF[f] = (updateData as any)[f];
-        cfNeedsUpdate = true;
+      if ((updateData as any)[f] !== undefined) {
+        currentCF[f] = (updateData as any)[f];
+        cfChanged = true;
       }
     }
-    
-    if (cfNeedsUpdate && updateData.customFields === undefined) {
-      updateData.customFields = existingCF;
-    } else if (cfNeedsUpdate && updateData.customFields !== undefined) {
-      updateData.customFields = { ...(updateData.customFields as any), ...existingCF };
+
+    if (body.customFields) {
+      Object.assign(currentCF, body.customFields);
+      cfChanged = true;
     }
 
-    // Execution Logic
-    if (body.customFields !== undefined) {
-      const existingCustomFields = (currentTask.customFields as Prisma.JsonObject) || {};
-      updateData.customFields = { ...existingCustomFields, ...body.customFields, ...(updateData.customFields as any || {}) };
+    if (cfChanged) {
+      updateData.customFields = currentCF;
     }
 
     // Execute update
@@ -195,7 +223,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       data: updateData,
     });
 
-    // Log activities
+    // Logging activities
     for (const log of logs) {
       await logActivity({
         taskId,
@@ -206,10 +234,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       });
     }
 
-    // 🚀 NEW: Notify ONLY Admin and Master for payment updates
+    // Post-update: Notifications
+    // 1. Payment Update
     if (updateData.amount !== undefined || updateData.received !== undefined) {
-      console.log("DEBUG: Payment update detected. Fetching admins from Clerk...");
-
       try {
         const client = await clerkClient();
         const allClerkUsersRes = await client.users.getUserList({ limit: 500 });
@@ -221,89 +248,48 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           .map(u => u.id)
           .filter(id => id !== userId);
 
-        console.log(`DEBUG: Found ${adminMasterIds.length} recipient admins from Clerk:`, adminMasterIds);
-
         const cf = (updated.customFields as any) || {};
         const taskDetails = `[${cf.shopName || "N/A"}] - ${updated.title}`;
-        let timestamp = "";
-        try {
-          timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-        } catch (e) {
-          timestamp = new Date().toISOString();
-        }
-
-        if (adminMasterIds.length === 0) {
-          console.log("DEBUG: No recipients for notification. (Check Clerk user metadata roles)");
-        }
+        const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
         await Promise.all(adminMasterIds.map(async recipientId => {
-          try {
-            const notif = await prisma.notification.create({
-              data: {
-                userId: recipientId,
-                type: "PAYMENT_ADDED",
-                content: `💳 PAYMENT UPDATE: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
-                taskId: updated.id
-              } as any
-            });
-            console.log(`DEBUG: Notification ${notif.id} created for Admin ${recipientId}`);
-          } catch (err) {
-            console.error(`DEBUG: Failed to create notification for ${recipientId}:`, err);
-          }
+          await prisma.notification.create({
+            data: {
+              userId: recipientId,
+              type: "PAYMENT_ADDED",
+              content: `💳 PAYMENT UPDATE: Total ₹${updated.received || 0} for ${taskDetails}. \nUpdated By: ${userName} \nDate: ${timestamp}`,
+              taskId: updated.id
+            } as any
+          });
         }));
-      } catch (clerkErr) {
-        console.error("DEBUG: Clerk lookup or notification failed:", clerkErr);
-      }
+      } catch (err) { console.error("Payment notification error:", err); }
     }
 
-    // Trigger notification if status becomes "done"
-    try {
-      if (updateData.status === "done" && currentTask.status !== "done") {
+    // 2. Completion Update
+    if (updateData.status === "done" && currentTask.status !== "done") {
+      try {
         const recipientIds = new Set<string>();
-
-        // 1. Add assignee(s)
-        if (updated.assigneeIds && updated.assigneeIds.length > 0) {
-          updated.assigneeIds.forEach(id => { if (id && typeof id === 'string') recipientIds.add(id); });
-        } else if (updated.assigneeId && typeof updated.assigneeId === 'string') {
-          recipientIds.add(updated.assigneeId);
-        }
-
-        // 2. Add creator (The person who needs to be notified)
-        if (currentTask.createdByClerkId && typeof currentTask.createdByClerkId === 'string') {
-          recipientIds.add(currentTask.createdByClerkId);
-        }
-
-        // 3. Remove the person who performed the action
+        if (updated.assigneeIds && updated.assigneeIds.length > 0) updated.assigneeIds.forEach(id => { if (typeof id === 'string') recipientIds.add(id); });
+        else if (updated.assigneeId) recipientIds.add(updated.assigneeId);
+        if (currentTask.createdByClerkId) recipientIds.add(currentTask.createdByClerkId);
         recipientIds.delete(userId);
 
         const cf = (updated.customFields as any) || {};
-        const shopName = cf.shopName || "N/A";
-        // Safe timestamp formatting
-        let timestamp = "";
-        try {
-          timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
-        } catch (e) {
-          timestamp = new Date().toISOString();
-        }
-
-        const notificationTitle = "✅ Task Completed";
-        const notificationContent = `Task Finished: "${updated.title}"\nShop: ${shopName}\nCompleted By: ${userName}\nDate: ${timestamp}`;
+        const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        const notificationContent = `Task Finished: "${updated.title}"\nShop: ${cf.shopName || "N/A"}\nCompleted By: ${userName}\nDate: ${timestamp}`;
 
         await Promise.all(Array.from(recipientIds).map(recipientId =>
           prisma.notification.create({
             data: {
               userId: recipientId,
               type: "TASK_COMPLETED",
-              title: notificationTitle,
+              title: "✅ Task Completed",
               content: notificationContent,
               taskId: updated.id
             } as any
-          }).catch(err => console.error(`Completion alert error for ${recipientId}:`, err))
+          }).catch(e => console.error(e))
         ));
-      }
-    } catch (notifErr) {
-      console.error("❌ Failed to process 'done' notifications:", notifErr);
-      // We don't want to fail the whole request if notifications fail
+      } catch (err) { console.error("Completion notification error:", err); }
     }
 
     return NextResponse.json({ success: true, task: updated }, { status: 200 });
@@ -319,16 +305,27 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
   const { userId } = await auth();
 
   if (!taskId || !userId) return NextResponse.json({ error: "Unauthorized or missing task ID" }, { status: 400 });
+  
+  // ✅ 1. Role Check: ONLY MASTER can delete
+  const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+  if (dbUser?.role !== "MASTER") {
+    return NextResponse.json({ error: "Only MASTER users can delete tasks" }, { status: 403 });
+  }
 
   try {
+    // ✅ 2. Clear all related records to avoid constraint errors
     await prisma.subtask.deleteMany({ where: { taskId } });
     await prisma.note.deleteMany({ where: { taskId } });
     await prisma.activity.deleteMany({ where: { taskId } });
+    await prisma.paymentRemark.deleteMany({ where: { taskId } });
+    await prisma.notification.deleteMany({ where: { taskId } });
+
+    // ✅ 3. Finally delete the task
     await prisma.task.delete({ where: { id: taskId } });
 
     return NextResponse.json({ success: true }, { status: 200 });
-  } catch (err) {
+  } catch (err: any) {
     console.error("❌ Delete failed:", err);
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Delete failed" }, { status: 500 });
   }
 }

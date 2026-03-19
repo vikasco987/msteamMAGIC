@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { FaRegClipboard, FaTimes, FaUserEdit } from "react-icons/fa";
+import { FaRegClipboard, FaTimes, FaUserEdit, FaCrown, FaEllipsisV, FaRegStickyNote, FaTrashAlt } from "react-icons/fa";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { MoreVertical, Copy, History, DollarSign, Pin, Trash2, Layers } from "lucide-react";
 import toast from "react-hot-toast";
+import { useUser } from "@clerk/nextjs";
 import type { Task } from "../../types/task";
 import { Note } from "../../../types/note";
 import Image from "next/image";
@@ -129,6 +132,7 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showOwnerModal, setShowOwnerModal] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
 
@@ -193,14 +197,46 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
 
   const notesCount = task.notes?.length || 0;
 
-  const handleReassignTask = (taskId: string, assigneeId: string) => {
+  const handleReassignTask = (taskId: string, assignee: { id: string; name: string; email: string }) => {
+    setShowReassignModal(false);
     if (onUpdateTask) {
-      onUpdateTask(taskId, { assigneeId, assigneeIds: [assigneeId] });
+      // ✅ Instantly update all assignee metadata for a snappier UI
+      onUpdateTask(taskId, { 
+        assigneeId: assignee.id, 
+        assigneeIds: [assignee.id],
+        assigneeName: assignee.name,
+        assigneeEmail: assignee.email,
+        assignees: [{ 
+          id: assignee.id, 
+          name: assignee.name, 
+          email: assignee.email,
+          imageUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${assignee.id}`
+        }]
+      });
       toast.success("Task reassigned successfully!");
     } else {
       toast.error("Reassign functionality not available.");
     }
-    setShowReassignModal(false);
+  };
+
+  const handleTakeOwnership = () => {
+    setShowOwnerModal(true);
+  };
+
+  const handleTransferOwnership = (taskId: string, member: { id: string, name: string, email: string }) => {
+    setShowOwnerModal(false); // 🚀 Close modal INSTANTLY
+    if (onUpdateTask) {
+      // ✅ Instantly update locally for snappy UI
+      onUpdateTask(taskId, {
+        assignerId: member.id,
+        assignerName: member.name,
+        assignerEmail: member.email,
+        assigner: { name: member.name, email: member.email }
+      });
+      toast.success(`Ownership transferred to ${member.name}!`);
+    } else {
+      toast.error("Ownership change not available.");
+    }
   };
 
   return (
@@ -216,8 +252,9 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
           </h3>
         )}
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Action Group */}
-          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
+          {/* 🛠️ Primary Action Toolbar */}
+          <div className="flex items-center gap-1 bg-white/80 backdrop-blur-sm p-1 rounded-xl border border-slate-200 shadow-sm">
+            {/* 1. Status Check */}
             <AnimatedIconButton 
               onClick={() => {
                 const newStatus = task.status === "done" ? "todo" : "done";
@@ -225,43 +262,117 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
               }} 
               title={task.status === "done" ? "Mark as To Do" : "Mark as Done"}
             >
-              <span className={`text-lg ${task.status === "done" ? "opacity-50" : "animate-pulse"}`}>
+              <span className={`text-base ${task.status === "done" ? "opacity-40" : "animate-pulse"}`}>
                 {task.status === "done" ? "🔄" : "✅"}
               </span>
             </AnimatedIconButton>
+
+            {/* 2. Reassign */}
             <AnimatedIconButton onClick={() => setShowReassignModal(true)} title="Reassign Task">
-              <FaUserEdit size={14} />
+              <FaUserEdit size={14} className="text-slate-600" />
             </AnimatedIconButton>
-            <CloneTaskButton taskId={task.id} onCloned={() => onUpdateTask?.(task.id, {})} />
-            <AnimatedIconButton onClick={() => setShowActivityModal(true)} title="View Activity Log">
-              <FaHistory size={13} className="text-indigo-600" />
-            </AnimatedIconButton>
-            {(task.amount !== undefined && task.amount > 0) && (
-              <AnimatedIconButton onClick={() => setShowRecoveryModal(true)} title="Recovery Status">
-                <FaHandHoldingUsd size={16} className="text-blue-600" />
+            
+            {/* 3. Ownership (Admin Only) */}
+            {isAdmin && (
+              <AnimatedIconButton onClick={handleTakeOwnership} title="Take Ownership">
+                <FaCrown size={14} className="text-amber-500" />
               </AnimatedIconButton>
             )}
-          </div>
-          {/* View Group */}
-          <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-100">
-            <div className="relative">
-              <AnimatedIconButton onClick={() => setShowNotesModal(true)} title="Notes">
-                <span className="text-sm">📝</span>
-              </AnimatedIconButton>
-              {notesCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-black px-1 rounded-full border border-white">
-                  {notesCount}
-                </span>
-              )}
-            </div>
-            <AnimatedIconButton onClick={copyAllFields} title="Copy Details">
-              <FaRegClipboard size={14} />
-            </AnimatedIconButton>
-            {onFloatRequest && (
-              <AnimatedIconButton onClick={() => onFloatRequest(task)} title="Pin to Top">
-                <PiPushPinSimpleFill size={14} className="text-orange-500" />
-              </AnimatedIconButton>
-            )}
+
+            {/* 4. More Options Dropdown */}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors outline-none text-slate-400 hover:text-slate-600">
+                  <MoreVertical size={16} />
+                </button>
+              </DropdownMenu.Trigger>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content 
+                  className="min-w-[180px] bg-white rounded-xl shadow-2xl p-1.5 border border-slate-100 z-[1000] animate-in fade-in zoom-in duration-200"
+                  sideOffset={5}
+                  align="end"
+                >
+                  {/* Notes with Count Badge */}
+                  <DropdownMenu.Item 
+                    onClick={() => setShowNotesModal(true)}
+                    className="flex items-center justify-between px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg cursor-pointer outline-none group"
+                  >
+                    <div className="flex items-center gap-2">
+                       <FaRegStickyNote className="text-slate-400 group-hover:text-indigo-500" size={12} />
+                       NOTES
+                    </div>
+                    {notesCount > 0 && (
+                      <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{notesCount}</span>
+                    )}
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Item 
+                    onClick={() => setShowActivityModal(true)}
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg cursor-pointer outline-none"
+                  >
+                    <History size={12} className="text-slate-400" />
+                    ACTIVITY LOG
+                  </DropdownMenu.Item>
+
+                  {(task.amount !== undefined && task.amount > 0) && (
+                    <DropdownMenu.Item 
+                      onClick={() => setShowRecoveryModal(true)}
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer outline-none"
+                    >
+                      <DollarSign size={13} />
+                      RECOVERY STATUS
+                    </DropdownMenu.Item>
+                  )}
+
+                  <DropdownMenu.Separator className="h-px bg-slate-100 my-1" />
+
+                  <DropdownMenu.Item 
+                    asChild 
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg cursor-pointer outline-none"
+                  >
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Layers size={12} className="text-slate-400" />
+                      <CloneTaskButton taskId={task.id} onCloned={() => onUpdateTask?.(task.id, {})} />
+                    </div>
+                  </DropdownMenu.Item>
+
+                  <DropdownMenu.Item 
+                    onClick={copyAllFields}
+                    className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg cursor-pointer outline-none"
+                  >
+                    <Copy size={12} className="text-slate-400" />
+                    COPY DETAILS
+                  </DropdownMenu.Item>
+
+                  {onFloatRequest && (
+                    <DropdownMenu.Item 
+                      onClick={() => onFloatRequest(task)}
+                      className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-orange-600 hover:bg-orange-50 rounded-lg cursor-pointer outline-none"
+                    >
+                      <Pin size={12} />
+                      PIN TO TOP
+                    </DropdownMenu.Item>
+                  )}
+
+                  {isAdmin && (
+                    <>
+                      <DropdownMenu.Separator className="h-px bg-slate-100 my-1" />
+                      <DropdownMenu.Item 
+                        onClick={() => {
+                          const confirmDelete = window.confirm("Are you sure you want to delete this task?");
+                          if (confirmDelete && task.id && onDelete) onDelete(task.id);
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg cursor-pointer outline-none"
+                      >
+                        <Trash2 size={12} />
+                        DELETE TASK
+                      </DropdownMenu.Item>
+                    </>
+                  )}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
       </div>
@@ -411,6 +522,15 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
             taskId={task.id}
             onClose={() => setShowReassignModal(false)}
             onReassign={handleReassignTask}
+          />
+        )}
+
+        {showOwnerModal && (
+          <ReassignTaskModal
+            taskId={task.id}
+            title="Transfer Ownership"
+            onClose={() => setShowOwnerModal(false)}
+            onReassign={handleTransferOwnership}
           />
         )}
 

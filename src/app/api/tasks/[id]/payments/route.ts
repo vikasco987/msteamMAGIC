@@ -3,7 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import cloudinary from "cloudinary";
 import { Readable } from "stream";
-import { Prisma } from "@prisma/client";
 import { logActivity } from "@/lib/activity";
 
 cloudinary.v2.config({
@@ -87,6 +86,13 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     const updatedAmount = (existingTask.amount === null || existingTask.amount === 0) ? (newAmount ?? existingTask.amount) : existingTask.amount;
     const updatedReceived = (existingTask.received ?? 0) + (newReceived ?? 0);
+
+    // 💰 Backend Validation: total received cannot exceed total amount
+    if (updatedAmount !== null && updatedReceived > updatedAmount) {
+      return NextResponse.json({ 
+        error: `Total received (₹${updatedReceived}) cannot exceed total amount (₹${updatedAmount})` 
+      }, { status: 400 });
+    }
 
     const updateData: any = {
       amount: updatedAmount,

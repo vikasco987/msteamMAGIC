@@ -826,17 +826,38 @@ export async function POST(req: NextRequest) {
       : [];
 
 
+    // Rule: Creator (current user) is the Assigner. Assignee is the one picked.
+    let assigneeName = assignerName;
+    let assigneeEmail = assignerEmail;
+    if (body.assigneeId && body.assigneeId !== userId) {
+      try {
+        const u = await users.getUser(body.assigneeId);
+        if (u) {
+          assigneeName = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+          assigneeEmail = u.emailAddresses?.[0]?.emailAddress || "Unknown";
+        }
+      } catch (err) {
+        console.error("Failed to fetch assignee details:", err);
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: body.title,
         status,
         assigneeIds: Array.isArray(body.assigneeIds)
           ? body.assigneeIds
-          : [body.assigneeId], // fallback for backward compatibility
+          : [body.assigneeId],
+        assigneeId: body.assigneeId,
+        assigneeName,
+        assigneeEmail,
 
-        assignerEmail,
-        assignerName,
+        assignerEmail: assignerEmail,
+        assignerName: assignerName,
+        assignerId: userId,
         createdByClerkId: userId,
+        createdByName: assignerName,
+        createdByEmail: assignerEmail,
         createdAt: new Date(),
         updatedAt: new Date(),
 
@@ -856,6 +877,9 @@ export async function POST(req: NextRequest) {
           timeline: toNullableString(timeline),
           amount: toNullableString(amount), // ✅ ADDED HERE
           amountReceived: toNullableString(amountReceived), // ✅ ADDED HERE
+          assignerId: userId,
+          assignerName: assignerName,
+          assignerEmail: assignerEmail,
           fields: safeFields,
           // If aadhaarUrl etc are directly inside customFields, add them here too.
           // Based on your original code, they were extracted from customFields but not explicitly placed back into the customFields object when saving.
@@ -1085,7 +1109,8 @@ export async function GET(req: NextRequest) {
         where.AND.push({
           OR: [
             { assignerName: { in: assigners } },
-            { createdByClerkId: { in: assigners } }
+            { createdByClerkId: { in: assigners } },
+            { assignerId: { in: assigners } }
           ]
         });
       }
