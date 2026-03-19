@@ -24,13 +24,10 @@ export async function GET() {
       }
     });
 
-    // 2. Fetch all attendance logs for TODAY
+    // 2. Fetch all attendance logs for STRICTLY TODAY (Check-in must happen today IST)
     const todayLogs = await prisma.attendance.findMany({
       where: {
-        OR: [
-          { date: { gte: startOfDay, lte: endOfDay } },
-          { checkIn: { gte: startOfDay, lte: endOfDay } }
-        ]
+        checkIn: { gte: startOfDay, lte: endOfDay }
       },
       select: {
         employeeName: true,
@@ -49,15 +46,9 @@ export async function GET() {
     // 3. Process existing logs (Early Birds and Late arrivals today)
     todayLogs.forEach(r => {
       if (earlyMap.has(r.userId) || lateMap.has(r.userId)) return;
-      
+      if (r.status === "Absent") return; // Skip explicit absent records in the check-in list
+
       const name = r.employeeName || activeUserMap.get(r.userId) || "Unknown User";
-
-      if (r.status === "Absent") {
-          lateMap.set(r.userId, { name, latenessStr: "ABSENT", minutesTotal: 9999 });
-          presentUserIds.add(r.userId);
-          return;
-      }
-
       if (!r.checkIn) return;
       
       presentUserIds.add(r.userId);
