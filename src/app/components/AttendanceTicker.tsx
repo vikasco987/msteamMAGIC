@@ -30,15 +30,15 @@ export default function AttendanceTicker() {
   if (!mounted || (data.early.length === 0 && data.late.length === 0)) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 w-full h-12 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 z-[100] overflow-hidden flex items-center">
+    <div className="absolute bottom-0 left-0 w-full h-10 bg-slate-950/80 backdrop-blur-xl border-t border-white/10 z-[100] overflow-hidden flex items-center">
       
       {/* 🚀 Label: Official Status Monitor */}
-      <div className="flex items-center gap-3 px-6 h-full bg-slate-900 border-r border-white/10 relative z-10 shrink-0">
+      <div className="flex items-center gap-3 px-5 h-full bg-slate-900 border-r border-white/10 relative z-10 shrink-0">
         <div className="flex flex-col">
-          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none">Real-Time Presence</span>
-          <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">Attendance Log 📅</span>
+          <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest leading-none">Presence Monitor</span>
+          <span className="text-[7px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">Attendance Log 📅</span>
         </div>
-        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_#6366f1] ml-2" />
+        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_#6366f1] ml-2" />
       </div>
 
       {/* 🏎️ Marquee Area */}
