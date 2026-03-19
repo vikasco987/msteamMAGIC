@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, TrendingDown, Clock, Zap } from "lucide-react";
 
 export default function AttendanceTicker() {
-  const [data, setData] = useState<{ early: string[], late: { name: string, latenessStr: string }[] }>({ early: [], late: [] });
+  const [data, setData] = useState<{ date?: string, early: string[], late: { name: string, latenessStr: string }[] }>({ early: [], late: [] });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function AttendanceTicker() {
       <div className="flex items-center gap-3 px-5 h-full bg-slate-900 border-r border-white/10 relative z-10 shrink-0">
         <div className="flex flex-col">
           <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest leading-none">Presence Monitor</span>
-          <span className="text-[7px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">Attendance Log 📅</span>
+          <span className="text-[7px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">{data.date || "TODAY"} 📅</span>
         </div>
         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_#6366f1] ml-2" />
       </div>
