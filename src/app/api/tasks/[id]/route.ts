@@ -76,6 +76,17 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const userRole = (dbUser?.role || "USER").toUpperCase();
     const isPowerUser = userRole === "MASTER" || userRole === "ADMIN";
 
+    // 🚀 Robust Ownership/Involvement Detection
+    const isSelfInvolved = userId === currentTask.createdByClerkId || 
+                           userId === currentTask.assigneeId || 
+                           (currentTask.assigneeIds as string[] || []).includes(userId) ||
+                           userId === (currentTask as any).assignerId;
+
+    // 🛡️ Global Security: If non-power user is NOT involved, block all updates
+    if (!isPowerUser && !isSelfInvolved) {
+      return NextResponse.json({ error: "Access denied. You are not involved in this task." }, { status: 403 });
+    }
+
     const allowedFields = [
       "title", "status", "amount", "received", "description",
       "highlightColor", "assignerEmail", "assigneeEmail",
@@ -102,7 +113,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
         } else if (field === "assigneeIds") {
           const newIds = Array.isArray(value) ? value.map(String) : typeof value === "string" ? [value] : [];
           updateData.assigneeIds = newIds;
-          // Log will be handled in sync logic
         } else if (value !== oldValue) {
           updateData[field as keyof Prisma.TaskUpdateInput] = value;
           
@@ -128,42 +138,27 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       }
     }
 
-    // 🚀 ASSIGNER / OWNERSHIP LOGIC
-    if (userRole === "MASTER") {
+    // 🚀 ASSIGNER / OWNERSHIP LOGIC (Strict Master Capability)
+    if (userRole === "MASTER" || userRole === "ADMIN") {
       if (body.assignerId) {
-        // Explicit transfer by Master to someone else
         updateData.assignerId = body.assignerId;
         updateData.assignerName = body.assignerName || "Updated User";
         updateData.assignerEmail = body.assignerEmail || "";
         logs.push(`OWNERSHIP transferred to ${updateData.assignerName}`);
-      } else if (Object.keys(body).some(k => ["assigneeId", "assigneeIds"].includes(k)) && Object.keys(body).every(k => ["assigneeId", "assigneeIds"].includes(k))) {
-        // Default: Power user taking ownership while reassigning
-        updateData.assignerId = userId;
-        updateData.assignerName = userName;
-        updateData.assignerEmail = user?.emailAddresses[0]?.emailAddress || "";
-        logs.push(`OWNERSHIP taken by ${userName}`);
       }
     }
 
-    // ✅ Assignment logic with RBAC
+    // ✅ Reassignment logic with RBAC
     if (updateData.assigneeIds !== undefined) {
       const ids = updateData.assigneeIds as string[];
 
       if (ids && ids.length > 0) {
-        // Validation Logic
-        const isChangingAssignee = ids[0] !== currentTask.assigneeId;
-        const isSelfInvolved = userId === currentTask.assigneeId || 
-                               userId === (currentTask as any).assignerId || 
-                               userId === currentTask.createdByClerkId;
+        // Validation: Is this actually a change in leading assignee?
+        const isChangingLead = ids[0] !== currentTask.assigneeId;
 
-        // Rule: Only MASTER/ADMIN can "Take Ownership" (same assignee, but changing assigner)
-        if (!isPowerUser && !isChangingAssignee) {
-          return NextResponse.json({ error: "Only MASTER users can take ownership." }, { status: 403 });
-        }
-
-        // Rule: Only MASTER/ADMIN can force reassign if not involved in the task
+        // Rule: Only Power Users or the current Assigner/involved can reassign
         if (!isPowerUser && !isSelfInvolved) {
-          return NextResponse.json({ error: "Access denied. Only MASTER can force reassign others' tasks." }, { status: 403 });
+          return NextResponse.json({ error: "Access denied. Only involved users or Master can reassign." }, { status: 403 });
         }
 
         try {
@@ -173,10 +168,12 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
           updateData.assigneeName = `${leadUser.firstName || ""} ${leadUser.lastName || ""}`.trim() || leadUser.username || "Unknown";
           updateData.assigneeEmail = leadUser.emailAddresses[0]?.emailAddress || "Unknown";
           
-          // Role: Sync Assigner details with the CURRENT user
-          updateData.assignerId = userId;
-          updateData.assignerName = userName;
-          updateData.assignerEmail = user?.emailAddresses[0]?.emailAddress || "Unknown";
+          // Only change assigner if it's a new assignment by the pusher
+          if (!currentTask.assignerId || isPowerUser) {
+             updateData.assignerId = userId;
+             updateData.assignerName = userName;
+             updateData.assignerEmail = user?.emailAddresses[0]?.emailAddress || "Unknown";
+          }
           
           logs.push(`reassigned the task to ${updateData.assigneeName}`);
         } catch (err) {
