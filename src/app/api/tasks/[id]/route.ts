@@ -75,6 +75,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
     const userRole = (dbUser?.role || "USER").toUpperCase();
     const isPowerUser = userRole === "MASTER" || userRole === "ADMIN";
+    const isTL = dbUser?.isTeamLeader || false;
 
     // 🚀 Robust Ownership/Involvement Detection
     const isSelfInvolved = userId === currentTask.createdByClerkId || 
@@ -82,8 +83,28 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
                            (currentTask.assigneeIds as string[] || []).includes(userId) ||
                            userId === (currentTask as any).assignerId;
 
-    // 🛡️ Global Security: If non-power user is NOT involved, block all updates
-    if (!isPowerUser && !isSelfInvolved) {
+    // 🏆 Team Leader Logic: If TL, check if any involved user is in their team
+    let isTeamInvolved = false;
+    if (isTL && !isPowerUser && !isSelfInvolved) {
+      const taskInvolvedIds = new Set<string>();
+      if (currentTask.createdByClerkId) taskInvolvedIds.add(currentTask.createdByClerkId);
+      if (currentTask.assigneeId) taskInvolvedIds.add(currentTask.assigneeId);
+      (currentTask.assigneeIds as string[] || []).forEach(id => taskInvolvedIds.add(id));
+      
+      if (taskInvolvedIds.size > 0) {
+        const teamInvolvedMembers = await prisma.user.findMany({
+          where: {
+            clerkId: { in: Array.from(taskInvolvedIds) },
+            leaderId: userId
+          },
+          select: { clerkId: true }
+        });
+        isTeamInvolved = teamInvolvedMembers.length > 0;
+      }
+    }
+
+    // 🛡️ Global Security: If non-power user is NOT involved AND NOT a TL for this task, block all updates
+    if (!isPowerUser && !isSelfInvolved && !isTeamInvolved) {
       return NextResponse.json({ error: "Access denied. You are not involved in this task." }, { status: 403 });
     }
 

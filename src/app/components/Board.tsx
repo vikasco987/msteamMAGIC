@@ -136,13 +136,7 @@ export default function Board() {
 
       const isAdminOrMaster = role === "admin" || role === "master";
 
-      const relevantTasks = (showAllTasksMode || isAdminOrMaster)
-        ? taskArray
-        : taskArray.filter(task =>
-          (task.assigneeIds && task.assigneeIds.includes(userId)) ||
-          task.assigneeId === userId ||
-          task.createdByClerkId === userId
-        );
+      const relevantTasks = taskArray;
 
       const seenTaskIds = seenTaskIdsRef.current;
       const newTasks = relevantTasks.filter(task => !seenTaskIds.has(task.id));
