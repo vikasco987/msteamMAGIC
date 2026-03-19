@@ -65,15 +65,15 @@ export default function AttendanceTicker() {
 
           {/* ❌ Late Arrivers (Negative) */}
           {data.late.length > 0 && (
-            <div className="flex items-center gap-6 border-l border-white/10 pl-12 text-rose-100">
-              <span className="flex items-center gap-2 text-[11px] font-black text-rose-400 uppercase tracking-widest bg-rose-500/10 px-3 py-1 rounded-lg border border-rose-500/20">
+            <div className="flex items-center gap-6 border-l border-white/10 pl-12">
+              <span className="flex items-center gap-2 text-[11px] font-black text-rose-500 bg-rose-500/10 px-3 py-1 rounded-lg border border-rose-500/20 shadow-[0_0_15px_-5px_#f43f5e]">
                  <Clock size={10} /> Late Loggers
               </span>
               {data.late.map((user, i) => (
-                <span key={`late-${i}`} className="text-[11px] font-bold flex items-center gap-2.5 opacity-90 group hover:opacity-100 transition-opacity">
-                   <div className="w-1.5 h-1.5 rounded-full bg-rose-500/40" /> 
+                <span key={`late-${i}`} className="text-[11px] font-black flex items-center gap-3 text-white group drop-shadow-sm">
+                   <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" /> 
                    {user.name} 
-                   <span className="text-[9px] font-black bg-rose-500/20 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/30 uppercase tracking-wider">
+                   <span className="text-[9px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-md border border-rose-400/30 uppercase tracking-wider shadow-lg shadow-rose-950/20">
                      {user.minutesLate}m Late
                    </span>
                 </span>
