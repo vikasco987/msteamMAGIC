@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
     const searchTerm = searchParams.get("searchTerm") || "";
     const filterAssigner = searchParams.get("filterAssigner") || "all";
+    const filterMember = searchParams.get("filterMember") || "all";
     const filterTaskStatus = searchParams.get("filterTaskStatus") || "all";
     const filterPriority = searchParams.get("filterPriority") || "all";
     const filterSource = searchParams.get("filterSource") || "all";
@@ -115,7 +116,7 @@ export async function GET(req: NextRequest) {
                 where: { leaderId: userId } as any,
                 select: { clerkId: true }
             });
-            teamMemberIds = members.map(m => m.clerkId);
+            teamMemberIds = [userId, ...members.map(m => m.clerkId)]; // TL + Team
         }
 
         if (!isAdminOrMaster) {
@@ -130,6 +131,20 @@ export async function GET(req: NextRequest) {
                         { assigneeIds: { hasSome: teamMemberIds } }
                     ] : [])
                 ];
+
+                // If specialized member filter is requested by TL
+                if (isTL && filterMember !== "all") {
+                    // Safety: Ensure TL only filters their own team members
+                    if (teamMemberIds.includes(filterMember)) {
+                        whereClause.AND.push({
+                            OR: [
+                                { createdByClerkId: filterMember },
+                                { assigneeId: filterMember },
+                                { assigneeIds: { has: filterMember } }
+                            ]
+                        });
+                    }
+                }
             } else {
                 return NextResponse.json({ tasks: [], summary: { totalPending: 0, taskCount: 0 }, role, pagination: { page, totalPages: 0 } });
             }
