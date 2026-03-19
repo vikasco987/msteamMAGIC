@@ -77,7 +77,7 @@ export default function AttendanceTicker() {
                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" /> 
                    {user.name} 
                    <span className="text-[9px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-md border border-rose-400/30 uppercase tracking-wider shadow-lg shadow-rose-950/20">
-                     {user.latenessStr} Late
+                     {user.latenessStr === "ABSENT" ? "ABSENT" : `${user.latenessStr} Late`}
                    </span>
                 </span>
               ))}

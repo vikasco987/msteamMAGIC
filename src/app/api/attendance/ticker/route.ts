@@ -10,17 +10,12 @@ export async function GET() {
     const startOfDay = nowIST.clone().startOf("day").toDate();
     const endOfDay = nowIST.clone().endOf("day").toDate();
 
-    // Fetch all attendance for today, excluding 'Absent' status
+    // Fetch all attendance for today, including 'Absent' status
     const records = await prisma.attendance.findMany({
       where: {
-        AND: [
-          { status: { not: "Absent" } },
-          {
-            OR: [
-              { date: { gte: startOfDay, lte: endOfDay } },
-              { checkIn: { gte: startOfDay, lte: endOfDay } }
-            ]
-          }
+        OR: [
+          { date: { gte: startOfDay, lte: endOfDay } },
+          { checkIn: { gte: startOfDay, lte: endOfDay } }
         ]
       },
       select: {
@@ -37,14 +32,22 @@ export async function GET() {
     const lateMap = new Map<string, { name: string, latenessStr: string, minutesTotal: number }>();
 
     records.forEach(r => {
-      if (!r.checkIn) return;
       if (earlyMap.has(r.userId) || lateMap.has(r.userId)) return;
+      
+      const name = r.employeeName || "Unknown User";
+
+      // If marked as Absent, prioritize that label
+      if (r.status === "Absent") {
+          lateMap.set(r.userId, { name, latenessStr: "ABSENT", minutesTotal: 9999 });
+          return;
+      }
+
+      if (!r.checkIn) return;
       
       const actualCheckIn = moment(r.checkIn).tz("Asia/Kolkata");
       const officeStart = actualCheckIn.clone().hour(10).minute(0).second(0).millisecond(0);
       
       const diffMins = Math.floor(moment.duration(actualCheckIn.diff(officeStart)).asMinutes());
-      const name = r.employeeName || "Unknown User";
 
       if (diffMins <= 0) {
         earlyMap.set(r.userId, name);
