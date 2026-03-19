@@ -11,6 +11,7 @@ import {
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Sidebar from '../app/components/Sidebar';
+import AttendanceTicker from '../app/components/AttendanceTicker';
 import { Search, Bell, Command, Sun, Moon } from 'lucide-react';
 
 function ClientLayoutContent({ children }: { children: React.ReactNode }) {
@@ -106,10 +107,13 @@ function ClientLayoutContent({ children }: { children: React.ReactNode }) {
           {/* Subtle background pattern */}
           <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none opacity-40" />
 
-          <div className="min-h-full pb-12 relative z-10 transition-all duration-500">
+          <div className="min-h-full pb-20 relative z-10 transition-all duration-500">
             {children}
           </div>
         </main>
+
+        {/* 🚀 Interactive Knowledge Layer */}
+        {!isFullView && <AttendanceTicker />}
       </div>
     </div>
   );
