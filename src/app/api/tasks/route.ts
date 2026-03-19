@@ -1207,36 +1207,22 @@ export async function GET(req: NextRequest) {
       totalCount = count;
     }
 
-    // ✅ Collect all unique user identifiers
-    const userIdentifiers = new Set<string>();
-    for (const task of tasks) {
-      if (task.assignerEmail) userIdentifiers.add(task.assignerEmail);
-      if (Array.isArray(task.assigneeIds)) {
-        task.assigneeIds.forEach((id) => userIdentifiers.add(id));
-      }
-    }
-
-    // ✅ Batch Clerk lookups (email vs ID)
-    const userLookups = await Promise.all(
-      Array.from(userIdentifiers).map((val) =>
-        val.includes("@")
-          ? users.getUserList({ emailAddress: [val] }).then((res) => res[0]).catch(() => null)
-          : users.getUser(val).catch(() => null)
-      )
-    );
+    // ✅ BULK CLERK LOOKUP: Fetch all users once for efficiency
+    // This avoids 50+ individual network calls and fixes "Fetch failed" errors.
+    const clerkResponse = await client.users.getUserList({ limit: 500 });
+    const allClerkUsers = clerkResponse.data;
 
     // ✅ Build user map by ID and email
     const userMap: Record<string, { id: string; name: string; email: string }> = {};
-    userLookups.forEach((u) => {
-      if (u) {
-        const email = u.emailAddresses?.[0]?.emailAddress || "";
-        const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unnamed";
-        userMap[u.id] = { id: u.id, name, email };
-        if (email) userMap[email] = { id: u.id, name, email };
-      }
+    allClerkUsers.forEach((u) => {
+      const email = u.emailAddresses?.[0]?.emailAddress || "";
+      const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unnamed User";
+      const userData = { id: u.id, name, email };
+      userMap[u.id] = userData;
+      if (email) userMap[email] = userData;
     });
 
-    // ✅ Enrich tasks with assigner + assignees
+    // ✅ Enrich tasks with assigner + assignees using the map
     const enrichedTasks = tasks.map((task) => {
       const assigner = userMap[task.assignerEmail ?? ""] || {
         id: "",

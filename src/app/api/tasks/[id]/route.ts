@@ -320,10 +320,20 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ id: 
     await prisma.paymentRemark.deleteMany({ where: { taskId } });
     await prisma.notification.deleteMany({ where: { taskId } });
 
-    // ✅ 3. Finally delete the task
-    await prisma.task.delete({ where: { id: taskId } });
+    // ✅ 3. Finally delete the task (idempotent deleteMany pattern)
+    const deleted = await prisma.task.deleteMany({
+      where: { id: taskId }
+    });
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    if (deleted.count === 0) {
+      console.warn("⚠️ Delete skipped: Task already removed or invalid ID", { taskId });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      deletedId: taskId,
+      count: deleted.count 
+    }, { status: 200 });
   } catch (err: any) {
     console.error("❌ Delete failed:", err);
     return NextResponse.json({ error: err.message || "Delete failed" }, { status: 500 });
