@@ -350,6 +350,7 @@ export default function CRMSpreadsheetPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
+    const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
@@ -1539,6 +1540,115 @@ export default function CRMSpreadsheetPage() {
     }, [searchTerm]);
 
     useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't interfere if actively editing a cell's input
+            if (editingCell) {
+                if (e.key === "Escape") setEditingCell(null);
+                return;
+            }
+
+            // Don't interfere if focus is in a search box or other global UI input
+            const target = e.target as HTMLElement;
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+            const rowIds = paginatedResponses.map(r => r.id);
+            const cols = getColumns;
+            const colIds = cols.map(c => c.id);
+
+            if (rowIds.length === 0 || colIds.length === 0) return;
+
+            // If nothing is focused and user hits an arrow, focus the first visible cell
+            if (!focusedCell) {
+                if (e.key.startsWith("Arrow") || e.key === "Enter") {
+                    setFocusedCell({ rowId: rowIds[0], colId: colIds[0] });
+                }
+                return;
+            }
+
+            const rIdx = rowIds.indexOf(focusedCell.rowId);
+            const cIdx = colIds.indexOf(focusedCell.colId);
+
+            // Row might have disappeared due to filtering/pagination
+            if (rIdx === -1) {
+                setFocusedCell({ rowId: rowIds[0], colId: colIds[0] });
+                return;
+            }
+
+            let nextR = rIdx;
+            let nextC = cIdx;
+
+            const moveAndScroll = (r: number, c: number) => {
+                const newFocus = { rowId: rowIds[r], colId: colIds[c] };
+                setFocusedCell(newFocus);
+                // Ensure it's visible - small timeout to allow DOM to settle if needed
+                setTimeout(() => {
+                    const el = document.getElementById(`cell-${newFocus.rowId}-${newFocus.colId}`);
+                    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }, 0);
+            };
+
+            switch (e.key) {
+                case "ArrowDown":
+                    e.preventDefault();
+                    nextR = Math.min(rowIds.length - 1, rIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowUp":
+                    e.preventDefault();
+                    nextR = Math.max(0, rIdx - 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowRight":
+                    e.preventDefault();
+                    nextC = Math.min(colIds.length - 1, cIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowLeft":
+                    e.preventDefault();
+                    nextC = Math.max(0, cIdx - 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "Enter":
+                    e.preventDefault();
+                    const col = cols[cIdx];
+                    if (!col) return;
+                    // If it's a field we can edit, start editing
+                    if (col.type !== "static" && col.id !== "__profile" && col.id !== "__contributor" && col.id !== "__assigned" && col.id !== "__payment") {
+                        const canEdit = isMaster || isPureMaster || (colPermissions?.roles?.[userRole]?.[col.id] || colPermissions?.users?.[(data as any).clerkId]?.[col.id] || (col.isInternal ? "hide" : "edit")) === "edit";
+                        if (canEdit && !col.isLocked) {
+                            const res = paginatedResponses[rIdx];
+                            const val = getCellValue(res.id, col.id, !!col.isInternal);
+                            setEditingCell({ rowId: res.id, colId: col.id });
+                            setEditValue(val || "");
+                        }
+                    } else {
+                        // For special columns like profile, assigned, etc, Enter should trigger their click action
+                        const res = paginatedResponses[rIdx];
+                        if (col.id === "__profile") { setSelectedResponse(res); setHighlightedRowId(res.id); }
+                        else if (col.id === "__assigned") { setOpenAssignedCell(res.id); }
+                        else if (col.id === "__payment") { setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id }); }
+                        else if (["__followup", "__recentRemark", "__nextFollowUpDate", "__followUpStatus"].includes(col.id)) {
+                             setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                        }
+                    }
+                    break;
+                case "Tab":
+                    e.preventDefault();
+                    if (e.shiftKey) nextC = Math.max(0, cIdx - 1);
+                    else nextC = Math.min(colIds.length - 1, cIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "Escape":
+                    setFocusedCell(null);
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [focusedCell, editingCell, paginatedResponses, getColumns, isMaster, isPureMaster, data, userRole, colPermissions]);
+
+    useEffect(() => {
         const handleClickOutside = (e: MouseEvent | TouchEvent) => {
             const target = e.target as Element;
             if (target?.closest('.ignore-click-outside')) {
@@ -1549,6 +1659,7 @@ export default function CRMSpreadsheetPage() {
             setActiveColumnFilter(null);
             setUserResults([]);
             setAccessUserResults([]);
+            // Don't clear focusedCell on every click here, because we want to set it in td's onClick
         };
         document.addEventListener('mousedown', handleClickOutside);
         document.addEventListener('touchstart', handleClickOutside);
@@ -3163,17 +3274,23 @@ export default function CRMSpreadsheetPage() {
                                                         }
                                                     }
                                                     const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
+                                                    const isFocused = focusedCell?.rowId === res.id && focusedCell?.colId === col.id;
 
                                                     if (col.id === "__profile") {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                }}
                                                                 className={`px-4 py-2 border-b text-center transition-colors relative ${
                                                                      ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                      ? 'border-white/5 group-hover:bg-white/5' 
                                                                      : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
-                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''}`}
+                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-center gap-1">
                                                                     <button
@@ -3235,13 +3352,17 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className={`px-5 py-3 border-b transition-colors ${
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                }}
+                                                                className={`px-5 py-3 border-b transition-colors relative ${
                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                     ? 'border-white/5 group-hover:bg-white/5' 
                                                                     : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
-                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''}`}
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
                                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm border overflow-hidden ${
@@ -3279,10 +3400,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`ignore-click-outside px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white shadow-[1px_0_0_#EAECF0]' : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')}`}
+                                                                className={`ignore-click-outside px-5 py-3 border-b transition-colors relative cursor-pointer ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5' 
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     if (isCellOpen) setOpenAssignedCell(null);
                                                                     else setOpenAssignedCell(res.id);
                                                                 }}
@@ -3383,10 +3510,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5' 
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3405,10 +3538,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5' 
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3423,10 +3562,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5' 
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3448,14 +3593,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-4 py-2 border-b transition-colors cursor-pointer relative text-center ${
                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                     ? 'border-white/5 group-hover:bg-white/5'
                                                                     : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
-                                                                } ${isSticky ? `sticky z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''}`}
+                                                                } ${isSticky ? `sticky z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3489,14 +3636,16 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-3 py-2 border-b transition-colors relative text-center group/paymentcel ${
                                                                      ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                      ? 'border-white/5 hover:bg-white/5'
                                                                      : 'border-[#EAECF0] hover:bg-slate-50'
-                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ""}`}
+                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ""} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
                                                                 }}
                                                             >
@@ -3556,9 +3705,11 @@ export default function CRMSpreadsheetPage() {
                                                     return (
                                                         <td
                                                             key={col.id}
+                                                            id={`cell-${res.id}-${col.id}`}
                                                             style={{ width, left: isSticky ? leftOffset : undefined }}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
+                                                                setFocusedCell({ rowId: res.id, colId: col.id });
                                                                 if (!isLocked && !isEditing) {
                                                                     setEditingCell({ rowId: res.id, colId: col.id });
                                                                     setEditValue(val);
@@ -3568,7 +3719,7 @@ export default function CRMSpreadsheetPage() {
                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                 ? 'border-white/5 group-hover:bg-white/5' 
                                                                 : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
-                                                            } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
+                                                            } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
                                                             {isEditing ? (
