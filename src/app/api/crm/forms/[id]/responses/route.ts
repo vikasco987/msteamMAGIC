@@ -288,16 +288,24 @@ export async function GET(
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
                         columnFilters.push({
-                            AND: [
-                                { values: { none: { fieldId: colId } } },
-                                { internalValues: { none: { columnId: colId } } }
+                            OR: [
+                                // Case 1: Relationship itself is missing
+                                { 
+                                    AND: [
+                                        { values: { none: { fieldId: colId } } },
+                                        { internalValues: { none: { columnId: colId } } }
+                                    ] 
+                                },
+                                // Case 2: Relationship exists but value is empty string
+                                { values: { some: { fieldId: colId, value: "" } } },
+                                { internalValues: { some: { columnId: colId, value: "" } } }
                             ]
                         });
                     } else if (op === "is_not_empty") {
                         columnFilters.push({
                             OR: [
-                                { values: { some: { fieldId: colId } } },
-                                { internalValues: { some: { columnId: colId } } }
+                                { values: { some: { fieldId: colId, value: { not: "" } } } },
+                                { internalValues: { some: { columnId: colId, value: { not: "" } } } }
                             ]
                         });
                     } else {

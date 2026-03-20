@@ -870,11 +870,18 @@ export default function CRMSpreadsheetPage() {
                     throw new Error("Invalid response format");
                 }
                 toast.success("Sector Deployed", { id: "add-row" });
-                // Replace temp with real data
+                // Replace temp with real data and update internal values IDs
                 setData(prev => {
                     if (!prev || !prev.responses) return prev;
-                    const responses = prev.responses.map(r => r.id === tempId ? result.response : r);
-                    return { ...prev, responses };
+                    const realId = result.response.id;
+                    const responses = prev.responses.map(r => r.id === tempId ? { ...result.response, values: r.values || result.response.values || [] } : r);
+                    
+                    // CRITICAL: Update orphaned internal values
+                    const internalValues = (prev.internalValues || []).map(iv => 
+                        iv.responseId === tempId ? { ...iv, responseId: realId } : iv
+                    );
+
+                    return { ...prev, responses, internalValues };
                 });
             } else {
                 toast.error("Deployment failed", { id: "add-row" });
@@ -1462,28 +1469,24 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         let results = data.responses || [];
 
-        // 🔑 REAL CAUSE FIX: If server provided totalPages, it means the server already 
-        // handle search and filters. Redundant local filtering often fails due to 
-        // timezone/logic mismatches (e.g. "Today" filter being off by hours).
         const isServerFiltering = data.totalPages !== undefined;
-        if (isServerFiltering) {
-            // Trust server results, only apply search as a local refinement if results are small
-            return results;
-        }
 
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
-            const before = results.length;
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
                 (r.submittedBy || "").toLowerCase().includes(term) ||
                 (r.assignedTo || []).some(uid => uid.toLowerCase().includes(term)) ||
                 (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term))) ||
-                (data.internalValues && Array.isArray(data.internalValues) && data.internalValues.some(iv => iv.responseId === r.id && (iv.value || "").toLowerCase().includes(term)))
+                (data.internalValues && Array.isArray(data.internalValues) && data.internalValues.some(iv => iv.responseId === r.id && (iv.value || "").toLowerCase().includes(term))) ||
+                (r.remarks || []).some((rem: any) => (rem.remark || "").toLowerCase().includes(term) || (rem.followUpStatus || "").toLowerCase().includes(term))
             );
-            if (isServerFiltering && results.length < before) {
-               console.warn(`[FilterDebug] Local SEARCH filter dropped ${before - results.length} rows that server included! (Case mismatch or field sync issue)`);
-            }
+        }
+
+        // If server provided totalPages, it handles complex conditions/pagination logic.
+        // We only apply refined searching locally above.
+        if (isServerFiltering && conditions.length > 0) {
+            return results;
         }
 
         if (conditions.length > 0) {
