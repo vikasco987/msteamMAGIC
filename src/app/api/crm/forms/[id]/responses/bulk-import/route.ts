@@ -214,12 +214,26 @@ export async function POST(
                 }
 
                 // 3. Build Column Values
-                for (const headerKey in updateColumnMap) {
-                    if (importMode === 'update' && headerKey === matchExcelHeader) continue;
-                    const mapping = updateColumnMap[headerKey];
-                    if (!mapping || item.row[headerKey] === undefined) continue;
+                // Create a case-insensitive, trimmed lookup for row keys to prevent blank uploads due to Excel formatting
+                const rowKeyMap = new Map<string, string>();
+                Object.keys(item.row).forEach(k => rowKeyMap.set(k.trim().toLowerCase(), k));
 
-                    let valueToMap = item.row[headerKey]?.toString() || "";
+                for (const excelHeaderRaw in updateColumnMap) {
+                    if (importMode === 'update' && excelHeaderRaw === matchExcelHeader) continue;
+                    
+                    const mapping = updateColumnMap[excelHeaderRaw];
+                    if (!mapping) continue;
+
+                    // Support robust matching for headers with spaces/case differences
+                    const normalizedHeader = excelHeaderRaw.trim().toLowerCase();
+                    const actualKeyInRow = rowKeyMap.get(normalizedHeader) || excelHeaderRaw;
+                    
+                    if (item.row[actualKeyInRow] === undefined) {
+                        console.warn(`[BulkImport] Missing key "${actualKeyInRow}" in row ${item.rowIndex + 1}`);
+                        continue;
+                    }
+
+                    let valueToMap = item.row[actualKeyInRow]?.toString() || "";
                     const colIdToUpdate = mapping.id;
                     const isColInternal = mapping.isInternal;
 
@@ -261,7 +275,7 @@ export async function POST(
                                 if (!disableActivityLogs) {
                                     activitiesToCreate.push({
                                         responseId: item.responseId, userId: user.id, userName: userName,
-                                        type: "BULK_IMPORT_UPDATE", columnName: internalCol?.label || headerKey,
+                                        type: "BULK_IMPORT_UPDATE", columnName: internalCol?.label || excelHeaderRaw,
                                         oldValue: existing.value || "", newValue: valueToMap
                                     });
                                 }
@@ -283,7 +297,7 @@ export async function POST(
                                 if (!disableActivityLogs) {
                                     activitiesToCreate.push({
                                         responseId: item.responseId, userId: user.id, userName: userName,
-                                        type: "BULK_IMPORT_UPDATE", columnName: headerKey,
+                                        type: "BULK_IMPORT_UPDATE", columnName: excelHeaderRaw,
                                         oldValue: existing.value || "", newValue: valueToMap
                                     });
                                 }
