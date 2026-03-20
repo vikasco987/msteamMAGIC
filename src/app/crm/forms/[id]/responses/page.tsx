@@ -2292,11 +2292,11 @@ export default function CRMSpreadsheetPage() {
                         </button>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                                <h1 className={`text-lg font-black tracking-tight transition-colors duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{data?.form?.title || "Data Explorer"}</h1>
                                 {isUserInvolved && (
                                     <button
                                         onClick={togglePin}
-                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent')}`}
                                         title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
                                     >
                                         {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
@@ -2332,7 +2332,7 @@ export default function CRMSpreadsheetPage() {
                             <div className="flex items-center gap-4 mt-1.5">
                                 <button
                                     onClick={handleClearFilters}
-                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                 >
                                     Default Canvas
                                 </button>
@@ -2340,7 +2340,7 @@ export default function CRMSpreadsheetPage() {
                                     <button
                                         key={view.id}
                                         onClick={() => applySavedView(view)}
-                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                     >
                                         {view.name}
                                     </button>
@@ -2353,12 +2353,16 @@ export default function CRMSpreadsheetPage() {
                         {/* Integrated Search & Actions */}
                         <div className="flex flex-nowrap items-center gap-2 w-max shrink-0 pr-4">
                             <div className="relative group shrink-0">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
+                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500' : 'text-slate-400'} group-focus-within:text-indigo-500`} size={14} />
                                 <input
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search records..."
-                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[200px]"
+                                    className={`pl-9 pr-4 py-2 border rounded-lg outline-none text-xs font-bold transition-all min-w-[200px] ${
+                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-white/5 border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:ring-white/5'
+                                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-50/50 focus:border-indigo-500'
+                                    }`}
                                 />
                             </div>
 
@@ -2465,14 +2469,11 @@ export default function CRMSpreadsheetPage() {
                                 <Plus size={14} />
                                 Add Row
                             </button>
-
-                            <div className="w-[1px] h-8 bg-slate-200 mx-2" />
-
-                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
-                                <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                             <div className={`flex bg-slate-50 p-1 rounded-lg border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                                <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}>
                                     <Table size={16} />
                                 </button>
-                                <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}>
                                     <LayoutGrid size={16} />
                                 </button>
                             </div>
@@ -2484,10 +2485,10 @@ export default function CRMSpreadsheetPage() {
                                 <Plus size={14} /> Add Column
                             </button>
 
-                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                            <div className={`flex p-1 rounded-lg border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                                 <button
                                     onClick={() => setDensity("compact")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'compact' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'compact' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Compact View"
                                 >
                                     <Minimize2 size={16} />
@@ -2495,7 +2496,7 @@ export default function CRMSpreadsheetPage() {
                                 </button>
                                 <button
                                     onClick={() => setDensity("standard")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'standard' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'standard' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Standard View"
                                 >
                                     <Table size={16} />
@@ -2503,7 +2504,7 @@ export default function CRMSpreadsheetPage() {
                                 </button>
                                 <button
                                     onClick={() => setDensity("comfortable")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'comfortable' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'comfortable' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Comfortable View"
                                 >
                                     <Maximize2 size={16} />
@@ -2513,7 +2514,11 @@ export default function CRMSpreadsheetPage() {
 
                             <button
                                 onClick={() => setIsFullScreen(true)}
-                                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all active:scale-95"
+                                className={`p-2 rounded-lg transition-all active:scale-95 border ${
+                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                    ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                }`}
                                 title="Full Screen Mode"
                             >
                                 <Maximize2 size={16} />
@@ -2726,12 +2731,20 @@ export default function CRMSpreadsheetPage() {
                             </AnimatePresence>
                             <table
                                 style={{ minWidth: Math.max(totalTableWidth, 1200) }}
-                                className={`table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
+                                className={`matrix-table table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
                             >
                                 <thead className="sticky top-0 z-[40]">
                                     {/* Excel Column Labels Header with Group Indication */}
-                                    <tr className="bg-slate-50 divide-x divide-slate-100 h-9 transition-colors">
-                                        <th className={`sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0]`}>
+                                    <tr className={`divide-x h-9 transition-colors ${
+                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-slate-900/80 divide-white/5 border-b border-white/10'
+                                        : 'bg-slate-50 divide-slate-100 border-b border-slate-200'
+                                    }`}>
+                                        <th className={`sticky left-0 z-[45] text-[9px] font-black uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0] transition-colors ${
+                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-800 border-b border-white/10 text-slate-400 shadow-none'
+                                            : 'bg-slate-200 border-b border-slate-300 text-slate-500'
+                                        }`}>
                                             #
                                         </th>
                                         {getColumns.map((col, idx) => {
@@ -2743,7 +2756,11 @@ export default function CRMSpreadsheetPage() {
                                             return (
                                                 <th
                                                     key={`excel-label-${col.id}`}
-                                                    className={`${style.headerBg} border-b border-slate-200 text-[9px] font-black text-slate-400 uppercase p-0 h-9 text-center relative overflow-hidden`}
+                                                    className={`border-b text-[9px] font-black uppercase p-0 h-9 text-center relative overflow-hidden transition-colors ${
+                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                        ? 'bg-slate-900 border-white/10 text-slate-500'
+                                                        : `${style.headerBg} border-slate-200 text-slate-400`
+                                                    }`}
                                                     style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
                                                 >
                                                     <div className="flex flex-col items-center justify-center h-full">
@@ -2761,16 +2778,24 @@ export default function CRMSpreadsheetPage() {
                                             );
                                         })}
                                     </tr>
-                                    <tr className="bg-[#F9FAFB] border-b border-[#EAECF0] h-14">
-                                        <th className={`px-4 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] shadow-[1px_0_0_#EAECF0] ${isPureMaster ? 'w-[70px]' : 'w-[56px]'}`}>
+                                    <tr className={`h-14 transition-colors ${
+                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-slate-900 border-b border-white/10'
+                                        : 'bg-[#F9FAFB] border-b border-[#EAECF0]'
+                                    }`}>
+                                        <th className={`px-4 py-3 sticky left-0 z-[45] transition-colors ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} ${
+                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-900 border-b border-white/10 shadow-[1px_0_0_rgba(255,255,255,0.1)]'
+                                            : 'bg-[#F9FAFB] border-b border-[#EAECF0] shadow-[1px_0_0_#EAECF0]'
+                                        }`}>
                                             <div className="flex items-center justify-center gap-1.5">
                                                 <div
                                                     onClick={toggleAllRows}
-                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
+                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')}`}
                                                 >
                                                     {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
                                                 </div>
-                                                <span className="text-[9px] font-black text-slate-400">ID</span>
+                                                <span className={`text-[9px] font-black ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500' : 'text-slate-400'}`}>ID</span>
                                             </div>
                                         </th>
                                         {getColumns.map((col, cIdx) => {
@@ -3071,7 +3096,6 @@ export default function CRMSpreadsheetPage() {
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
                                                 transition={{ duration: 0 }}
-                                                onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
                                                 className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
@@ -3109,7 +3133,11 @@ export default function CRMSpreadsheetPage() {
                                                             {isPureMaster && (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                                    className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
+                                                                    className={`p-1 px-2 border rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105 ${
+                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                         ? 'text-rose-400 bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/60'
+                                                                         : 'text-rose-500 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                                                                     }`}
                                                                     title="Master Purge"
                                                                 >
                                                                     <Trash2 size={12} />
@@ -3141,12 +3169,20 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-4 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-4 py-2 border-b text-center transition-colors relative ${
+                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                     ? 'border-white/5 group-hover:bg-white/5' 
+                                                                     : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-center gap-1">
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
-                                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                                                                                                                                 className={`p-1.5 rounded-lg transition-all border border-transparent ${
+                                                                              ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                              ? 'text-slate-400 hover:text-indigo-400 hover:bg-white/5 hover:border-white/10'
+                                                                              : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'
+                                                                          }`}
                                                                     >
                                                                         <Maximize2 size={14} />
                                                                     </button>
@@ -3154,7 +3190,11 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="relative">
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
-                                                                            className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                                                                                                                                                         className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent ${
+                                                                                  res.rowColor 
+                                                                                  ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-amber-400 bg-amber-950/40 border-amber-500/30' : 'text-amber-600 bg-amber-50 border-amber-200')
+                                                                                  : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-amber-400 hover:bg-white/5 hover:border-white/10' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200')
+                                                                              }`}
                                                                         >
                                                                             <Palette size={14} />
                                                                         </button>
@@ -3204,14 +3244,18 @@ export default function CRMSpreadsheetPage() {
                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm border overflow-hidden ${
+                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                         ? 'bg-indigo-950 text-indigo-400 border-indigo-500/30'
+                                                                         : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                                                     }`}>
                                                                         {(() => {
                                                                             const m = teamMembers.find(t => t.clerkId === res.submittedBy);
                                                                             return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
                                                                     <div className="min-w-0">
-                                                                        <p className="text-[13px] font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">{res.submittedByName || "Guest User"}</p>
+                                                                        <p className={`text-[13px] font-black truncate uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
                                                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
                                                                     </div>
                                                                 </div>
@@ -3251,7 +3295,11 @@ export default function CRMSpreadsheetPage() {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
                                                                             const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
-                                                                                <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
+                                                                                <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className={`inline-flex h-7 w-7 rounded-full ring-2 items-center justify-center text-[10px] font-black shadow-sm border shrink-0 hover:z-10 duration-200 overflow-hidden ${
+                                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                     ? 'ring-slate-900 bg-indigo-950 text-indigo-400 border-indigo-500/30 hover:ring-indigo-500'
+                                                                                     : 'ring-white bg-indigo-50 text-indigo-700 border-indigo-100 hover:ring-indigo-500'
+                                                                                 }`}>
                                                                                     <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                                                 </div>
                                                                             );
@@ -3383,7 +3431,11 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {nextDate ? (
-                                                                    <span className="text-[10px] font-black uppercase text-amber-700 tracking-widest bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block shadow-sm">
+                                                                    <span className={`text-[10px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${
+                                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    }`}>
                                                                         {safeFormat(nextDate.toString(), "MMM dd")}
                                                                     </span>
                                                                 ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
@@ -3397,18 +3449,29 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                                className={`px-4 py-2 border-b transition-colors cursor-pointer relative text-center ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
                                                                 {latestStatus ? (
-                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${
-                                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm transition-all ${
+                                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                           ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                           ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-950/40 text-amber-400 border-amber-500/30' :
+                                                                           ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-950/40 text-blue-400 border-blue-500/30' :
+                                                                           'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                        : (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                           ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                           ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                           ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                           'bg-indigo-50 text-indigo-700 border-indigo-200')
                                                                     }`}>
                                                                         {latestStatus}
                                                                     </span>
@@ -3427,7 +3490,11 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors hover:bg-slate-50 relative text-center group/paymentcel ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
+                                                                className={`px-3 py-2 border-b transition-colors relative text-center group/paymentcel ${
+                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                     ? 'border-white/5 hover:bg-white/5'
+                                                                     : 'border-[#EAECF0] hover:bg-slate-50'
+                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ""}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
@@ -3439,7 +3506,11 @@ export default function CRMSpreadsheetPage() {
                                                                             e.stopPropagation();
                                                                             setIsPaymentHubOpen(true);
                                                                         }}
-                                                                        className="absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 bg-white hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-slate-300 hover:text-emerald-600 rounded transition-all shadow-sm"
+                                                                        className={`absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 border border-transparent rounded transition-all shadow-sm ${
+                                                                             ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                             ? 'bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white'
+                                                                             : 'bg-white hover:bg-emerald-50 hover:border-emerald-200 text-slate-300 hover:text-emerald-600'
+                                                                         }`}
                                                                         title="Open Full Payment Hub Dashboard"
                                                                     >
                                                                         <ExternalLink size={10} />
@@ -3455,7 +3526,11 @@ export default function CRMSpreadsheetPage() {
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <button className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
+                                                                    <button className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all border ${
+                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                         ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-emerald-500/50 hover:text-emerald-400'
+                                                                         : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'
+                                                                     }`}>
                                                                         <span>₹</span> Add
                                                                     </button>
                                                                 )}
@@ -3493,7 +3568,7 @@ export default function CRMSpreadsheetPage() {
                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                 ? 'border-white/5 group-hover:bg-white/5' 
                                                                 : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
-                                                            } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
+                                                            } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
                                                             {isEditing ? (
@@ -3501,7 +3576,7 @@ export default function CRMSpreadsheetPage() {
                                                                     {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
                                                                         <select 
                                                                             autoFocus 
-                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black text-indigo-700 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} 
+                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-700'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} 
                                                                             value={editValue} 
                                                                             onChange={(e) => { 
                                                                                 handleStatusCellUpdate(res.id, col.id, e.target.value, isInternal); 
@@ -3509,34 +3584,34 @@ export default function CRMSpreadsheetPage() {
                                                                             onBlur={() => setEditingCell(null)}
                                                                         >
                                                                             <option value="">Status...</option>
-                                                                            {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                            {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt} className="bg-white text-slate-900">{opt}</option>)}
                                                                         </select>
                                                                     ) : col.type === "dropdown" ? (
-                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
                                                                             {Array.isArray(col.options) && col.options.map((opt: any) => {
                                                                                 const label = typeof opt === 'string' ? opt : opt.label;
-                                                                                return <option key={label} value={label}>{label}</option>;
+                                                                                                                                                                 return <option key={label} value={label} className="bg-white text-slate-900">{label}</option>;
                                                                             })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
-                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
                                                                                 <option value="">Assigned To...</option>
                                                                                 {teamMembers
                                                                                     .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
                                                                                     .map(m => {
                                                                                         const name = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : m.email.split('@')[0];
-                                                                                        return <option key={m.clerkId} value={m.clerkId}>{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
+                                                                                                                                                                                 return <option key={m.clerkId} value={m.clerkId} className="bg-white text-slate-900">{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
                                                                                     })}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
-                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "number" || col.type === "currency" ? (
-                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "long_text" ? (
-                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none min-h-[60px] resize-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : (
-                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     )}
                                                                 </div>
                                                             ) : (
@@ -3544,35 +3619,51 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="flex items-center min-w-0 overflow-hidden">
                                                                         {col.type === "dropdown" && val ? (
                                                                             <div className="flex -space-x-1 group/badge shrink-0">
-                                                                                <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                                    val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-100'}`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
+                                                                                <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${
+                                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                    ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                       val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                       'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                    : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                       val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                       'bg-indigo-50 text-indigo-700 border-indigo-100')
+                                                                                }`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
                                                                                     {val}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "user" && val ? (
-                                                                            <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
-                                                                                <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase">
+                                                                            <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border shrink-0 transition-colors ${
+                                                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'bg-white/5 border-white/10'
+                                                                                : 'bg-slate-50 border-slate-200'
+                                                                            }`}>
+                                                                                <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase shadow-sm">
                                                                                     {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
                                                                                 </div>
-                                                                                <span className="text-[10px] font-black text-slate-600 truncate max-w-[80px]">
+                                                                                <span className={`text-[10px] font-black truncate max-w-[80px] ${
+                                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300' : 'text-slate-600'
+                                                                                }`}>
                                                                                     {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "date" && val ? (
-                                                                            <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-tighter bg-slate-100/50 px-2 py-1 rounded-md shrink-0">
+                                                                            <span className={`text-[11px] font-bold flex items-center gap-1.5 uppercase tracking-tighter px-2 py-1 rounded-md shrink-0 transition-colors ${
+                                                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'bg-white/5 text-slate-300'
+                                                                                : 'bg-slate-100/50 text-slate-600'
+                                                                            }`}>
                                                                                 <Calendar size={10} className="text-rose-400" />
                                                                                 {safeFormat(val, "MMM dd, yyyy")}
                                                                             </span>
                                                                         ) : col.type === "checkbox" ? (
                                                                             <div
                                                                                 onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
-                                                                                className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white border-slate-200'}`}
+                                                                                className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200')}`}
                                                                             >
                                                                                 {val === "true" && <Check size={12} className="text-white" />}
                                                                             </div>
                                                                         ) : col.type === "currency" && val ? (
-                                                                            <span className="text-[11px] font-black text-slate-900 flex items-center gap-0.5 shrink-0">
+                                                                            <span className={`text-[11px] font-black flex items-center gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>
                                                                                 <IndianRupee size={10} className="text-slate-400" />
                                                                                 {parseFloat(val).toLocaleString('en-IN')}
                                                                             </span>
@@ -3588,16 +3679,20 @@ export default function CRMSpreadsheetPage() {
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
+                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
                                                                                 {(() => {
                                                                                     if (!val) return "—";
                                                                                     // Apply premium styles for sync columns by label
                                                                                     if (col.label === "Recent Remark") {
-                                                                                        return <span className="text-indigo-600 font-bold">{val}</span>;
+                                                                                        return <span className={`font-bold transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-600'}`}>{val}</span>;
                                                                                     }
                                                                                     if (col.label === "Next Follow-up Date") {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-sm">
+                                                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg font-black text-[10px] uppercase tracking-widest shadow-sm transition-all ${
+                                                                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                                ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                                            }`}>
                                                                                                 <Calendar size={10} />
                                                                                                 {safeFormat(val, "dd MMM")}
                                                                                             </span>
@@ -3605,10 +3700,15 @@ export default function CRMSpreadsheetPage() {
                                                                                     }
                                                                                     if (col.label === "Follow-up Status") {
                                                                                         return (
-                                                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border shadow-sm ${val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                                                val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                                                                }`}>
+                                                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border shadow-sm transition-all ${
+                                                                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                                ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                                   val === 'Missed' ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                                   'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                                : (val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                                                   val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                                   'bg-indigo-50 text-indigo-700 border-indigo-200')
+                                                                                            }`}>
                                                                                                 {val}
                                                                                             </span>
                                                                                         );
@@ -3639,9 +3739,13 @@ export default function CRMSpreadsheetPage() {
                             </table>
 
                             {/* Pagination Controls */}
-                            <div className="px-6 py-4 bg-white border-t border-[#EAECF0] flex items-center justify-between sticky left-0 w-full">
+                            <div className={`px-6 py-4 flex items-center justify-between sticky left-0 w-full transition-colors border-t duration-500 ${
+                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                ? 'bg-slate-900/90 border-white/10 backdrop-blur-md'
+                                : 'bg-white border-[#EAECF0]'
+                            }`}>
                                 <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 border-r pr-4 border-slate-200">
+                                    <div className={`flex items-center gap-2 border-r pr-4 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'border-white/10' : 'border-slate-200'}`}>
                                         <span className="text-[10px] font-black uppercase text-slate-400">Rows per page:</span>
                                         <select
                                             value={rowsPerPage}
@@ -3650,24 +3754,32 @@ export default function CRMSpreadsheetPage() {
                                                 setRowsPerPage(newLimit); 
                                                 setCurrentPage(1); 
                                             }}
-                                            className="bg-slate-50 border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0"
+                                            className={`border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0 transition-colors ${
+                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                ? 'bg-white/5 text-white'
+                                                : 'bg-slate-50 text-slate-900'
+                                            }`}
                                         >
                                             {[10, 25, 50, 100, 200, 500].map(v => (
-                                                <option key={v} value={v}>
+                                                <option key={v} value={v} className="text-slate-900">
                                                     {v} Rows
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="text-sm text-[#475467]">
-                                        Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{data?.filteredCount || filteredResponses.length}</span> responses
+                                    <div className={`text-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400' : 'text-[#475467]'}`}>
+                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount || filteredResponses.length}</span> responses
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                         disabled={currentPage === 1}
-                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                        className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${
+                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                            : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                        }`}
                                     >
                                         <ChevronLeft size={16} /> Previous
                                     </button>
@@ -3686,7 +3798,11 @@ export default function CRMSpreadsheetPage() {
                                                 <button
                                                     key={pageNum}
                                                     onClick={() => setCurrentPage(pageNum)}
-                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === pageNum ? 'bg-[#F9F5FF] text-[#7F56D9] border border-[#7F56D9]' : 'text-[#667085] hover:bg-[#F9FAFB]'}`}
+                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${
+                                                        currentPage === pageNum 
+                                                        ? 'bg-indigo-600 text-white shadow-lg border-indigo-600' 
+                                                        : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:bg-white/10' : 'text-[#667085] hover:bg-[#F9FAFB]')
+                                                    }`}
                                                 >
                                                     {pageNum}
                                                 </button>
@@ -3697,7 +3813,11 @@ export default function CRMSpreadsheetPage() {
                                     <button
                                         onClick={() => setCurrentPage(prev => Math.min(data?.totalPages || 1, prev + 1))}
                                         disabled={currentPage === (data?.totalPages || 1)}
-                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                        className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${
+                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                            : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                        }`}
                                     >
                                         Next <ChevronRight size={16} />
                                     </button>
@@ -5130,11 +5250,27 @@ export default function CRMSpreadsheetPage() {
                 tr[data-row-color="#eff6ff"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(239, 246, 255, 0.1)' : '#eff6ff'} !important; }
                 tr[data-row-color="#fdf2f8"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(253, 242, 248, 0.1)' : '#fdf2f8'} !important; }
                 
-                /* Responsive Table text color */
+                /* Theme-Aware Table Overrides for Ultimate Matrix Feel */
                 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? `
-                    .table-fixed td, .table-fixed th { color: #f1f5f9 !important; }
-                    .table-fixed input, .table-fixed select, .table-fixed textarea { color: #fff !important; }
-                    .table-fixed span, .table-fixed p { color: inherit !important; }
+                    .matrix-table { border-collapse: separate; border-spacing: 0; }
+                    .matrix-table td, .matrix-table th { 
+                        color: #f1f5f9 !important; 
+                        border-color: rgba(255, 255, 255, 0.08) !important;
+                        background: transparent;
+                    }
+                    .matrix-table input, .matrix-table select, .matrix-table textarea { 
+                        color: #fff !important; 
+                        background: transparent !important;
+                        border: none !important;
+                    }
+                    .matrix-table span, .matrix-table p { color: inherit !important; }
+                    .matrix-table .sticky { 
+                        background-color: rgba(15, 23, 42, 0.95) !important; 
+                        backdrop-filter: blur(8px);
+                    }
+                    .matrix-table tr:hover td { 
+                        background-color: rgba(255, 255, 255, 0.03) !important; 
+                    }
                 ` : ''}
             ` }} />
             {
