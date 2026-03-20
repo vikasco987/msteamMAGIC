@@ -210,12 +210,13 @@ export async function GET(
                             ] 
                         });
                     } else {
-                        // Regular user filter: Matches if user is in Assigned, Visible, OR is Submitter
+                        // Regular user filter: Matches ID in assignedTo OR ID/Name in submittedBy/submittedByName
                         columnFilters.push({
                             OR: [
                                 { assignedTo: { has: val } },
                                 { visibleToUsers: { has: val } },
-                                { submittedBy: val }
+                                { submittedBy: val },
+                                { submittedByName: { contains: val, mode: 'insensitive' } } // Fallback for name-based matching
                             ]
                         });
                     }

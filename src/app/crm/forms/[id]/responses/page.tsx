@@ -2888,7 +2888,7 @@ export default function CRMSpreadsheetPage() {
                                 style={{ minWidth: Math.max(totalTableWidth, 1200) }}
                                 className={`matrix-table table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
                             >
-                                <thead className="sticky top-0 z-[40]">
+                                <thead className="sticky top-0 z-[50]">
                                     {/* Excel Column Labels Header with Group Indication */}
                                     <tr className={`divide-x h-9 transition-colors ${
                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
@@ -2976,7 +2976,7 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${style.bg} ${style.text}`}
+                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${ activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20') } ${style.bg} ${style.text}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
