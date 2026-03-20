@@ -1349,6 +1349,15 @@ export default function CRMSpreadsheetPage() {
             return assignedUsers.map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
         }
 
+        // 🟢 FOLLOW-UP BOARD SYSTEM COLUMNS
+        const remarks = (resp as any).remarks || [];
+        const latestRemark = remarks[0];
+        if (colId === "__nextFollowUpDate") return latestRemark?.nextFollowUpDate || "";
+        if (colId === "__followUpStatus") return latestRemark?.followUpStatus || "";
+        if (colId === "__recentRemark") return latestRemark?.remark || "";
+        if (colId === "__followup") return latestRemark?.remark || ""; // Fallback for general follow-up col
+
+
         if (isInternal) {
             return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
         }
@@ -2976,7 +2985,7 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
 
                                                         {col.id !== "__profile" && (
-                                                            <div className="flex items-center gap-0.5 isolate shrink-0 relative">
+                                                            <div className="flex items-center gap-0.5 shrink-0 relative">
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();

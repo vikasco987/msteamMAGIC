@@ -265,6 +265,15 @@ export async function GET(
                         const c = getPrismaOp(op, val, val2);
                         columnFilters.push({ remarks: { some: { remark: c } } });
                     }
+                } else if (colId === "__followup") {
+                    if (op === "is_empty") {
+                        columnFilters.push({ remarks: { none: {} } });
+                    } else if (op === "is_not_empty") {
+                        columnFilters.push({ remarks: { some: {} } });
+                    } else {
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({ remarks: { some: { remark: c } } });
+                    }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
                         columnFilters.push({
@@ -307,7 +316,9 @@ export async function GET(
                     OR: [
                         { submittedByName: { contains: search, mode: 'insensitive' } },
                         { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
-                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                        { remarks: { some: { remark: { contains: search, mode: 'insensitive' } } } },
+                        { remarks: { some: { followUpStatus: { contains: search, mode: 'insensitive' } } } }
                     ]
                 }] : []),
                 ...(conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }])
