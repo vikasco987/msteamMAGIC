@@ -194,20 +194,29 @@ export async function GET(
                     const c = getPrismaOp(op, val, val2);
                     columnFilters.push({ submittedByName: c });
                 } else if (colId === "__assigned") {
-                    if (op === "is_empty") {
-                        columnFilters.push({ AND: [{ assignedTo: { equals: [] } }, { submittedBy: null }] });
+                    if (op === "is_empty" || (op === "equals" && !val)) {
+                        columnFilters.push({ 
+                            AND: [
+                                { assignedTo: { equals: [] } },
+                                { submittedBy: null }
+                            ] 
+                        });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { submittedBy: null } }] });
+                        columnFilters.push({ 
+                            OR: [
+                                { NOT: { assignedTo: { equals: [] } } },
+                                { NOT: { submittedBy: null } }
+                            ] 
+                        });
                     } else {
-                        const f = {
+                        // Regular user filter
+                        columnFilters.push({
                             OR: [
                                 { assignedTo: { has: val } },
                                 { visibleToUsers: { has: val } },
-                                { AND: [{ assignedTo: { equals: [] } }, { submittedBy: val }] }
+                                { submittedBy: val }
                             ]
-                        };
-                        console.log(`[BackendFilterDebug] colId:__assigned val:${val} filter:`, JSON.stringify(f, null, 2));
-                        columnFilters.push(f);
+                        });
                     }
                 } else if (colId === "__nextFollowUpDate") {
                     if (op === "is_empty") {
