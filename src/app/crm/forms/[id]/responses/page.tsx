@@ -5,6 +5,7 @@ import {
     Database,
     UploadCloud,
     ArrowLeft,
+    ArrowRight,
     Download,
     ChevronLeft,
     ChevronRight,
@@ -3291,7 +3292,12 @@ if (displayValues.length === 0) {
                                                             </button>
                                                             {isPureMaster && (
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
+                                                                    onClick={(e) => { 
+                                                                        e.stopPropagation(); 
+                                                                        if(window.confirm("Are you sure you want to delete this response? This action cannot be undone.")) {
+                                                                            handleDeleteRow(res.id); 
+                                                                        }
+                                                                    }}
                                                                     className={`p-1 px-2 border rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105 ${
                                                                          ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                          ? 'text-rose-400 bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/60'
