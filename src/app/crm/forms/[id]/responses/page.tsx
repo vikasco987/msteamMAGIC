@@ -2248,6 +2248,44 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleRemoveFormAccess = async (targetUserId: string | null, targetRole: string | null) => {
+        if (!isMaster && !isPureMaster) {
+            toast.error("Security: Access restricted to Master");
+            return;
+        }
+
+        const currentUsers = data?.form?.visibleToUsers || [];
+        const currentRoles = data?.form?.visibleToRoles || [];
+
+        let newUsers = [...currentUsers];
+        let newRoles = [...currentRoles];
+
+        if (targetUserId) {
+            newUsers = newUsers.filter(uid => uid !== targetUserId);
+        }
+        if (targetRole) {
+            newRoles = newRoles.filter(r => r.toUpperCase() !== targetRole.toUpperCase());
+        }
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    type: "FORM", 
+                    visibleToUsers: newUsers, 
+                    visibleToRoles: newRoles 
+                })
+            });
+            if (res.ok) {
+                toast.success("Security protocols updated");
+                fetchData();
+            }
+        } catch (err) {
+            toast.error("Failed to update access");
+        }
+    };
+
     const toggleRowSelection = (id: string) => {
         setSelectedRows(prev => prev.includes(id) ? prev.filter(rid => rid !== id) : [...prev, id]);
     };
@@ -2844,6 +2882,24 @@ export default function CRMSpreadsheetPage() {
                                                     </div>
                                                     <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m.email || 'No email'}</p>
                                                 </div>
+                                                {(isMaster || isPureMaster) && (
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (window.confirm(`Are you sure you want to remove access for ${m.firstName || m.email}?`)) {
+                                                                const isExplicit = explicitUsers.some((eu: any) => eu.clerkId === m.clerkId);
+                                                                const roleMatch = m.role && visibleRoles.includes(m.role.toUpperCase()) ? m.role.toUpperCase() : null;
+                                                                
+                                                                if (isExplicit) handleRemoveFormAccess(m.clerkId, null);
+                                                                else if (roleMatch) handleRemoveFormAccess(null, roleMatch);
+                                                            }
+                                                        }}
+                                                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                                                        title="Revoke Access"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
                                             </div>
                                         )
                                     })}
