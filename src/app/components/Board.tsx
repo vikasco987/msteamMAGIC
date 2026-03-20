@@ -209,10 +209,14 @@ export default function Board() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error("Update failed");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Update failed");
+      }
       toast.success(`Task moved to ${newStatus}`);
-    } catch (err) {
-      toast.error("Failed to update task. Reverting...");
+    } catch (err: any) {
+      console.error("onDragEnd Error:", err);
+      toast.error(err.message || "Failed to update task. Reverting...");
       fetchTasks(false);
     } finally {
       // Small delay before clearing pending status to allow server state to propagate to GET requests

@@ -1054,9 +1054,11 @@ export async function GET(req: NextRequest) {
         : {
           OR: [
             { createdByClerkId: userId },
+            { assigneeId: userId },
             { assigneeIds: { has: userId } },
             ...(isTL && teamMemberIds.length > 0 ? [
               { createdByClerkId: { in: teamMemberIds } },
+              { assigneeId: { in: teamMemberIds } },
               { assigneeIds: { hasSome: teamMemberIds } }
             ] : [])
           ],

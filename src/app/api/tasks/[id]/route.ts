@@ -78,10 +78,14 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const isTL = dbUser?.isTeamLeader || false;
 
     // 🚀 Robust Ownership/Involvement Detection
+    const userEmails = user?.emailAddresses?.map(e => e.emailAddress) || [];
     const isSelfInvolved = userId === currentTask.createdByClerkId || 
                            userId === currentTask.assigneeId || 
                            (currentTask.assigneeIds as string[] || []).includes(userId) ||
-                           userId === (currentTask as any).assignerId;
+                           userId === (currentTask as any).assignerId ||
+                           userEmails.includes(currentTask.createdByEmail!) ||
+                           userEmails.includes(currentTask.assigneeEmail!) ||
+                           userEmails.includes((currentTask as any).assignerEmail);
 
     // 🏆 Team Leader Logic: If TL, check if any involved user is in their team
     let isTeamInvolved = false;
@@ -91,10 +95,18 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       if (currentTask.assigneeId) taskInvolvedIds.add(currentTask.assigneeId);
       (currentTask.assigneeIds as string[] || []).forEach(id => taskInvolvedIds.add(id));
       
-      if (taskInvolvedIds.size > 0) {
+      const taskInvolvedEmails = new Set<string>();
+      if (currentTask.createdByEmail) taskInvolvedEmails.add(currentTask.createdByEmail);
+      if (currentTask.assigneeEmail) taskInvolvedEmails.add(currentTask.assigneeEmail);
+      if ((currentTask as any).assignerEmail) taskInvolvedEmails.add((currentTask as any).assignerEmail);
+
+      if (taskInvolvedIds.size > 0 || taskInvolvedEmails.size > 0) {
         const teamInvolvedMembers = await prisma.user.findMany({
           where: {
-            clerkId: { in: Array.from(taskInvolvedIds) },
+            OR: [
+              { clerkId: { in: Array.from(taskInvolvedIds) } },
+              { email: { in: Array.from(taskInvolvedEmails) } }
+            ],
             leaderId: userId
           },
           select: { clerkId: true }
@@ -105,7 +117,10 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     // 🛡️ Global Security: If non-power user is NOT involved AND NOT a TL for this task, block all updates
     if (!isPowerUser && !isSelfInvolved && !isTeamInvolved) {
-      return NextResponse.json({ error: "Access denied. You are not involved in this task." }, { status: 403 });
+      return NextResponse.json({ 
+        error: "Access denied. You are not involved in this task.",
+        details: `Your ID: ${userId}, Role: ${userRole}, Involved: ${isSelfInvolved}, TL: ${isTL}`
+      }, { status: 403 });
     }
 
     const allowedFields = [
