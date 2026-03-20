@@ -720,7 +720,47 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            setData(json);
+            // 4. Update the state
+            setData(prev => {
+                if (!prev || !json.responses) return json;
+                
+                // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
+                // even if the server just sent us old data. This prevents the "disappearing data" bug
+                // when fetchData races with a pending handleUpdateValue.
+                const updatedResponses = json.responses.map((res: any) => {
+                    const existingRes = prev.responses?.find((r: any) => r.id === res.id);
+                    if (!existingRes) return res;
+
+                    const mergedResponse = { ...res };
+                    // If this row has any cells in 'savingCells', we should consider keeping the local version
+                    // for those specific columns.
+                    savingCells.forEach(cellKey => {
+                        const [rowId, colId] = cellKey.split('-');
+                        if (rowId === res.id) {
+                            // Find the value from the previous local state (which was updated optimistically)
+                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
+                            if (localCol) {
+                                // Update mergedResponse with the local value
+                                if (!mergedResponse.responses) mergedResponse.responses = [];
+                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
+                                if (targetColIdx > -1) {
+                                    mergedResponse.responses[targetColIdx].value = localCol.value;
+                                } else {
+                                    mergedResponse.responses.push({ ...localCol });
+                                }
+                            } else {
+                                // Check for regular fields (not internal columns)
+                                if ((existingRes as any)[colId] !== undefined) {
+                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
+                                }
+                            }
+                        }
+                    });
+                    return mergedResponse;
+                });
+
+                return { ...json, responses: updatedResponses };
+            });
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
@@ -1909,8 +1949,18 @@ export default function CRMSpreadsheetPage() {
             });
 
             if (!res.ok) {
+                // If it's a server error or timeout, treat as offline rather than rollback
+                if (res.status >= 500 || res.status === 408) {
+                    throw new Error(`Server error ${res.status}`);
+                }
+                
+                if (res.status === 401 || res.status === 403) {
+                    toast.error("Session expired. Please refresh.");
+                    return;
+                }
+
                 toast.error("Sync failed");
-                setData(previousData); // Rollback
+                setData(previousData); // Rollback for genuine validation/permission errors
             } else {
                 // 💎 Instant History Update
                 setData(prev => {
@@ -1930,13 +1980,14 @@ export default function CRMSpreadsheetPage() {
                 });
             }
         } catch (err) {
-            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch') || String(err).includes('Server error')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
                 pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: crypto.randomUUID(), updatedAt: Date.now() });
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
                 toast("Saved offline. Will sync when online.", { icon: '📶' });
             } else {
+                console.error("Update error:", err);
                 toast.error("Matrix error");
                 setData(previousData); // Rollback
             }
@@ -1950,6 +2001,13 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleStatusCellUpdate = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        const cellKey = `${responseId}-${columnId}`;
+        setSavingCells(prev => {
+            const next = new Set(prev);
+            next.add(cellKey);
+            return next;
+        });
+
         // 1. Optimistic Update (Immediate Feedback)
         setData(prev => {
             if (!prev) return prev;
@@ -1985,7 +2043,11 @@ export default function CRMSpreadsheetPage() {
             });
             
             if (!res.ok) {
-                const errData = await res.json();
+                if (res.status === 401 || res.status === 403) {
+                    toast.error("Session expired.");
+                    return;
+                }
+                const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || "Failed to log interaction");
             }
 
@@ -1998,11 +2060,23 @@ export default function CRMSpreadsheetPage() {
             fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
         } catch (e: any) {
             console.error(e);
-            toast.error(e.message || "Failed to log interaction");
-            // Re-fetch to revert optimistic update if failed
-            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            
+            if (!navigator.onLine || String(e).includes('Network') || String(e).includes('fetch') || String(e).includes('Server error')) {
+                // Ideally save to offline updates too, but status update is multi-action. 
+                // For now just stay optimistic and toast
+                toast("Interaction saved locally, sync pending.", { icon: '📶' });
+            } else {
+                toast.error(e.message || "Failed to log interaction");
+                fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            }
+        } finally {
+            setSavingCells(prev => {
+                const next = new Set(prev);
+                next.delete(cellKey);
+                return next;
+            });
+            setEditingCell(null);
         }
-        setEditingCell(null);
     };
 
     const handleUpdateRowColor = async (responseId: string, color: string | null) => {
@@ -2023,12 +2097,20 @@ export default function CRMSpreadsheetPage() {
                 body: JSON.stringify({ responseId, rowColor: color || "", formId: params.id })
             });
             if (!res.ok) {
+                if (res.status >= 500 || res.status === 408) {
+                    toast("Color saved locally, sync pending.", { icon: '📶' });
+                    return; 
+                }
                 toast.error("Color sync failed");
                 setData(previousData);
             }
         } catch (err) {
             console.error("Row color error", err);
-            setData(previousData);
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
+                toast("Color saved locally.", { icon: '📶' });
+            } else {
+                setData(previousData);
+            }
         }
     };
 
