@@ -2972,52 +2972,62 @@ export default function CRMSpreadsheetPage() {
                                                                     <Filter size={10} />
                                                                 </button>
                                                                 {activeColumnFilter === col.id && (
-                                                                    <div
-                                                                        className="ignore-click-outside absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
+<div
+                                                                        className={`ignore-click-outside absolute top-full right-0 mt-1 shadow-2xl rounded-xl py-0 min-w-[220px] max-w-[300px] z-[9999] max-h-80 flex flex-col font-sans border backdrop-blur-3xl ${
+                                                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? 'bg-slate-900/95 border-white/10 text-white'
+                                                                            : 'bg-white border-slate-200 text-slate-900'
+                                                                        }`}
                                                                         onClick={(e) => e.stopPropagation()}
                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                     >
-                                                                        <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
-                                                                            <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest">{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
-                                                                            <button onClick={() => setActiveColumnFilter(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors">
+                                                                        <div className={`px-4 py-2.5 border-b flex items-center justify-between shrink-0 ${
+                                                                             ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50/50 border-slate-100'
+                                                                        }`}>
+                                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-800'}`}>{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
+                                                                            <button onClick={() => setActiveColumnFilter(null)} className={`p-1 rounded-lg transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200'}`}>
                                                                                 <X size={10} />
                                                                             </button>
                                                                         </div>
-                                                                        <div className="px-3 py-2 border-b border-slate-100 bg-white sticky top-0 z-10">
+                                                                        <div className={`px-4 py-2.5 border-b sticky top-0 z-10 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900/50 border-white/10' : 'bg-white border-slate-100'}`}>
                                                                             <div className="relative">
-                                                                                <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={10} />
+                                                                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={10} />
                                                                                 <input
                                                                                     autoFocus
                                                                                     placeholder="Find value..."
                                                                                     value={activeColumnFilterSearch}
                                                                                     onChange={(e) => setActiveColumnFilterSearch(e.target.value)}
-                                                                                    className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-100 rounded text-[10px] font-bold outline-none focus:bg-white focus:border-indigo-300 transition-all"
+                                                                                    className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-[10px] font-bold outline-none transition-all border ${
+                                                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                        ? 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-indigo-500'
+                                                                                        : 'bg-slate-100/50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-300 shadow-inner'
+                                                                                    }`}
                                                                                 />
                                                                             </div>
                                                                         </div>
                                                                         <div className="overflow-y-auto custom-scrollbar flex-1 py-1">
                                                                             {col.type === "date" && (
-                                                                                <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-3 shrink-0">
+                                                                                <div className={`p-3 rounded-lg border m-1 space-y-3 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
                                                                                     <div className="grid grid-cols-2 gap-2">
-                                                                                        <button
-                                                                                            onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'today', val: '' }])}
-                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'today') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                                                                                        >
-                                                                                            Today
-                                                                                        </button>
-                                                                                        <button
-                                                                                            onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'this_week', val: '' }])}
-                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'this_week') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
-                                                                                        >
-                                                                                            This Week
-                                                                                        </button>
+<button
+                                                                                             onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'today', val: '' }])}
+                                                                                             className={`py-2 rounded-lg text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'today') ? 'bg-indigo-600 text-white shadow-lg' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100')}`}
+                                                                                         >
+                                                                                             Today
+                                                                                         </button>
+                                                                                         <button
+                                                                                             onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'this_week', val: '' }])}
+                                                                                             className={`py-2 rounded-lg text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'this_week') ? 'bg-indigo-600 text-white shadow-lg' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100')}`}
+                                                                                         >
+                                                                                             This Week
+                                                                                         </button>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Specific Date</span>
+                                                                                        <span className={`text-[9px] font-black uppercase tracking-widest mb-1.5 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>Specific Date</span>
                                                                                         <div className="flex gap-2">
                                                                                             <input
                                                                                                 type="date"
-                                                                                                className="flex-1 text-[10px] font-bold text-slate-600 p-1.5 bg-white border border-slate-200 rounded outline-none focus:border-indigo-500"
+                                                                                                className={`flex-1 text-[10px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 focus:border-indigo-500 shadow-sm'}`}
                                                                                                 onChange={(e) => {
                                                                                                     const val = e.target.value;
                                                                                                     if (val) {
@@ -3031,16 +3041,16 @@ export default function CRMSpreadsheetPage() {
                                                                                     </div>
                                                                                     <div className="grid grid-cols-2 gap-2">
                                                                                         <div>
-                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">After</span>
-                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className={`text-[8px] font-black uppercase tracking-widest mb-1 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>After</span>
+                                                                                            <input type="date" className={`w-full text-[9px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 shadow-sm'}`} onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'after'), { colId: col.id, op: 'after', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'after')));
                                                                                             }} />
                                                                                         </div>
                                                                                         <div>
-                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Before</span>
-                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className={`text-[8px] font-black uppercase tracking-widest mb-1 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>Before</span>
+                                                                                            <input type="date" className={`w-full text-[9px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 shadow-sm'}`} onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'before'), { colId: col.id, op: 'before', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'before')));
@@ -3051,33 +3061,28 @@ export default function CRMSpreadsheetPage() {
                                                                             )}
 
                                                                             {/* Universal Quick Filters: Is Empty / Is Not Empty */}
-                                                                            <div className="px-1 py-1 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-0.5 shrink-0">
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_empty');
-                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_empty')));
-                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_empty', val: '' }]);
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
-                                                                                >
-                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
-                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_empty') && <Check size={8} className="text-white" />}
-                                                                                    </div>
-                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'text-white' : 'text-slate-600'}`}>Is Empty</span>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_not_empty');
-                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_not_empty')));
-                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_not_empty', val: '' }]);
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
-                                                                                >
-                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
-                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') && <Check size={8} className="text-white" />}
-                                                                                    </div>
-                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'text-white' : 'text-slate-600'}`}>Is Not Empty</span>
-                                                                                </button>
+<div className={`px-1 py-1.5 border-b flex flex-col gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50/50 border-slate-100'}`}>
+                                                                                {[
+                                                                                    { op: 'is_empty', label: 'Is Empty' },
+                                                                                    { op: 'is_not_empty', label: 'Is Not Empty' }
+                                                                                ].map(({ op, label }) => {
+                                                                                    const isSelected = conditions.some(c => c.colId === col.id && c.op === op);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={op}
+                                                                                            onClick={() => {
+                                                                                                if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === op)));
+                                                                                                else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op, val: '' }]);
+                                                                                            }}
+                                                                                            className={`w-full text-left px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-600')}`}
+                                                                                        >
+                                                                                            <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${isSelected ? 'bg-white/20 border-white/40' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 border-white/10' : 'bg-slate-200 border-slate-300')}`}>
+                                                                                                {isSelected && <Check size={8} className="text-white" />}
+                                                                                            </div>
+                                                                                            <span className={`text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-white' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-600')}`}>{label}</span>
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
                                                                             </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
@@ -3141,8 +3146,8 @@ export default function CRMSpreadsheetPage() {
                                                                                     )
                                                                                     : availableValues;
 
-                                                                                if (displayValues.length === 0) {
-                                                                                    return <div className="px-3 py-4 text-center text-xs text-slate-400">{activeColumnFilterSearch ? `No match for "${activeColumnFilterSearch}"` : 'No data found'}</div>;
+if (displayValues.length === 0) {
+                                                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>{activeColumnFilterSearch ? `No match found` : 'No data to filter'}</div>;
                                                                                 }
 
                                                                                 return displayValues.map(opt => {
@@ -3159,12 +3164,12 @@ export default function CRMSpreadsheetPage() {
                                                                                                     setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
                                                                                                 }
                                                                                             }}
-                                                                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 group/btn"
+                                                                                            className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 group/btn transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}
                                                                                         >
-                                                                                            <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-100 border-slate-300 group-hover/btn:border-indigo-400'}`}>
+                                                                                            <div className={`w-3.5 h-3.5 shrink-0 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/20' : 'bg-slate-100 border-slate-300 group-hover/btn:border-indigo-400')}`}>
                                                                                                 {isSelected && <Check size={8} className="text-white relative top-[0.5px]" strokeWidth={3} />}
                                                                                             </div>
-                                                                                            <span className={`text-[11px] truncate tracking-normal normal-case transition-colors ${isSelected ? 'font-black text-slate-900' : 'font-bold text-slate-600'}`} title={opt.label}>
+                                                                                            <span className={`text-[11px] truncate tracking-normal normal-case transition-colors ${isSelected ? 'font-black text-indigo-500' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'font-bold text-slate-300 group-hover/btn:text-white' : 'font-bold text-slate-600')}`} title={opt.label}>
                                                                                                 {opt.label}
                                                                                             </span>
                                                                                         </button>
@@ -3173,12 +3178,14 @@ export default function CRMSpreadsheetPage() {
                                                                             })()}
                                                                         </div>
                                                                         {conditions.some(c => c.colId === col.id) && (
-                                                                            <div className="p-2 border-t border-slate-100 bg-slate-50 shrink-0">
+                                                                            <div className={`p-3 border-t shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
                                                                                 <button
-                                                                                    onClick={() => {
-                                                                                        setConditions(prev => prev.filter(c => c.colId !== col.id));
-                                                                                    }}
-                                                                                    className="w-full text-center py-1 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 rounded text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                                                                    onClick={() => setConditions(prev => prev.filter(c => c.colId !== col.id))}
+                                                                                    className={`w-full text-center py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border shadow-sm ${
+                                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                         ? 'bg-rose-950/40 border-rose-500/30 text-rose-400 hover:bg-rose-900/60'
+                                                                                         : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                                                                                    }`}
                                                                                 >
                                                                                     Clear Filter
                                                                                 </button>
