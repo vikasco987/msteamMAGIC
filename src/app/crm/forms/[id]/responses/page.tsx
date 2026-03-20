@@ -1412,8 +1412,18 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         let results = data.responses || [];
 
+        // 🔑 REAL CAUSE FIX: If server provided totalPages, it means the server already 
+        // handle search and filters. Redundant local filtering often fails due to 
+        // timezone/logic mismatches (e.g. "Today" filter being off by hours).
+        const isServerFiltering = data.totalPages !== undefined;
+        if (isServerFiltering) {
+            // Trust server results, only apply search as a local refinement if results are small
+            return results;
+        }
+
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
+            const before = results.length;
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
                 (r.submittedBy || "").toLowerCase().includes(term) ||
@@ -1421,9 +1431,13 @@ export default function CRMSpreadsheetPage() {
                 (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term))) ||
                 (data.internalValues && Array.isArray(data.internalValues) && data.internalValues.some(iv => iv.responseId === r.id && (iv.value || "").toLowerCase().includes(term)))
             );
+            if (isServerFiltering && results.length < before) {
+               console.warn(`[FilterDebug] Local SEARCH filter dropped ${before - results.length} rows that server included! (Case mismatch or field sync issue)`);
+            }
         }
 
         if (conditions.length > 0) {
+            const before = results.length;
             results = results.filter(r => {
                 // Group conditions by column ID so multiple selections on the same column work as OR
                 const groupedConditions = conditions.reduce((acc, cond) => {
@@ -1522,6 +1536,9 @@ export default function CRMSpreadsheetPage() {
                 if (filterConjunction === "AND") return groupMatches.every(m => m);
                 return groupMatches.some(m => m);
             });
+            if (isServerFiltering && results.length < before) {
+               console.warn(`[FilterDebug] Local CONDITION filter dropped ${before - results.length} rows that server included! (Date/Timezone mismatch or logic difference)`);
+            }
         }
         return results;
     }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
@@ -1884,6 +1901,23 @@ export default function CRMSpreadsheetPage() {
             if (!res.ok) {
                 toast.error("Sync failed");
                 setData(previousData); // Rollback
+            } else {
+                // 💎 Instant History Update
+                setData(prev => {
+                    if (!prev) return prev;
+                    const col = getColumns.find(c => c.id === columnId);
+                    const newActivity: FormActivity = {
+                        id: crypto.randomUUID(),
+                        responseId,
+                        userName: "You",
+                        type: "CELL_UPDATE",
+                        columnName: col?.label || "Field",
+                        oldValue: currentVal || "",
+                        newValue: value,
+                        createdAt: new Date().toISOString()
+                    };
+                    return { ...prev, activities: [newActivity, ...(prev.activities || [])] };
+                });
             }
         } catch (err) {
             if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
@@ -3245,9 +3279,16 @@ if (displayValues.length === 0) {
                                                             {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
                                                         </div>
                                                         <div className="flex flex-col items-center">
-                                                            <span className="text-[10px] font-black text-slate-400">
+                                                            <span className="text-[9px] font-black text-slate-400">
                                                                 {((currentPage - 1) * rowsPerPage) + rIdx + 1}
                                                             </span>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); }}
+                                                                className={`p-1 rounded-md transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-indigo-400 hover:bg-white/10' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                                                title="Activity Archive"
+                                                            >
+                                                                <History size={10} />
+                                                            </button>
                                                             {isPureMaster && (
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
@@ -4112,34 +4153,47 @@ if (displayValues.length === 0) {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="space-y-8">
-                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><History size={20} className="text-indigo-500" /> Modification Archive</h3>
-                                            <div className="space-y-4">
+                                        <div className="space-y-6">
+                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] px-2 flex items-center gap-3"><History size={16} className="text-indigo-500" /> Active Timeline</h3>
+                                            <div className="space-y-3 px-1 border-l-2 border-slate-100 ml-4">
                                                 {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
                                                     data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
-                                                        <div key={act.id} className="p-8 bg-slate-50 rounded-[36px] border border-slate-100 flex items-start gap-6">
-                                                            <div className="w-12 h-12 rounded-[18px] bg-white border border-slate-100 flex items-center justify-center font-black text-xs text-slate-800 shadow-sm">{act.userName[0]}</div>
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center justify-between mb-3"><p className="text-[13px] font-black text-slate-900">{act.userName}</p><span className="text-[10px] font-bold text-slate-400 uppercase">{safeFormat(act.createdAt, "MMM dd, HH:mm")}</span></div>
-                                                                <p className="text-xs text-slate-500 font-bold leading-relaxed">Changed <span className="text-indigo-600 font-black">{act.columnName}</span> to <span className="text-emerald-600 font-black">{act.newValue}</span></p>
+                                                        <div key={act.id} className="relative pl-6 pb-2 group">
+                                                            <div className="absolute left-[-9px] top-1.5 w-4 h-4 rounded-full bg-white border-2 border-slate-200 group-hover:border-indigo-400 transition-all flex items-center justify-center">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-indigo-400" />
+                                                            </div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center text-[8px] font-black text-indigo-600 border border-indigo-100">{act.userName[0]}</div>
+                                                                    <p className="text-[11px] font-black text-slate-800">{act.userName}</p>
+                                                                </div>
+                                                                <span className="text-[9px] font-bold text-slate-400">{safeFormat(act.createdAt, "dd MMM, HH:mm")}</span>
+                                                            </div>
+                                                            <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50 group-hover:bg-white group-hover:border-indigo-100 transition-all">
+                                                                <p className="text-[10px] text-slate-500 font-bold leading-relaxed mb-1.5">Updated <span className="text-slate-900 font-black">{act.columnName}</span></p>
+                                                                <div className="flex items-center gap-2 text-[9px]">
+                                                                    <div className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-100 line-through opacity-60 truncate max-w-[100px]">{act.oldValue || "-"}</div>
+                                                                    <ArrowRight size={10} className="text-slate-300" />
+                                                                    <div className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate max-w-[120px]">{act.newValue}</div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     ))
                                                 ) : (
-                                                    <div className="text-center py-20 p-8 bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
-                                                        <Clock size={40} className="mx-auto text-slate-200 mb-4" />
-                                                        <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No modifications detected</p>
+                                                    <div className="text-center py-12 p-6 bg-slate-50/50 rounded-[32px] border border-dashed border-slate-200 ml-[-16px]">
+                                                        <Clock size={32} className="mx-auto text-slate-200 mb-3" />
+                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">No activity log found</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="space-y-8">
-                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><Database size={20} className="text-indigo-500" /> Attribute Core</h3>
-                                            <div className="grid grid-cols-1 gap-4">
+                                        <div className="space-y-6">
+                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] px-2 flex items-center gap-3"><Database size={16} className="text-indigo-500" /> Snapshot Info</h3>
+                                            <div className="grid grid-cols-2 gap-3">
                                                 {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => (
-                                                    <div key={col.id} className="p-10 bg-white border-2 border-slate-50 rounded-[44px] hover:border-slate-200 transition-all shadow-sm">
-                                                        <div className="flex items-center justify-between mb-4"><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{col.label}</p></div>
-                                                        <p className="text-xl font-black text-slate-900 leading-tight">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || <span className="text-slate-200 italic">No entry</span>}</p>
+                                                    <div key={col.id} className="p-5 bg-slate-50 rounded-[28px] border border-slate-100/50 hover:bg-white hover:border-indigo-100 transition-all">
+                                                        <div className="flex items-center justify-between mb-2"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{col.label}</p></div>
+                                                        <p className="text-xs font-black text-slate-700 leading-tight truncate">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || "-"}</p>
                                                     </div>
                                                 ))}
                                             </div>
