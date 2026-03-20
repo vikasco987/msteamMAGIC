@@ -3150,18 +3150,24 @@ export default function CRMSpreadsheetPage() {
                                                     }).sort((a, b) => a.label.localeCompare(b.label));
                                                     availableValues.unshift({ label: "Unassigned", value: "" });
                                                 } else if (col.id === "__contributor") {
-                                                    const vals = new Map<string, string>(); // name -> value
+                                                    const bestNames = new Map<string, string>(); // lowercase -> display
                                                     const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
-                                                    dataSource.forEach(res => {
-                                                        if (res.submittedByName) vals.set(res.submittedByName, res.submittedByName);
-                                                    });
+                                                    
+                                                    const register = (raw: string) => {
+                                                        if (!raw) return;
+                                                        const full = raw.trim(); const low = full.toLowerCase();
+                                                        if (!bestNames.has(low) || (full !== low && bestNames.get(low) === low)) bestNames.set(low, full);
+                                                    };
+
+                                                    dataSource.forEach(res => register(res.submittedByName));
                                                     teamMembers.forEach(m => {
                                                         const name = `${m.firstName || ""} ${m.lastName || ""}`.trim();
-                                                        if (name) vals.set(name, name);
-                                                        vals.set(m.email.split('@')[0], m.email.split('@')[0]);
+                                                        if (name) register(name);
+                                                        else register(m.email.split('@')[0]);
                                                     });
-                                                    availableValues = Array.from(vals.entries())
-                                                        .map(([label, value]) => ({ label, value }))
+
+                                                    availableValues = Array.from(bestNames.values())
+                                                        .map(name => ({ label: name, value: name }))
                                                         .sort((a, b) => a.label.localeCompare(b.label));
                                                 } else {
                                                     const vals = new Set<string>();
