@@ -272,27 +272,30 @@ export async function GET(
                         columnFilters.push({ remarks: { some: {} } });
                     } else {
                         const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ remarks: { some: { remark: c } } });
+                columnFilters.push({ remarks: { some: { remark: c } } });
                     }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
                         columnFilters.push({
-                            OR: [
-                                { values: { some: { fieldId: colId, value: { equals: "" } } } },
+                            AND: [
                                 { values: { none: { fieldId: colId } } },
-                                { internalValues: { some: { columnId: colId, value: { equals: "" } } } },
                                 { internalValues: { none: { columnId: colId } } }
                             ]
                         });
                     } else if (op === "is_not_empty") {
                         columnFilters.push({
                             OR: [
-                                { values: { some: { fieldId: colId, value: { not: "" } } } },
-                                { internalValues: { some: { columnId: colId, value: { not: "" } } } }
+                                { values: { some: { fieldId: colId } } },
+                                { internalValues: { some: { columnId: colId } } }
                             ]
                         });
                     } else {
-                        const c = getPrismaOp(op, val, val2);
+                        // 🛠️ Robust Fix for Custom Columns (like 'STATUS'): 
+                        // Use 'contains' even for 'equals' to match inside JSON-wrapped dropdown values.
+                        const c = (op === 'equals' && typeof val === 'string') 
+                            ? { contains: val, mode: 'insensitive' } 
+                            : getPrismaOp(op, val, val2);
+                            
                         columnFilters.push({
                             OR: [
                                 { values: { some: { fieldId: colId, value: c } } },
