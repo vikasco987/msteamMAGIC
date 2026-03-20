@@ -356,6 +356,8 @@ export default function CRMSpreadsheetPage() {
     const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [canvasTheme, setCanvasTheme] = useState<string>("default");
+    const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
@@ -501,6 +503,9 @@ export default function CRMSpreadsheetPage() {
 
     // Load initial width from localStorage
     useEffect(() => {
+        const savedTheme = localStorage.getItem(`matrix_theme_${params.id}`);
+        if (savedTheme) setCanvasTheme(savedTheme);
+
         const saved = localStorage.getItem(`matrix_widths_${params.id}`);
         if (saved) {
             try { setColumnWidths(JSON.parse(saved)); } catch (e) { console.error(e); }
@@ -508,6 +513,10 @@ export default function CRMSpreadsheetPage() {
     }, [params.id]);
 
     // Save width to localStorage on change
+    useEffect(() => {
+        localStorage.setItem(`matrix_theme_${params.id}`, canvasTheme);
+    }, [canvasTheme, params.id]);
+
     useEffect(() => {
         if (Object.keys(columnWidths).length > 0) {
             localStorage.setItem(`matrix_widths_${params.id}`, JSON.stringify(columnWidths));
@@ -2210,7 +2219,16 @@ export default function CRMSpreadsheetPage() {
     );
 
     return (
-        <div className={`min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900 ${isFullScreen ? 'p-0' : ''}`}>
+        <div className={`min-h-screen flex flex-col h-screen overflow-hidden transition-all duration-700 ${isFullScreen ? 'p-0' : ''} ${
+            canvasTheme === 'dark' ? 'bg-[#0f172a] text-slate-100' :
+            canvasTheme === 'midnight' ? 'bg-[#020617] text-slate-100' :
+            canvasTheme === 'ocean' ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white' :
+            canvasTheme === 'sunset' ? 'bg-gradient-to-br from-rose-900 via-purple-900 to-slate-900 text-white' :
+            canvasTheme === 'aurora' ? 'bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 text-white' :
+            canvasTheme === 'mesh' ? 'bg-[#f8fafc] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-slate-900' :
+            canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
+            'bg-[#f8fafc] text-slate-900'
+        }`}>
             {/* Deletion Progress Overlay */}
             <AnimatePresence>
                 {deleteProgress && (
@@ -2263,7 +2281,11 @@ export default function CRMSpreadsheetPage() {
 
             {/* Premium Enterprise Header */}
             {!isFullScreen && (
-                <header className="h-[68px] bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
+                <header className={`h-[68px] border-b px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative transition-colors duration-500 ${
+                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
+                    ? 'bg-black/20 backdrop-blur-md border-white/10' 
+                    : 'bg-white border-slate-200'
+                }`}>
                     <div className="flex items-center gap-4">
                         <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
                             <ArrowLeft size={16} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
@@ -2397,8 +2419,20 @@ export default function CRMSpreadsheetPage() {
                             </button>
 
                             <button
+                                onClick={() => setIsThemePickerOpen(true)}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${
+                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                    ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                }`}
+                            >
+                                <Palette size={12} />
+                                Canvas
+                            </button>
+
+                            <button
                                 onClick={() => setIsFilterBuilderOpen(true)}
-                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/10 text-white border-white/20 hover:bg-white/20' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}`}
                             >
                                 <Filter size={12} />
                                 Filters
@@ -2504,7 +2538,9 @@ export default function CRMSpreadsheetPage() {
             }
 
             {/* Matrix Console */}
-            <main className="flex-1 overflow-hidden bg-slate-50 relative flex flex-col">
+            <main className={`flex-1 overflow-hidden relative flex flex-col transition-all duration-500 ${
+                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-transparent' : 'bg-slate-50'
+            }`}>
 
                 {/* ⚡ FLASH RECOVERY: Today's High priority actions */}
                 {todayFollowUps.length > 0 && !isFullScreen && (
@@ -2665,7 +2701,11 @@ export default function CRMSpreadsheetPage() {
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
-                            className="flex-1 w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200 relative"
+                            className={`flex-1 w-full overflow-auto custom-scrollbar rounded-xl border relative transition-all duration-500 ${
+                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                ? 'bg-black/40 backdrop-blur-xl border-white/10 shadow-2xl'
+                                : 'bg-white border-slate-200 shadow-sm'
+                            }`}
                         >
                             <AnimatePresence>
                                 {isSyncing && (
@@ -3034,9 +3074,9 @@ export default function CRMSpreadsheetPage() {
                                                 onClick={() => setHighlightedRowId(res.id)}
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-none relative [&>td]:border-r [&>td]:border-[#EAECF0] ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
-                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
-                                                    ${(() => {
+                                                className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                    ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? '[&>td]:border-white/5' : '[&>td]:border-[#EAECF0]'}
+                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'}                                                     ${(() => {
                                                         const remarks = res.remarks || [];
                                                         const latestRemark = remarks[0];
                                                         if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -3156,7 +3196,12 @@ export default function CRMSpreadsheetPage() {
                                                             <td
                                                                 key={col.id}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className={`px-5 py-3 border-b transition-colors ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5' 
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
                                                                     <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
@@ -3438,12 +3483,17 @@ export default function CRMSpreadsheetPage() {
                                                             key={col.id}
                                                             style={{ width, left: isSticky ? leftOffset : undefined }}
                                                             onClick={(e) => {
+                                                                e.stopPropagation();
                                                                 if (!isLocked && !isEditing) {
                                                                     setEditingCell({ rowId: res.id, colId: col.id });
                                                                     setEditValue(val);
                                                                 }
                                                             }}
-                                                            className={`px-5 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} 
+                                                            className={`px-5 border-b transition-colors relative select-none ${
+                                                                ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                ? 'border-white/5 group-hover:bg-white/5' 
+                                                                : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                            } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
                                                             {isEditing ? (
@@ -4990,6 +5040,74 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
+            {/* Theme Picker Modal */}
+            <AnimatePresence>
+                {isThemePickerOpen && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }} 
+                            animate={{ opacity: 1 }} 
+                            exit={{ opacity: 0 }} 
+                            onClick={() => setIsThemePickerOpen(false)} 
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" 
+                        />
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 30 }} 
+                            animate={{ opacity: 1, scale: 1, y: 0 }} 
+                            exit={{ opacity: 0, scale: 0.9, y: 30 }} 
+                            className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden border border-white"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                                        <Palette size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Canvas Design</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Select your preferred matrix aesthetic</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsThemePickerOpen(false)} className="p-3 bg-white text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all shadow-sm border border-slate-100">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                {[
+                                    { id: 'default', name: 'Original Light', desc: 'Professional & Clean', class: 'bg-[#f8fafc] border-slate-200' },
+                                    { id: 'dark', name: 'Deep Slate', desc: 'Focus & Comfort', class: 'bg-[#0f172a] border-slate-800' },
+                                    { id: 'midnight', name: 'Midnight', desc: 'Darker & Stealth', class: 'bg-[#020617] border-slate-900' },
+                                    { id: 'ocean', name: 'Ocean Mist', desc: 'Calming Blue', class: 'bg-gradient-to-br from-blue-600 to-indigo-900 border-blue-400/30' },
+                                    { id: 'sunset', name: 'Sunset Glow', desc: 'Warm & Energy', class: 'bg-gradient-to-br from-rose-600 to-purple-900 border-rose-400/30' },
+                                    { id: 'aurora', name: 'Northern Lights', desc: 'Modern Vibrant', class: 'bg-gradient-to-br from-emerald-600 to-teal-900 border-emerald-400/30' },
+                                    { id: 'mesh', name: 'Matrix Grid', desc: 'Structured feeling', class: 'bg-white bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] border-slate-200' },
+                                    { id: 'glass', name: 'Glass Grit', desc: 'Textured Surface', class: 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] border-slate-300' },
+                                ].map((t) => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => { setCanvasTheme(t.id); setIsThemePickerOpen(false); toast.success(`${t.name} Applied`); }}
+                                        className={`group relative flex flex-col gap-3 p-4 rounded-3xl border-2 transition-all hover:scale-[1.05] active:scale-95 ${
+                                            canvasTheme === t.id ? 'border-indigo-600 shadow-xl shadow-indigo-100 ring-4 ring-indigo-50' : 'border-slate-100 hover:border-indigo-300'
+                                        }`}
+                                    >
+                                        <div className={`h-24 w-full rounded-2xl border ${t.class} transition-transform group-hover:rotate-1`} />
+                                        <div className="text-left">
+                                            <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{t.name}</p>
+                                            <p className="text-[9px] font-bold text-slate-400 mt-0.5 line-clamp-1">{t.desc}</p>
+                                        </div>
+                                        {canvasTheme === t.id && (
+                                            <div className="absolute top-2 right-2 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-md">
+                                                <Check size={12} strokeWidth={4} />
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -4997,7 +5115,7 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
                 tr[data-highlighted="true"] td {
-                    background-color: #fffbeb !important;
+                    background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(255, 251, 235, 0.1)' : '#fffbeb'} !important;
                     box-shadow: inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
                     z-index: 10;
                 }
@@ -5005,25 +5123,19 @@ export default function CRMSpreadsheetPage() {
                     box-shadow: inset 4px 0 0 0 #fbbf24, inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
                 }
                 
-                /* Custom Row Colors */
-                tr[data-row-color="#fffbeb"] td { background-color: #fffbeb !important; }
-                tr[data-row-color="#f0fdf4"] td { background-color: #f0fdf4 !important; }
-                tr[data-row-color="#eff6ff"] td { background-color: #eff6ff !important; }
-                tr[data-row-color="#fdf2f8"] td { background-color: #fdf2f8 !important; }
-                tr[data-row-color="#fafaf9"] td { background-color: #fafaf9 !important; }
-                tr[data-row-color="#fff1f2"] td { background-color: #fff1f2 !important; }
-                tr[data-row-color="#f5f3ff"] td { background-color: #f5f3ff !important; }
-                tr[data-row-color="#fff7ed"] td { background-color: #fff7ed !important; }
-                tr[data-row-color="#eef2ff"] td { background-color: #eef2ff !important; }
-                tr[data-row-color="#fefce8"] td { background-color: #fefce8 !important; }
-                tr[data-row-color="#ecfdf5"] td { background-color: #ecfdf5 !important; }
-                tr[data-row-color="#ecfeff"] td { background-color: #ecfeff !important; }
+                /* Custom Row Colors with Dark Support */
+                tr[data-row-color] td { opacity: 0.9; }
+                tr[data-row-color="#fffbeb"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(255, 251, 235, 0.1)' : '#fffbeb'} !important; }
+                tr[data-row-color="#f0fdf4"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(240, 253, 244, 0.1)' : '#f0fdf4'} !important; }
+                tr[data-row-color="#eff6ff"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(239, 246, 255, 0.1)' : '#eff6ff'} !important; }
+                tr[data-row-color="#fdf2f8"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(253, 242, 248, 0.1)' : '#fdf2f8'} !important; }
                 
-                /* Selection state shadow */
-                tr.bg-indigo-50\/50 td {
-                    background-color: rgba(238, 242, 255, 0.5) !important;
-                    box-shadow: inset 4px 0 0 0 #4f46e5;
-                }
+                /* Responsive Table text color */
+                ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? `
+                    .table-fixed td, .table-fixed th { color: #f1f5f9 !important; }
+                    .table-fixed input, .table-fixed select, .table-fixed textarea { color: #fff !important; }
+                    .table-fixed span, .table-fixed p { color: inherit !important; }
+                ` : ''}
             ` }} />
             {
                 openFollowUpModal && (
