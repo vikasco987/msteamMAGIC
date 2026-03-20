@@ -197,7 +197,7 @@ export async function GET(
                     if (op === "is_empty" || (op === "equals" && !val)) {
                         columnFilters.push({ 
                             AND: [
-                                { assignedTo: { equals: [] } },
+                                { OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] },
                                 { submittedBy: null }
                             ] 
                         });
@@ -205,11 +205,12 @@ export async function GET(
                         columnFilters.push({ 
                             OR: [
                                 { NOT: { assignedTo: { equals: [] } } },
+                                { NOT: { assignedTo: null } },
                                 { NOT: { submittedBy: null } }
                             ] 
                         });
                     } else {
-                        // Regular user filter
+                        // Regular user filter: Matches if user is in Assigned, Visible, OR is Submitter
                         columnFilters.push({
                             OR: [
                                 { assignedTo: { has: val } },
