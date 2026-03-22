@@ -58,6 +58,36 @@ const columns = [
   },
 ];
 
+const getTaskBgColor = (task: TaskType) => {
+  if (task.status === "done") return "bg-emerald-50/50 border-emerald-100";
+  if (!task.createdAt) return "bg-white border-slate-100";
+
+  const elapsedHrs = (Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60);
+  const p = (task.priority || "").toLowerCase();
+
+  // Urgent/High: gets critical quickly
+  if (p === "urgent" || p === "high") {
+    if (elapsedHrs > 24) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 12) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 4) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  } 
+  // Medium
+  else if (p === "medium") {
+    if (elapsedHrs > 48) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 24) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 12) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  } 
+  // Low or Unassigned
+  else {
+    if (elapsedHrs > 72) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 48) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 24) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  }
+};
+
 export default function Board() {
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -430,7 +460,7 @@ export default function Board() {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative"
+                            className={`${getTaskBgColor(task)} p-4 rounded-3xl shadow-sm border hover:shadow-md transition-shadow group relative`}
                             style={{
                               ...provided.draggableProps.style,
                               borderLeft: task.highlightColor ? `4px solid ${task.highlightColor}` : undefined

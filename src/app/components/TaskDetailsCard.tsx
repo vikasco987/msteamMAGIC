@@ -127,6 +127,55 @@ const FieldWithCopy = ({ label, value }: { label: string; value: any }) => {
   );
 };
 
+// Update timer component
+const TaskTimer = ({ createdAt, status }: { createdAt: string | Date | undefined, status: string }) => {
+  const [elapsed, setElapsed] = useState<number>(0);
+
+  React.useEffect(() => {
+    if (!createdAt) return;
+    const startTime = new Date(createdAt).getTime();
+
+    const updateTimer = () => {
+      setElapsed(Date.now() - startTime);
+    };
+
+    updateTimer();
+    let intervalId: NodeJS.Timeout;
+    if (status !== "done") {
+      intervalId = setInterval(updateTimer, 1000);
+    }
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [createdAt, status]);
+
+  if (!createdAt) return null;
+
+  if (status === "done") {
+    return (
+      <div className="flex items-center gap-1 text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded shadow-sm border border-emerald-200 w-max shrink-0">
+        <span>✅ Done</span>
+      </div>
+    );
+  }
+
+  const totalSecs = Math.max(0, Math.floor(elapsed / 1000));
+  const d = Math.floor(totalSecs / (3600 * 24));
+  const h = Math.floor((totalSecs % (3600 * 24)) / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+
+  let timeStr = "";
+  if (d > 0) timeStr += `${d}d `;
+  if (h > 0 || d > 0) timeStr += `${h.toString().padStart(2, '0')}h `;
+  if (m > 0 || h > 0 || d > 0) timeStr += `${m.toString().padStart(2, '0')}m `;
+  timeStr += `${s.toString().padStart(2, '0')}s`;
+
+  return (
+    <div className="flex items-center gap-1.5 text-[9px] font-black tracking-wider text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded shadow-sm border border-orange-200 w-max shrink-0">
+      <span className="animate-pulse">⏳</span> {timeStr}
+    </div>
+  );
+};
+
 // --- TaskDetailsCard Component ---
 export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpdateTask, onFloatRequest }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -244,12 +293,20 @@ export default function TaskDetailsCard({ task, isAdmin = false, onDelete, onUpd
       {/* Header with Title and Control Icons */}
       <div className="flex items-start justify-between gap-3">
         {showTitle && (
-          <h3
-            className="text-base font-bold text-slate-900 leading-tight line-clamp-2 mt-1"
-            title={task.title}
-          >
-            {task.title}
-          </h3>
+          <div className="flex flex-col gap-1.5 mt-1">
+            <h3
+              className="text-base font-bold text-slate-900 leading-tight line-clamp-2"
+              title={task.title}
+            >
+              {task.title}
+            </h3>
+            <TaskTimer createdAt={task.createdAt} status={task.status} />
+          </div>
+        )}
+        {!showTitle && (
+          <div className="mt-1">
+            <TaskTimer createdAt={task.createdAt} status={task.status} />
+          </div>
         )}
         <div className="flex items-center gap-1.5 shrink-0">
           {/* 🛠️ Primary Action Toolbar */}
