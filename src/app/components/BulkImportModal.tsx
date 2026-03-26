@@ -10,7 +10,7 @@ interface BulkImportModalProps {
     formId: string;
     onClose: () => void;
     onSuccess: () => void;
-    availableColumns: { id: string; label: string; isInternal: boolean }[];
+    availableColumns: { id: string; label: string; isInternal: boolean; type: string }[];
 }
 
 export default function BulkImportModal({ formId, onClose, onSuccess, availableColumns }: BulkImportModalProps) {
@@ -193,11 +193,31 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                 const chunk = parsedData.slice(i, i + CHUNK_SIZE);
                 console.log(`Sending chunk ${Math.floor(i / CHUNK_SIZE) + 1} (${chunk.length} rows)...`);
                 
+                // Normalize dates to prevent timezone shifting
+                const normalizedChunk = chunk.map(row => {
+                    const newRow = { ...row };
+                    for (const excelH in updateColumnMap) {
+                        const mapping = updateColumnMap[excelH];
+                        if (!mapping) continue;
+                        const colDef = availableColumns.find(c => c.id === mapping.id);
+                        if (colDef?.type === 'date' && newRow[excelH]) {
+                            const d = new Date(newRow[excelH]);
+                            if (!isNaN(d.getTime())) {
+                                // If it's a date, normalize it to UTC midnight of the day it represents in the user's local time
+                                // This prevents shifting when sent to the server.
+                                const utcDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                                newRow[excelH] = utcDate.toISOString();
+                            }
+                        }
+                    }
+                    return newRow;
+                });
+
                 const res = await fetch(`/api/crm/forms/${formId}/responses/bulk-import`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        data: chunk,
+                        data: normalizedChunk,
                         matchColumnId,
                         matchExcelHeader,
                         updateColumnMap,

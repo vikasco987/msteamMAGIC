@@ -5688,9 +5688,9 @@ if (displayValues.length === 0) {
                         setIsBulkImportOpen(false);
                     }}
                     availableColumns={[
-                        { id: "__assigned", label: "Assigned To", isInternal: false },
-                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false })),
-                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true }))
+                        { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
+                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),
+                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true, type: c.type }))
                     ]}
                 />
             )}

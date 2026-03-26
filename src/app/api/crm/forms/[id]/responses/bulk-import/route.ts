@@ -260,8 +260,8 @@ export async function POST(
                             if (matchedOpt) valueToMap = matchedOpt.label;
                         }
                         if (internalCol?.type === 'date' && valueToMap && !isNaN(Number(valueToMap))) {
-                            const excelEpoch = new Date(1899, 11, 30);
-                            const parsedDate = new Date(excelEpoch.getTime() + Number(valueToMap) * 86400000);
+                            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                            const parsedDate = new Date(excelEpoch.getTime() + Math.round(Number(valueToMap) * 86400000));
                             if (!isNaN(parsedDate.getTime())) valueToMap = parsedDate.toISOString();
                         }
 
