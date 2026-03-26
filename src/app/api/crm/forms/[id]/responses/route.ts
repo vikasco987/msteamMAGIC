@@ -72,14 +72,19 @@ export async function GET(
         const rawForm = rawFormResult.cursor?.firstBatch?.[0];
         if (!rawForm) return NextResponse.json({ error: "Form not found" }, { status: 404 });
 
-        // Map raw MongoDB fields to Prisma-like shape
+        const [fields, internalColumns] = await Promise.all([
+            prisma.formField.findMany({ where: { formId }, orderBy: { order: "asc" } }),
+            prisma.internalColumn.findMany({ where: { formId }, orderBy: { order: "asc" } })
+        ]);
+
+        const colMap: Record<string, string> = {};
+        fields.forEach(f => colMap[f.id] = f.type);
+        internalColumns.forEach(c => colMap[c.id] = c.type);
+
         const form = {
             ...rawForm,
             id: rawForm._id.$oid || rawForm._id,
-            fields: await prisma.formField.findMany({
-                where: { formId },
-                orderBy: { order: "asc" }
-            })
+            fields
         };
 
         const isFormOwner = form.createdBy === userId;
@@ -143,35 +148,42 @@ export async function GET(
         const advancedFilters: any[] = [];
         Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
             const columnFilters: any[] = [];
+            const colType = colMap[colId] || "text";
 
             conds.forEach((cond: any) => {
                 const { op, val, val2 } = cond;
                 if (!op) return;
 
                 const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
+                    const isNum = colType === "number" || colType === "currency";
+                    const isDate = colType === "date";
+                    
+                    const castVal = (v: any) => {
+                        if (isNum && !isNaN(Number(v))) return String(v); // Keep as string for DB match but logic-aware
+                        return v;
+                    };
+
                     switch (operator) {
-                        case "equals": return { equals: value, mode: 'insensitive' };
-                        case "not_equals": return { not: value };
-                        case "contains": return { contains: value, mode: 'insensitive' };
-                        case "starts_with": return { startsWith: value, mode: 'insensitive' };
-                        case "ends_with": return { endsWith: value, mode: 'insensitive' };
-                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' };
+                        case "equals": return isNum || colType === "dropdown" || colType === "user" ? { equals: castVal(value) } : { equals: value, mode: 'insensitive' as const };
+                        case "not_equals": return { not: castVal(value) };
+                        case "contains": return { contains: value, mode: 'insensitive' as const };
+                        case "starts_with": return { startsWith: value, mode: 'insensitive' as const };
+                        case "ends_with": return { endsWith: value, mode: 'insensitive' as const };
+                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' as const };
                         case "is_empty": return { equals: "" };
                         case "is_not_empty": return { not: "" };
                         case "is_true": return { equals: "true" };
                         case "is_false": return { equals: "false" };
-                        case "eq": return { equals: value };
-                        case "gt": return { gt: value };
-                        case "lt": return { lt: value };
-                        case "gte": return { gte: value };
-                        case "lte": return { lte: value };
-                        case "between": return { gte: value, lte: secondValue };
-                        default: return { contains: value, mode: 'insensitive' };
+                        case "gt": return { gt: castVal(value) };
+                        case "lt": return { lt: castVal(value) };
+                        case "gte": return { gte: castVal(value) };
+                        case "lte": return { lte: castVal(value) };
+                        case "between": return { gte: castVal(value), lte: castVal(secondValue) };
+                        default: return { contains: value, mode: 'insensitive' as const };
                     }
                 };
 
                 if (colId === "__submittedAt") {
-                    // Proper date filtering for submittedAt
                     if (op === "today") {
                         const start = new Date(); start.setHours(0, 0, 0, 0);
                         const end = new Date(); end.setHours(23, 59, 59, 999);
@@ -191,136 +203,79 @@ export async function GET(
                         columnFilters.push({ submittedAt: { gte: start, lte: end } });
                     }
                 } else if (colId === "__contributor") {
-                    const c = getPrismaOp(op, val, val2);
-                    columnFilters.push({ submittedByName: c });
+                    columnFilters.push({ submittedByName: getPrismaOp(op, val, val2) });
                 } else if (colId === "__assigned") {
                     if (op === "is_empty" || (op === "equals" && !val)) {
-                        columnFilters.push({ 
-                            AND: [
-                                { OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] },
-                                { submittedBy: null }
-                            ] 
-                        });
+                        columnFilters.push({ AND: [{ OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] }, { submittedBy: null }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ 
-                            OR: [
-                                { NOT: { assignedTo: { equals: [] } } },
-                                { NOT: { assignedTo: null } },
-                                { NOT: { submittedBy: null } }
-                            ] 
-                        });
+                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { assignedTo: null } }, { NOT: { submittedBy: null } }] });
                     } else {
-                        // Regular user filter: Matches ID in assignedTo OR ID/Name in submittedBy/submittedByName
-                        columnFilters.push({
-                            OR: [
-                                { assignedTo: { has: val } },
-                                { visibleToUsers: { has: val } },
-                                { submittedBy: val },
-                                { submittedByName: { contains: val, mode: 'insensitive' } } // Fallback for name-based matching
-                            ]
-                        });
+                        columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
                     }
-                } else if (colId === "__nextFollowUpDate") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { nextFollowUpDate: null } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
-                    } else if (op === "today") {
-                        const start = new Date(); start.setHours(0, 0, 0, 0);
-                        const end = new Date(); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                    } else if (op === "this_week") {
-                        const now = new Date();
-                        const start = new Date(now.setDate(now.getDate() - now.getDay()));
-                        start.setHours(0, 0, 0, 0);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start } } } });
-                    } else if (op === "before" && val) {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
-                    } else if (op === "after" && val) {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
-                    } else if (op === "exact_date" && val) {
-                        const start = new Date(val); start.setHours(0, 0, 0, 0);
-                        const end = new Date(val); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                    }
-                } else if (colId === "__followUpStatus") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { followUpStatus: "" } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { followUpStatus: { not: "" } } } });
-                    } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ remarks: { some: { followUpStatus: c } } });
-                    }
-                } else if (colId === "__recentRemark") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { remark: "" } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { remark: { not: "" } } } });
-                    } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ remarks: { some: { remark: c } } });
-                    }
-                } else if (colId === "__followup") {
-                    if (op === "is_empty") {
-                        columnFilters.push({ remarks: { none: {} } });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: {} } });
-                    } else {
-                        const c = getPrismaOp(op, val, val2);
-                columnFilters.push({ remarks: { some: { remark: c } } });
+                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark") {
+                    // Remarks logic
+                    if (colId === "__nextFollowUpDate") {
+                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
+                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
+                        else if (op === "today") {
+                            const start = new Date(); start.setHours(0, 0, 0, 0);
+                            const end = new Date(); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "exact_date" && val) {
+                            const start = new Date(val); start.setHours(0, 0, 0, 0);
+                            const end = new Date(val); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "before" && val) {
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
+                        } else if (op === "after" && val) {
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
+                        }
+                    } else if (colId === "__followUpStatus") {
+                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
+                        else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
+                    } else if (colId === "__recentRemark" || colId === "__followup") {
+                        if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
+                        else columnFilters.push({ remarks: { some: { remark: getPrismaOp(op, val, val2) } } });
                     }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                // Case 1: Relationship itself is missing
-                                { 
-                                    AND: [
-                                        { values: { none: { fieldId: colId } } },
-                                        { internalValues: { none: { columnId: colId } } }
-                                    ] 
-                                },
-                                // Case 2: Relationship exists but value is empty string
-                                { values: { some: { fieldId: colId, value: "" } } },
-                                { internalValues: { some: { columnId: colId, value: "" } } }
-                            ]
-                        });
+                        columnFilters.push({ OR: [{ AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] }, { values: { some: { fieldId: colId, value: "" } } }, { internalValues: { some: { columnId: colId, value: "" } } }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { values: { some: { fieldId: colId, value: { not: "" } } } },
-                                { internalValues: { some: { columnId: colId, value: { not: "" } } } }
-                            ]
-                        });
+                        columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { not: "" } } } }, { internalValues: { some: { columnId: colId, value: { not: "" } } } }] });
+                    } else if (colType === "date") {
+                        // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
+                        const toISO = (d: Date) => d.toISOString().split('T')[0];
+                        const now = new Date();
+
+                        if (op === "today") {
+                            const str = toISO(now);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "yesterday") {
+                            const d = new Date(); d.setDate(d.getDate() - 1);
+                            const str = toISO(d);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "tomorrow") {
+                            const d = new Date(); d.setDate(d.getDate() + 1);
+                            const str = toISO(d);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "this_week") {
+                            const start = new Date(now.setDate(now.getDate() - now.getDay()));
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: toISO(start) } } } }, { internalValues: { some: { columnId: colId, value: { gte: toISO(start) } } } }] });
+                        } else if (op === "exact_date" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
+                        } else if (op === "before" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { lt: val } } } }, { internalValues: { some: { columnId: colId, value: { lt: val } } } }] });
+                        } else if (op === "after" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gt: val } } } }, { internalValues: { some: { columnId: colId, value: { gt: val } } } }] });
+                        } else if (op === "between" && val && val2) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: val, lte: val2 } } } }, { internalValues: { some: { columnId: colId, value: { gte: val, lte: val2 } } } }] });
+                        } else {
+                            // Fallback for equals/equals_date
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
+                        }
                     } else {
-                        // 🛠️ Robust Fix for Custom Columns (like 'STATUS'): 
-                        // Use 'contains' even for 'equals' to match inside JSON-wrapped dropdown values.
-                        const c = (op === 'equals' && typeof val === 'string') 
-                            ? { contains: val, mode: 'insensitive' } 
-                            : getPrismaOp(op, val, val2);
-                            
-                        columnFilters.push({
-                            OR: [
-                                { values: { some: { fieldId: colId, value: c } } },
-                                { internalValues: { some: { columnId: colId, value: c } } }
-                            ]
-                        });
+                        const c = getPrismaOp(op, val, val2);
+                        columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: c } } }, { internalValues: { some: { columnId: colId, value: c } } }] });
                     }
                 }
             });
@@ -357,7 +312,7 @@ export async function GET(
             orderBy = { submittedAt: sortOrder };
         }
 
-        const [totalResponses, responses, filteredTotalCount, internalColumns] = await Promise.all([
+        const [totalResponses, responses, filteredTotalCount] = await Promise.all([
             prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
             prisma.formResponse.findMany({
                 where: whereFilter,
@@ -373,10 +328,6 @@ export async function GET(
                 take: limit
             }),
             prisma.formResponse.count({ where: whereFilter }),
-            prisma.internalColumn.findMany({
-                where: { formId },
-                orderBy: { order: "asc" }
-            })
         ]);
 
         const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));

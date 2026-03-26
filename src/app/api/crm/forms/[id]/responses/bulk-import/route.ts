@@ -150,11 +150,13 @@ export async function POST(
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
             const batch = data.slice(i, i + BATCH_SIZE);
             
-            const internalValuesToCreate: any[] = [];
-            const responseValuesToCreate: any[] = [];
+            // Maps for deduplication (preventing unique constraint crashes on duplicate rows)
+            const internalValuesToCreateMap = new Map<string, any>();
+            const responseValuesToCreateMap = new Map<string, any>();
+            const individualOpsMap = new Map<string, any>();
+
             const activitiesToCreate: any[] = [];
             const responsesToCreate: any[] = [];
-            const individualOps: any[] = [];
 
             // 1. Identify what to update and what to create
             const batchItems = await Promise.all(batch.map(async (row, idx) => {
@@ -233,14 +235,19 @@ export async function POST(
                         continue;
                     }
 
-                    let valueToMap = item.row[actualKeyInRow]?.toString() || "";
+                    let valueToMap = item.row[actualKeyInRow]?.toString().trim() || "";
+
+                    // 🛡️ SMART UPLOAD SHIELD: Prevent blank Excel cells from erasing existing database values
+                    if (valueToMap === "" && !item.isNew && (importMode === 'update' || importMode === 'upsert')) {
+                        continue;
+                    }
                     const colIdToUpdate = mapping.id;
                     const isColInternal = mapping.isInternal;
 
                     if (colIdToUpdate === "__assigned") {
                         const foundUserId = findUser(valueToMap);
                         if (foundUserId) {
-                            individualOps.push(prisma.formResponse.update({
+                            individualOpsMap.set(`assigned_${item.responseId}`, prisma.formResponse.update({
                                 where: { id: item.responseId },
                                 data: { assignedTo: { set: [foundUserId] } }
                             }));
@@ -268,7 +275,7 @@ export async function POST(
                         const existing = intValMap.get(`${item.responseId}_${colIdToUpdate}`);
                         if (existing) {
                             if (existing.value !== valueToMap) {
-                                individualOps.push(prisma.internalValue.update({
+                                individualOpsMap.set(`int_${existing.id}`, prisma.internalValue.update({
                                     where: { id: existing.id },
                                     data: { value: valueToMap, updatedBy: user.id, updatedByName: userName, updatedAt: new Date() }
                                 }));
@@ -281,7 +288,7 @@ export async function POST(
                                 }
                             }
                         } else {
-                            internalValuesToCreate.push({
+                            internalValuesToCreateMap.set(`${item.responseId}_${colIdToUpdate}`, {
                                 responseId: item.responseId, columnId: colIdToUpdate, value: valueToMap,
                                 updatedBy: user.id, updatedByName: userName, updatedAt: new Date()
                             });
@@ -290,7 +297,7 @@ export async function POST(
                         const existing = respValMap.get(`${item.responseId}_${colIdToUpdate}`);
                         if (existing) {
                             if (existing.value !== valueToMap) {
-                                individualOps.push(prisma.responseValue.update({
+                                individualOpsMap.set(`resp_${existing.id}`, prisma.responseValue.update({
                                     where: { id: existing.id },
                                     data: { value: valueToMap }
                                 }));
@@ -303,7 +310,7 @@ export async function POST(
                                 }
                             }
                         } else {
-                            responseValuesToCreate.push({
+                            responseValuesToCreateMap.set(`${item.responseId}_${colIdToUpdate}`, {
                                 responseId: item.responseId, fieldId: colIdToUpdate, value: valueToMap
                             });
                         }
@@ -321,6 +328,10 @@ export async function POST(
                 }
                 await Promise.all(responseBatches);
             }
+
+            const individualOps = Array.from(individualOpsMap.values());
+            const internalValuesToCreate = Array.from(internalValuesToCreateMap.values());
+            const responseValuesToCreate = Array.from(responseValuesToCreateMap.values());
 
             const otherOps: any[] = [...individualOps];
             if (internalValuesToCreate.length > 0) {

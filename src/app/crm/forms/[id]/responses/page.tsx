@@ -46,6 +46,7 @@ import {
     Link,
     Phone,
     Mail,
+    Layout,
     Trash2,
     Settings,
     Activity,
@@ -289,6 +290,7 @@ const FILTER_OPERATORS = {
         { label: "Is Not Empty", value: "is_not_empty" }
     ],
     date: [
+        { label: "Exactly", value: "exact_date" },
         { label: "Is Today", value: "today" },
         { label: "Is Yesterday", value: "yesterday" },
         { label: "Before", value: "before" },
@@ -370,11 +372,14 @@ export default function CRMSpreadsheetPage() {
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
     const [deleteProgress, setDeleteProgress] = useState<{ current: number; total: number } | null>(null);
+    const [isAddingRow, setIsAddingRow] = useState(false);
+    const [drawerTab, setDrawerTab] = useState<'edit' | 'history'>('edit');
     const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
     const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
+    const [pendingUpdates, setPendingUpdates] = useState<Record<string, string>>({});
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -396,9 +401,9 @@ export default function CRMSpreadsheetPage() {
     const formId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
     const { messages, input, handleInputChange, handleSubmit: baseHandleSubmit, setMessages, isLoading: isAIFetching } = useChat({
-        api: formId ? `/api/crm/forms/${formId}/chat` : undefined as any,
+        api: formId ? `/api/crm/forms/${formId}/chat` : undefined,
         body: chatBody
-    }) as any;
+    } as any) as any;
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         if (!(input || "").trim()) return;
@@ -559,6 +564,7 @@ export default function CRMSpreadsheetPage() {
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -583,8 +589,13 @@ export default function CRMSpreadsheetPage() {
     }, [searchTerm, conditions, filterConjunction]);
 
     useEffect(() => {
+        if (isAddingRow) return;
         fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-    }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id]);
+    }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id, isAddingRow]);
+
+
+    const tableRef = useRef<HTMLDivElement>(null);
+
 
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
@@ -835,6 +846,7 @@ export default function CRMSpreadsheetPage() {
 
     const handleAddRow = async () => {
         if (!data) return;
+        setIsAddingRow(true);
         const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const previousData = { ...data };
 
@@ -874,7 +886,7 @@ export default function CRMSpreadsheetPage() {
                 setData(prev => {
                     if (!prev || !prev.responses) return prev;
                     const realId = result.response.id;
-                    const responses = prev.responses.map(r => r.id === tempId ? { ...result.response, values: r.values || result.response.values || [] } : r);
+                    const responses = prev.responses.map(r => r.id === tempId ? { ...result.response, isOptimistic: false } : r);
                     
                     // CRITICAL: Update orphaned internal values
                     const internalValues = (prev.internalValues || []).map(iv => 
@@ -883,6 +895,9 @@ export default function CRMSpreadsheetPage() {
 
                     return { ...prev, responses, internalValues };
                 });
+                
+                // Keep the new row highlighted for focus
+                setHighlightedRowId(result.response.id);
             } else {
                 toast.error("Deployment failed", { id: "add-row" });
                 setData(previousData); // Rollback
@@ -890,6 +905,8 @@ export default function CRMSpreadsheetPage() {
         } catch (err) {
             toast.error("Matrix failure", { id: "add-row" });
             setData(previousData); // Rollback
+        } finally {
+            setIsAddingRow(false);
         }
     };
 
@@ -1137,6 +1154,7 @@ export default function CRMSpreadsheetPage() {
         }
 
         toast.loading(`Initializing purge of ${selectedRows.length} records...`, { id: "bulk-delete-start" });
+        setIsBulkDeleting(true);
         setDeleteProgress({ current: 0, total: selectedRows.length });
         const batchSize = 100;
         const total = selectedRows.length;
@@ -1194,6 +1212,7 @@ export default function CRMSpreadsheetPage() {
             console.error("[BulkDelete] Critical failure:", globalErr);
             toast.error(`Critical failure: ${globalErr.message}`);
         } finally {
+            setIsBulkDeleting(false);
             setTimeout(() => setDeleteProgress(null), 1000);
         }
     };
@@ -1381,6 +1400,8 @@ export default function CRMSpreadsheetPage() {
     }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
+        const cellKey = `${responseId}-${colId}`;
+        if (pendingUpdates[cellKey] !== undefined) return pendingUpdates[cellKey];
         if (!data) return "";
         const resp = data.responses?.find(r => r.id === responseId);
         if (!resp) return "";
@@ -1595,6 +1616,27 @@ export default function CRMSpreadsheetPage() {
         }
         return results;
     }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+
+    const columnMetrics = useMemo(() => {
+        const columns = getColumns;
+        const metrics: Record<string, { width: number; left: number; isSticky: boolean }> = {};
+        const baseLeft = isPureMaster ? 70 : 56;
+        let currentLeft = baseLeft;
+
+        columns.forEach((col, idx) => {
+            const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
+            const isSticky = idx < 2;
+            metrics[col.id] = {
+                width,
+                left: isSticky ? currentLeft : 0,
+                isSticky
+            };
+            if (isSticky) {
+                currentLeft += width;
+            }
+        });
+        return metrics;
+    }, [getColumns, columnWidths, isPureMaster]);
 
     const paginatedResponses = useMemo(() => {
         // If server provided pagination, it's already sliced
@@ -1895,12 +1937,19 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        // 💎 REFRESH ENGINE: Instant Cell Closure
+        setEditingCell(null);
+        
         const cellKey = `${responseId}-${columnId}`;
         const previousData = data;
 
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
         if (currentVal === value) return;
+
+        // 💎 REFRESH ENGINE: Local Sync State (Prevents 'Vanishing' Lag)
+        setPendingUpdates(prev => ({ ...prev, [cellKey]: value }));
+
         setData(prev => {
             if (!prev) return prev;
             if (isInternal) {
@@ -2000,10 +2049,21 @@ export default function CRMSpreadsheetPage() {
                 next.delete(cellKey);
                 return next;
             });
+            // 💎 Persistence Shield: Delay cleanup to allow master state to settle
+            setTimeout(() => {
+                setPendingUpdates(prev => {
+                    const next = { ...prev };
+                    delete next[cellKey];
+                    return next;
+                });
+            }, 1000);
         }
     };
 
     const handleStatusCellUpdate = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        // 💎 REFRESH ENGINE: Instant Cell Closure
+        setEditingCell(null);
+        
         const cellKey = `${responseId}-${columnId}`;
         setSavingCells(prev => {
             const next = new Set(prev);
@@ -2059,8 +2119,7 @@ export default function CRMSpreadsheetPage() {
                 duration: 2000
             });
             
-            // Re-fetch to sync IDs and other data
-            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            // Re-fetch removed to prevent UI flicker. Relying on optimistic setData and pendingUpdates.
         } catch (e: any) {
             console.error(e);
             
@@ -2078,6 +2137,14 @@ export default function CRMSpreadsheetPage() {
                 next.delete(cellKey);
                 return next;
             });
+            // 💎 Persistence Shield: Delay cleanup to allow master state to settle
+            setTimeout(() => {
+                setPendingUpdates(prev => {
+                    const next = { ...prev };
+                    delete next[cellKey];
+                    return next;
+                });
+            }, 1000);
             setEditingCell(null);
         }
     };
@@ -2824,6 +2891,102 @@ export default function CRMSpreadsheetPage() {
             <main className={`flex-1 overflow-hidden relative flex flex-col transition-all duration-500 ${
                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-transparent' : 'bg-slate-50'
             }`}>
+                
+                {/* ☣️ MATRIX PURGE PROGRESS OVERLAY */}
+                {deleteProgress && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" />
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            className="relative bg-white rounded-[40px] p-10 max-w-sm w-full shadow-[0_32px_128px_-16px_rgba(0,0,0,0.5)] border border-white overflow-hidden"
+                        >
+                            <div className="absolute top-0 left-0 w-full h-2 bg-slate-50">
+                                <motion.div 
+                                    className="h-full bg-indigo-600 shadow-[0_0_20px_rgba(79,70,229,0.5)]"
+                                    animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                />
+                            </div>
+
+                            <div className="flex flex-col items-center text-center">
+                                <div className="w-20 h-20 rounded-3xl bg-rose-50 text-rose-500 flex items-center justify-center mb-6 shadow-inner ring-8 ring-rose-50/50">
+                                    <Activity size={40} className="animate-pulse" />
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 tracking-tighter mb-2">Matrix Purge in Progress</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-8 px-4">Sector extraction and record incineration cycle active.</p>
+                                
+                                <div className="w-full space-y-2">
+                                    <div className="flex justify-between items-end px-1">
+                                        <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{deleteProgress.current} / {deleteProgress.total}</p>
+                                        <p className="text-2xl font-black text-indigo-600">{Math.round((deleteProgress.current / deleteProgress.total) * 100)}<span className="text-xs">%</span></p>
+                                    </div>
+                                    <div className="h-4 w-full bg-slate-100 rounded-2xl overflow-hidden border-2 border-slate-50 p-1">
+                                        <motion.div 
+                                            className="h-full bg-indigo-600 rounded-xl"
+                                            animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                            transition={{ type: 'spring', bounce: 0, duration: 0.5 }}
+                                        />
+                                    </div>
+                                </div>
+                                <p className="mt-8 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-pulse border border-rose-100 px-4 py-2 rounded-full bg-rose-50">CRITICAL: Stability Interlock Active</p>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* 🚀 REAL-TIME METRICS HUB */}
+                {!isFullScreen && (
+                    <div className="px-6 py-4 bg-white border-b border-slate-200/60 flex items-center gap-6 shrink-0 z-40 overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
+                             <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-xl shadow-slate-200">
+                                <Activity size={20} />
+                             </div>
+                             <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Pulse</h4>
+                                <p className="text-xs font-black text-slate-900">Performance Metrics</p>
+                             </div>
+                        </div>
+
+                        <div className="flex items-center gap-8">
+                             <div className="flex flex-col">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Core</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-slate-900">{data?.totalCount || "..."}</span>
+                                    <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">+Live</span>
+                                </div>
+                             </div>
+
+                             <div className="flex flex-col">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Matrix Yield</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-slate-900">84.2%</span>
+                                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                        <div className="h-full bg-indigo-500 w-[84%]" />
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div className="flex flex-col pr-8 border-r border-slate-100">
+                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Attention Matrix</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-amber-600">{todayFollowUps.length}</span>
+                                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                                </div>
+                             </div>
+                             
+                             <div className="flex items-center gap-3">
+                                 <div className="flex -space-x-2">
+                                     {teamMembers.slice(0, 3).map(m => (
+                                         <div key={m.clerkId} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-slate-100 shadow-sm">
+                                             <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="auth" className="w-full h-full object-cover" />
+                                         </div>
+                                     ))}
+                                 </div>
+                                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{teamMembers.length} Agents Online</p>
+                             </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ⚡ FLASH RECOVERY: Today's High priority actions */}
                 {todayFollowUps.length > 0 && !isFullScreen && (
@@ -3095,21 +3258,10 @@ export default function CRMSpreadsheetPage() {
                                             </div>
                                         </th>
                                         {getColumns.map((col, cIdx) => {
-                                            const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
-                                            const isSticky = cIdx < 2;
+                                            const metrics = columnMetrics[col.id];
+                                            const { width, left: leftOffset, isSticky } = metrics;
                                             const groupKey = getColumnGroup(col);
                                             const style = getGroupStyle(groupKey);
-
-                                            // Dynamic left offset
-                                            let leftOffset = isPureMaster ? 70 : 50;
-                                            if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
-                                            if (isSticky && cIdx > 0) {
-                                                for (let i = 0; i < cIdx; i++) {
-                                                    const prevCol = getColumns[i];
-                                                    // use same logic as totalTableWidth
-                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
-                                                }
-                                            }
 
                                             const TypeIcon = col.type === 'static' ? (col.id === '__profile' ? Maximize2 : Users) : (COLUMN_TYPES.find(t => t.id === col.type)?.icon || Type);
 
@@ -3117,11 +3269,11 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${ activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20') } ${style.bg} ${style.text}`}
+                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${ activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20') } ${style.bg} ${style.text}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={10} className={`${style.text} shrink-0`} />
+                                                            <TypeIcon size={12} className={`${style.text} shrink-0`} />
                                                             <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
                                                         </div>
 
@@ -3473,17 +3625,8 @@ if (displayValues.length === 0) {
                                                         ? ""
                                                         : getCellValue(res.id, col.id, col.isInternal);
 
-                                                    const isSticky = cIdx < 2;
-                                                    let leftOffset = isPureMaster ? 70 : 50;
-                                                    if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
-                                                    if (isSticky && cIdx > 0) {
-                                                        for (let i = 0; i < cIdx; i++) {
-                                                            const prevCol = getColumns[i];
-                                                            // Match logic we put in `<th>` above
-                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
-                                                        }
-                                                    }
-                                                    const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
+                                                    const metrics = columnMetrics[col.id];
+                                                    const { width, left: leftOffset, isSticky } = metrics;
                                                     const isFocused = focusedCell?.rowId === res.id && focusedCell?.colId === col.id;
 
                                                     if (col.id === "__profile") {
@@ -3937,10 +4080,13 @@ if (displayValues.length === 0) {
                                                                     {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
                                                                         <select 
                                                                             autoFocus 
-                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-700'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} 
+                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} 
                                                                             value={editValue} 
                                                                             onChange={(e) => { 
-                                                                                handleStatusCellUpdate(res.id, col.id, e.target.value, isInternal); 
+                                                                                const newV = e.target.value;
+                                                                                setEditValue(newV);
+                                                                                handleStatusCellUpdate(res.id, col.id, newV, isInternal); 
+                                                                                setEditingCell(null); 
                                                                             }}
                                                                             onBlur={() => setEditingCell(null)}
                                                                         >
@@ -3948,7 +4094,7 @@ if (displayValues.length === 0) {
                                                                             {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt} className="bg-white text-slate-900">{opt}</option>)}
                                                                         </select>
                                                                     ) : col.type === "dropdown" ? (
-                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => { const newV = e.target.value; setEditValue(newV); handleUpdateValue(res.id, col.id, newV, isInternal); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
                                                                             {Array.isArray(col.options) && col.options.map((opt: any) => {
                                                                                 const label = typeof opt === 'string' ? opt : opt.label;
@@ -3956,7 +4102,7 @@ if (displayValues.length === 0) {
                                                                             })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
-                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => { const newV = e.target.value; setEditValue(newV); handleUpdateValue(res.id, col.id, newV, isInternal); setEditingCell(null); }}>
                                                                                 <option value="">Assigned To...</option>
                                                                                 {teamMembers
                                                                                     .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
@@ -3966,81 +4112,81 @@ if (displayValues.length === 0) {
                                                                                     })}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
-                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "number" || col.type === "currency" ? (
-                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "long_text" ? (
-                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none min-h-[60px] resize-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none min-h-[60px] resize-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : (
-                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     )}
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center justify-between min-h-[20px] min-w-0">
+                                                                <div className="flex items-center justify-between min-h-[24px] min-w-0">
                                                                     <div className="flex items-center min-w-0 overflow-hidden">
                                                                         {col.type === "dropdown" && val ? (
                                                                             <div className="flex -space-x-1 group/badge shrink-0">
-                                                                                <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${
+                                                                                <span className={`px-2.5 py-1 rounded-full font-black uppercase tracking-widest border transition-all ${
                                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                    ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                    ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30 shadow-[0_4px_12px_rgba(16,185,129,0.2)]' :
                                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
                                                                                        'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
-                                                                                    : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                                    : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-[0_4px_12px_rgba(16,185,129,0.1)]' :
                                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-100')
-                                                                                }`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
+                                                                                }`} style={{ fontSize: density === 'compact' ? '9px' : '11px' }}>
                                                                                     {val}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "user" && val ? (
-                                                                            <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border shrink-0 transition-colors ${
+                                                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border shrink-0 transition-colors ${
                                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                 ? 'bg-white/5 border-white/10'
                                                                                 : 'bg-slate-50 border-slate-200'
                                                                             }`}>
-                                                                                <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase shadow-sm">
+                                                                                <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[9px] font-black text-white uppercase shadow-sm">
                                                                                     {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
                                                                                 </div>
-                                                                                <span className={`text-[10px] font-black truncate max-w-[80px] ${
+                                                                                <span className={`text-[11px] font-black truncate max-w-[80px] ${
                                                                                     ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300' : 'text-slate-600'
                                                                                 }`}>
-                                                                                    {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
+                                                                                    {teamMembers.find(m => m.clerkId === val)?.firstName || val.split('_').pop()?.slice(0, 5)}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "date" && val ? (
-                                                                            <span className={`text-[11px] font-bold flex items-center gap-1.5 uppercase tracking-tighter px-2 py-1 rounded-md shrink-0 transition-colors ${
+                                                                            <span className={`text-[13px] font-bold flex items-center gap-1.5 uppercase tracking-tighter px-2.5 py-1.5 rounded-md shrink-0 transition-colors ${
                                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                 ? 'bg-white/5 text-slate-300'
                                                                                 : 'bg-slate-100/50 text-slate-600'
                                                                             }`}>
-                                                                                <Calendar size={10} className="text-rose-400" />
+                                                                                <Calendar size={12} className="text-rose-400" />
                                                                                 {safeFormat(val, "MMM dd, yyyy")}
                                                                             </span>
                                                                         ) : col.type === "checkbox" ? (
                                                                             <div
                                                                                 onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
-                                                                                className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200')}`}
+                                                                                className={`w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200')}`}
                                                                             >
-                                                                                {val === "true" && <Check size={12} className="text-white" />}
+                                                                                {val === "true" && <Check size={14} className="text-white" />}
                                                                             </div>
                                                                         ) : col.type === "currency" && val ? (
-                                                                            <span className={`text-[11px] font-black flex items-center gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>
-                                                                                <IndianRupee size={10} className="text-slate-400" />
+                                                                            <span className={`text-[13px] font-black flex items-center gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>
+                                                                                <IndianRupee size={12} className="text-slate-400" />
                                                                                 {parseFloat(val).toLocaleString('en-IN')}
                                                                             </span>
                                                                         ) : col.type === "file" && val ? (
-                                                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                                                <a href={val} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors shrink-0">
-                                                                                    <ExternalLink size={10} />
-                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">View</span>
+                                                                            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                                                                                <a href={val} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors shrink-0">
+                                                                                    <ExternalLink size={12} />
+                                                                                    <span className="text-[11px] font-black uppercase tracking-tighter">View</span>
                                                                                 </a>
-                                                                                <a href={val.replace('/upload/', '/upload/fl_attachment/')} download className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 hover:bg-emerald-100 transition-colors shrink-0">
-                                                                                    <Download size={10} />
-                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">Save</span>
+                                                                                <a href={val.replace('/upload/', '/upload/fl_attachment/')} download className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 hover:bg-emerald-100 transition-colors shrink-0">
+                                                                                    <Download size={12} />
+                                                                                    <span className="text-[11px] font-black uppercase tracking-tighter">Save</span>
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
+                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}>
                                                                                 {(() => {
                                                                                     if (!val) return "—";
                                                                                     // Apply premium styles for sync columns by label
@@ -4049,19 +4195,19 @@ if (displayValues.length === 0) {
                                                                                     }
                                                                                     if (col.label === "Next Follow-up Date") {
                                                                                         return (
-                                                                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 border rounded-lg font-black text-[10px] uppercase tracking-widest shadow-sm transition-all ${
+                                                                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-lg font-black text-[11px] uppercase tracking-widest shadow-sm transition-all ${
                                                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                                 ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
                                                                                                 : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                                             }`}>
-                                                                                                <Calendar size={10} />
+                                                                                                <Calendar size={12} />
                                                                                                 {safeFormat(val, "dd MMM")}
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (col.label === "Follow-up Status") {
                                                                                         return (
-                                                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border shadow-sm transition-all ${
+                                                                                            <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${
                                                                                                 ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                                 ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
                                                                                                    val === 'Missed' ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
@@ -4085,7 +4231,7 @@ if (displayValues.length === 0) {
                                                                             animate={{ opacity: 1, scale: 1 }}
                                                                             className="ml-2 shrink-0"
                                                                         >
-                                                                            <Activity size={10} className="text-indigo-500 animate-pulse" />
+                                                                            <Activity size={12} className="text-indigo-500 animate-pulse" />
                                                                         </motion.div>
                                                                     )}
                                                                 </div>
@@ -4285,82 +4431,211 @@ if (displayValues.length === 0) {
                     selectedResponse && (
                         <>
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
-                            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-full max-w-[650px] bg-white shadow-[-40px_0_100px_rgba(0,0,0,0.1)] z-[70] overflow-hidden flex flex-col">
-                                <div className="p-8 border-b border-[#EAECF0] flex items-center justify-between shrink-0 bg-white sticky top-0 z-10">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-full bg-[#F9F5FF] text-[#7F56D9] flex items-center justify-center border border-[#E9D7FE]">
-                                            <FileText size={24} />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-xl font-semibold text-[#101828]">Response Details</h2>
-                                            <p className="text-sm text-[#667085] mt-1">Audit trail and full record data</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setSelectedResponse(null)} className="p-2 text-[#667085] hover:text-[#101828] hover:bg-[#F9FAFB] rounded-lg transition-all">
-                                        <X size={24} />
-                                    </button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-                                    <div className="space-y-16">
-                                        <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
-                                            <div className="relative z-10">
-                                                <h4 className="text-2xl font-black mb-4 tracking-tight">Active Workflows</h4>
-                                                <div className="grid grid-cols-2 gap-5 mt-12">
-                                                    <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4">
-                                                        <UserPlus size={22} className="text-indigo-600" /> CRM Sync
-                                                    </button>
-                                                    <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4">
-                                                        <Mail size={22} className="text-indigo-400" /> Notify
-                                                    </button>
-                                                </div>
+                            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 32, stiffness: 250 }} className="fixed top-0 right-0 h-full w-full max-w-[520px] bg-white shadow-[-40px_0_120px_rgba(0,0,0,0.15)] z-[70] overflow-hidden flex flex-col border-l border-slate-100/50">
+                                <div className="p-8 border-b border-[#EAECF0] flex flex-col gap-8 shrink-0 bg-white sticky top-0 z-10 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-5">
+                                            <div className="w-12 h-12 rounded-[22px] bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
+                                                <Database size={22} />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-xl font-black text-[#101828] tracking-tight">Record Intelligence</h2>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Matrix v4.2 Deployment</p>
                                             </div>
                                         </div>
-                                        <div className="space-y-6">
-                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] px-2 flex items-center gap-3"><History size={16} className="text-indigo-500" /> Active Timeline</h3>
-                                            <div className="space-y-3 px-1 border-l-2 border-slate-100 ml-4">
-                                                {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
-                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
-                                                        <div key={act.id} className="relative pl-6 pb-2 group">
-                                                            <div className="absolute left-[-9px] top-1.5 w-4 h-4 rounded-full bg-white border-2 border-slate-200 group-hover:border-indigo-400 transition-all flex items-center justify-center">
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-200 group-hover:bg-indigo-400" />
+                                        <button onClick={() => setSelectedResponse(null)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all border border-transparent hover:border-rose-100">
+                                            <X size={22} />
+                                        </button>
+                                    </div>
+
+                                    {/* 💎 🛸 MATRIX TAB HUD */}
+                                    <div className="flex bg-slate-100 p-1.5 rounded-[24px] border border-slate-200/50 w-full relative">
+                                        <button 
+                                            onClick={() => setDrawerTab('edit')} 
+                                            className={`flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded-[20px] transition-all duration-300 relative z-10 flex items-center justify-center gap-2 ${drawerTab === 'edit' ? 'bg-white text-indigo-600 shadow-xl shadow-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            <Layout size={16} /> Workspace
+                                        </button>
+                                        <button 
+                                            onClick={() => setDrawerTab('history')} 
+                                            className={`flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded-[20px] transition-all duration-300 relative z-10 flex items-center justify-center gap-2 ${drawerTab === 'history' ? 'bg-white text-emerald-600 shadow-xl shadow-emerald-500/10' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            <History size={16} /> Archive
+                                        </button>
+                                        <motion.div 
+                                            layoutId="tab-pill"
+                                            className="absolute inset-y-1.5 left-1.5 w-[calc(50%-3px)] bg-white rounded-[20px] shadow-sm z-0"
+                                            animate={{ x: drawerTab === 'edit' ? 0 : '100%' }}
+                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
+                                    <AnimatePresence mode="wait">
+                                        {drawerTab === 'edit' ? (
+                                            <motion.div 
+                                                key="edit-tab"
+                                                initial={{ opacity: 0, scale: 0.98, x: -10 }} 
+                                                animate={{ opacity: 1, scale: 1, x: 0 }} 
+                                                exit={{ opacity: 0, scale: 0.98, x: -10 }}
+                                                className="space-y-10"
+                                            >
+                                                {/* Edit Master Section */}
+                                                <div className="space-y-10">
+                                                    <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
+                                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px] -mr-32 -mt-32" />
+                                                        <div className="relative z-10">
+                                                            <div className="flex items-center justify-between mb-8">
+                                                                <h4 className="text-2xl font-black tracking-tight">Active Workflows</h4>
+                                                                <span className="px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/10">Dynamic</span>
                                                             </div>
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center text-[8px] font-black text-indigo-600 border border-indigo-100">{act.userName[0]}</div>
-                                                                    <p className="text-[11px] font-black text-slate-800">{act.userName}</p>
-                                                                </div>
-                                                                <span className="text-[9px] font-bold text-slate-400">{safeFormat(act.createdAt, "dd MMM, HH:mm")}</span>
-                                                            </div>
-                                                            <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100/50 group-hover:bg-white group-hover:border-indigo-100 transition-all">
-                                                                <p className="text-[10px] text-slate-500 font-bold leading-relaxed mb-1.5">Updated <span className="text-slate-900 font-black">{act.columnName}</span></p>
-                                                                <div className="flex items-center gap-2 text-[9px]">
-                                                                    <div className="px-2 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-100 line-through opacity-60 truncate max-w-[100px]">{act.oldValue || "-"}</div>
-                                                                    <ArrowRight size={10} className="text-slate-300" />
-                                                                    <div className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate max-w-[120px]">{act.newValue}</div>
-                                                                </div>
+                                                            <div className="grid grid-cols-2 gap-5 mt-12">
+                                                                <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4 hover:scale-[1.02] active:scale-[0.98]">
+                                                                    <UserPlus size={22} className="text-indigo-600" /> CRM Sync
+                                                                </button>
+                                                                <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4 hover:scale-[1.02] active:scale-[0.98]">
+                                                                    <Mail size={22} className="text-indigo-400" /> Notify
+                                                                </button>
                                                             </div>
                                                         </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-center py-12 p-6 bg-slate-50/50 rounded-[32px] border border-dashed border-slate-200 ml-[-16px]">
-                                                        <Clock size={32} className="mx-auto text-slate-200 mb-3" />
-                                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">No activity log found</p>
                                                     </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-6">
-                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] px-2 flex items-center gap-3"><Database size={16} className="text-indigo-500" /> Snapshot Info</h3>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => (
-                                                    <div key={col.id} className="p-5 bg-slate-50 rounded-[28px] border border-slate-100/50 hover:bg-white hover:border-indigo-100 transition-all">
-                                                        <div className="flex items-center justify-between mb-2"><p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{col.label}</p></div>
-                                                        <p className="text-xs font-black text-slate-700 leading-tight truncate">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || "-"}</p>
+
+                                                    <div className="space-y-6">
+                                                        <div className="flex items-center justify-between px-2">
+                                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-3">Data Matrix</h3>
+                                                            <span className="flex items-center gap-2 text-[9px] font-black text-emerald-600 uppercase">
+                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Sync
+                                                            </span>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 gap-5">
+                                                            {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => {
+                                                                const isInternal = !col.formId;
+                                                                const val = getCellValue(selectedResponse.id, col.id, isInternal);
+                                                                
+                                                                return (
+                                                                    <div key={col.id} className="group/cell w-full bg-slate-50 hover:bg-white p-6 rounded-[34px] border border-slate-100 hover:border-indigo-100 transition-all duration-300 relative overflow-hidden flex flex-col gap-4 hover:shadow-2xl hover:shadow-indigo-500/5">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{col.label}</p>
+                                                                            {savingCells.has(`${selectedResponse.id}-${col.id}`) && (
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest">Saving</span>
+                                                                                    <div className="w-2 h-2 rounded-full bg-indigo-500 animate-[ping_1.5s_infinite]" />
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+
+                                                                        <div className="relative">
+                                                                            {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
+                                                                                <select 
+                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-indigo-600 focus:ring-0 cursor-pointer appearance-none"
+                                                                                    value={val}
+                                                                                    onChange={(e) => handleStatusCellUpdate(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                >
+                                                                                    <option value="">Select Status...</option>
+                                                                                    {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                                </select>
+                                                                            ) : col.type === "dropdown" ? (
+                                                                                <select 
+                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0 cursor-pointer appearance-none"
+                                                                                    value={val}
+                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                >
+                                                                                    <option value="">Select Option...</option>
+                                                                                    {Array.isArray(col.options) && col.options.map((opt: any) => {
+                                                                                        const label = typeof opt === 'string' ? opt : opt.label;
+                                                                                        return <option key={label} value={label}>{label}</option>;
+                                                                                    })}
+                                                                                </select>
+                                                                            ) : col.type === "user" ? (
+                                                                                <select 
+                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0 cursor-pointer appearance-none"
+                                                                                    value={val}
+                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                >
+                                                                                    <option value="">Assign Member...</option>
+                                                                                    {teamMembers.map(m => (
+                                                                                        <option key={m.clerkId} value={m.clerkId}>{m.firstName || m.email.split('@')[0]}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            ) : col.type === "long_text" ? (
+                                                                                <textarea 
+                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-700 focus:ring-0 resize-none min-h-[80px]"
+                                                                                    value={val}
+                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                    placeholder="Type details..."
+                                                                                />
+                                                                            ) : (
+                                                                                <input 
+                                                                                    type={col.type === "number" || col.type === "currency" ? "number" : col.type === "date" ? "date" : "text"}
+                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0"
+                                                                                    value={val}
+                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                    placeholder={`Enter ${col.label}...`}
+                                                                                />
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="absolute bottom-0 left-0 w-full h-[3px] bg-slate-200/50 group-hover/cell:bg-indigo-600 transition-all duration-300" />
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        ) : (
+                                            <motion.div 
+                                                key="history-tab"
+                                                initial={{ opacity: 0, scale: 0.98, x: 10 }} 
+                                                animate={{ opacity: 1, scale: 1, x: 0 }} 
+                                                exit={{ opacity: 0, scale: 0.98, x: 10 }}
+                                                className="space-y-10"
+                                            >
+                                                <div className="flex flex-col gap-6">
+                                                    <div className="flex items-center justify-between px-2">
+                                                        <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-3">Audit Timeline</h3>
+                                                        <span className="text-[9px] font-black text-slate-400 capitalize bg-slate-100 px-3 py-1 rounded-full">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Events Logged</span>
+                                                    </div>
+                                                    
+                                                    <div className="space-y-6 px-4 border-l-2 border-slate-100 ml-4">
+                                                        {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
+                                                            data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                                <div key={act.id} className="relative pl-8 pb-8 group">
+                                                                    <div className="absolute left-[-11px] top-1.5 w-5 h-5 rounded-full bg-white border-4 border-slate-200 group-hover:border-indigo-400 transition-all shadow-sm flex items-center justify-center">
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-400" />
+                                                                    </div>
+                                                                    <div className="flex flex-col gap-3">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 border border-slate-200">{act.userName[0]}</div>
+                                                                                <p className="text-[12px] font-black text-slate-800">{act.userName}</p>
+                                                                            </div>
+                                                                            <span className="text-[10px] font-bold text-slate-400">{safeFormat(act.createdAt, "dd MMM, HH:mm")}</span>
+                                                                        </div>
+                                                                        <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 group-hover:bg-white group-hover:border-indigo-100 group-hover:shadow-lg transition-all">
+                                                                            <p className="text-[12px] text-slate-500 font-bold mb-4">Modified <span className="text-slate-900 font-black">{act.columnName}</span></p>
+                                                                            <div className="flex items-center gap-4 text-[11px]">
+                                                                                <div className="flex-1 px-4 py-2 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 line-through opacity-70 truncate">{act.oldValue || "-"}</div>
+                                                                                <ArrowRight size={14} className="text-slate-300" />
+                                                                                <div className="flex-1 px-4 py-2 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate">{act.newValue}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="flex flex-col items-center justify-center py-20 bg-slate-50/50 rounded-[50px] border border-dashed border-slate-200 ml-[-16px]">
+                                                                <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-xl shadow-slate-200/50">
+                                                                    <Clock size={40} className="text-slate-200" />
+                                                                </div>
+                                                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Timeline Empty</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
                             </motion.div>
                         </>
@@ -5704,6 +5979,56 @@ if (displayValues.length === 0) {
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
             )}
+            {/* PREMIUM FLOATING BATCH ACTION DOCK */}
+            <AnimatePresence>
+                {selectedRows.length > 0 && (
+                    <motion.div
+                        initial={{ y: 100, x: "-50%", opacity: 0 }}
+                        animate={{ y: 0, x: "-50%", opacity: 1 }}
+                        exit={{ y: 100, x: "-50%", opacity: 0 }}
+                        className="fixed bottom-12 left-1/2 z-[1000] flex items-center gap-8 px-10 py-6 bg-slate-900/90 backdrop-blur-3xl border border-white/20 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.6)] rounded-[40px] min-w-[500px]"
+                    >
+                        <div className="flex items-center gap-4 pr-10 border-r border-white/10 group">
+                            <motion.div 
+                                animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+                                transition={{ repeat: Infinity, duration: 4 }}
+                                className="w-14 h-14 rounded-3xl bg-indigo-600 flex items-center justify-center text-white text-xl font-black shadow-[0_12px_24px_rgba(79,70,229,0.4)] border border-indigo-400/30"
+                            >
+                                {selectedRows.length}
+                            </motion.div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-1">Matrix Active</p>
+                                <p className="text-lg font-black text-white tracking-tight leading-none">Sector Selection Locked</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                            <button
+                                disabled={isBulkDeleting}
+                                onClick={() => {
+                                    if(window.confirm(`Are you sure you want to execute a bulk purge on ${selectedRows.length} records?`)) {
+                                        handleBulkDelete();
+                                        setSelectedRows([]);
+                                    }
+                                }}
+                                className="group px-8 py-3.5 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-[0_12px_24px_rgba(244,63,94,0.3)] hover:shadow-[0_20px_40px_rgba(244,63,94,0.4)] active:scale-95 border border-rose-400/20"
+                            >
+                                {isBulkDeleting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 size={16} />}
+                                Execute Purge Cycle
+                            </button>
+
+                            <button
+                                onClick={() => setSelectedRows([])}
+                                className="px-8 py-3.5 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 border border-white/10 hover:border-white/20 active:scale-95"
+                            >
+                                <X size={16} />
+                                Release Sector
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
             <motion.button
                 initial={{ scale: 0, opacity: 0, y: 20 }}
