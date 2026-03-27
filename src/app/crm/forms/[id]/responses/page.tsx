@@ -3626,7 +3626,31 @@ export default function CRMSpreadsheetPage() {
                                                                             </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
-                                                                                if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
+                                                                                
+                                                                                if (col.id === "__assigned") {
+                                                                                    availableValues = teamMembers.map(m => {
+                                                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                        return {
+                                                                                            label: name,
+                                                                                            value: m.clerkId
+                                                                                        };
+                                                                                    }).sort((a, b) => a.label.localeCompare(b.label));
+
+                                                                                    if (isMaster || isPureMaster) {
+                                                                                        const strictOptions = teamMembers.map(m => {
+                                                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                            return {
+                                                                                                label: `[Reassigned] ${name}`,
+                                                                                                value: `__STRICT_ASSIGNED__${m.clerkId}`
+                                                                                            };
+                                                                                        }).sort((a, b) => a.label.localeCompare(b.label));
+                                                                                        availableValues = [...availableValues, ...strictOptions];
+                                                                                    }
+
+                                                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
+                                                                                    availableValues.unshift({ label: "Unassigned", value: "" });
+
+                                                                                } else if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
                                                                                         if (col.type === "user" && typeof o === 'string') {
                                                                                             const tm = teamMembers.find(t => t.clerkId === o);
@@ -3636,29 +3660,7 @@ export default function CRMSpreadsheetPage() {
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
                                                                                     });
-                                                                                } else if (col.id === "__assigned") {
-                                                    availableValues = teamMembers.map(m => {
-                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
-                                                        return {
-                                                            label: name,
-                                                            value: m.clerkId
-                                                        };
-                                                    }).sort((a, b) => a.label.localeCompare(b.label));
-
-                                                    if (isMaster || isPureMaster) {
-                                                        const strictOptions = teamMembers.map(m => {
-                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
-                                                            return {
-                                                                label: `[Reassigned] ${name}`,
-                                                                value: `__STRICT_ASSIGNED__${m.clerkId}`
-                                                            };
-                                                        }).sort((a, b) => a.label.localeCompare(b.label));
-                                                        availableValues = [...availableValues, ...strictOptions];
-                                                    }
-
-                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
-                                                    availableValues.unshift({ label: "Unassigned", value: "" });
-                                                } else if (col.id === "__contributor") {
+                                                                                } else if (col.id === "__contributor") {
                                                     const bestNames = new Map<string, string>(); // lowercase -> display
                                                     const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
                                                     
