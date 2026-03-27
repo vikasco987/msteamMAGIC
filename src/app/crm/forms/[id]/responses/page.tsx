@@ -3709,9 +3709,14 @@ export default function CRMSpreadsheetPage() {
                                                                                     // If it's a user/assigned/contributor field, check against teamMembers
                                                                                     const isUserCol = col.id === "__assigned" || col.id === "__contributor" || col.type === "user";
                                                                                     if (isUserCol && opt.value !== "" && opt.value !== "unassigned") {
-                                                                                        // If value looks like an ID, check if active
-                                                                                        const isActive = teamMembers.some(m => m.clerkId === opt.value || m.email === opt.label || m.name === opt.label);
-                                                                                        if (!isActive) return; // Hide blocked/historical users as requested
+                                                                                        // Allow internal operators to pass through
+                                                                                        const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
+                                                                                        
+                                                                                        if (!isInternalOp) {
+                                                                                            // If value looks like an ID, check if active
+                                                                                            const isActive = teamMembers.some(m => m.clerkId === opt.value || m.email === opt.label || m.name === opt.label);
+                                                                                            if (!isActive) return; // Hide blocked/historical users
+                                                                                        }
                                                                                     }
 
                                                                                     if (!uniqueDisplayMap.has(lowLabel)) {
@@ -3735,6 +3740,7 @@ if (displayValues.length === 0) {
                                                                                         <button
                                                                                             key={opt.value}
                                                                                             onClick={() => {
+                                                                                                setPage(1); // Reset to first page on filter change
                                                                                                 if (isSelected) {
                                                                                                     setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
                                                                                                 } else {
