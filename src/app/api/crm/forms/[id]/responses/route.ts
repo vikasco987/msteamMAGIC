@@ -78,8 +78,15 @@ export async function GET(
         ]);
 
         const colMap: Record<string, string> = {};
-        fields.forEach(f => colMap[f.id] = f.type);
-        internalColumns.forEach(c => colMap[c.id] = c.type);
+        const colLabelMap: Record<string, string> = {};
+        fields.forEach(f => {
+            colMap[f.id] = f.type;
+            colLabelMap[f.id] = f.label.toLowerCase();
+        });
+        internalColumns.forEach(c => {
+            colMap[c.id] = c.type;
+            colLabelMap[c.id] = c.label.toLowerCase();
+        });
 
         const form = {
             ...rawForm,
@@ -139,6 +146,11 @@ export async function GET(
 
         // Group conditions by colId for OR logic within columns
         const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {
+            const label = colLabelMap[cond.colId] || "";
+            // 🔥 Map custom "Status" columns to the system remarks logic automatically
+            if (label.includes("status")) {
+                cond.isStatusAlias = true;
+            }
             if (!acc[cond.colId]) acc[cond.colId] = [];
             acc[cond.colId].push(cond);
             return acc;
@@ -221,8 +233,9 @@ export async function GET(
                     } else {
                         columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
                     }
-                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark") {
+                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark" || cond.isStatusAlias) {
                     // Remarks logic
+                    const isStatus = colId === "__followUpStatus" || cond.isStatusAlias;
                     if (colId === "__nextFollowUpDate") {
                         if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
                         else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
@@ -239,7 +252,7 @@ export async function GET(
                         } else if (op === "after" && val) {
                             columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
                         }
-                    } else if (colId === "__followUpStatus") {
+                    } else if (isStatus) {
                         if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
                         else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
                     } else if (colId === "__recentRemark" || colId === "__followup") {

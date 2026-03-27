@@ -1478,12 +1478,18 @@ export default function CRMSpreadsheetPage() {
         }
 
         // 🟢 FOLLOW-UP BOARD SYSTEM COLUMNS
-        const remarks = (resp as any).remarks || [];
+        const remarks = [...((resp as any).remarks || [])].sort((a: any, b: any) => 
+            new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        );
         const latestRemark = remarks[0];
+        
+        const col = getColumns.find(c => c.id === colId);
+        const colLabel = (col?.label || "").toLowerCase();
+        const isStatusCol = colLabel.includes("status") || colId === "__followUpStatus";
+
         if (colId === "__nextFollowUpDate") return latestRemark?.nextFollowUpDate || "";
-        if (colId === "__followUpStatus") return latestRemark?.followUpStatus || "";
-        if (colId === "__recentRemark") return latestRemark?.remark || "";
-        if (colId === "__followup") return latestRemark?.remark || ""; // Fallback for general follow-up col
+        if (isStatusCol) return latestRemark?.followUpStatus || "";
+        if (colId === "__recentRemark" || colId === "__followup") return latestRemark?.remark || "";
 
 
         if (isInternal) {
