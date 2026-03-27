@@ -401,7 +401,9 @@ export async function GET(
             try {
                 const clerk = await clerkClient();
                 const usersList = await clerk.users.getUserList({ userId: allUserIds, limit: 100 });
-                usersList.data.forEach(u => {
+                usersList.data
+                    .filter((u: any) => !u.banned)
+                    .forEach(u => {
                     usersMap[u.id] = {
                         email: u.emailAddresses[0]?.emailAddress || "Unknown",
                         name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
@@ -415,9 +417,11 @@ export async function GET(
 
         const enrichedForm: any = {
             ...form,
-            visibleToUsersData: allUserIds.map((uid: string) => ({
+            visibleToUsersData: allUserIds
+                .filter((uid: string) => usersMap[uid])
+                .map((uid: string) => ({
                 id: uid,
-                ...(usersMap[uid] || { email: "Unknown", name: "User", imageUrl: "" })
+                ...usersMap[uid]
             }))
         };
 

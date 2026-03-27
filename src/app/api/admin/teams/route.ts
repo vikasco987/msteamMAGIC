@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
         const clerkUsersResponse = await client.users.getUserList({ limit: 500 });
         const clerkUsers = clerkUsersResponse.data;
 
-        const formattedUsers = clerkUsers.map(u => {
+        const formattedUsers = clerkUsers
+            .filter((u: any) => !u.banned)
+            .map(u => {
             const dbUser = users.find(du => du.clerkId === u.id);
             return {
                 id: u.id,

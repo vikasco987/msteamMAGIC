@@ -195,7 +195,9 @@ export async function GET() {
       }
     }
 
-    const formatted = allUsers.map((user) => ({
+    const formatted = allUsers
+      .filter((user) => !user.banned)
+      .map((user) => ({
       id: user.id,
       email: user.emailAddresses?.[0]?.emailAddress || "no-email",
       name:

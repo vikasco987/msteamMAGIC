@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
                 name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown",
                 email: u.emailAddresses[0]?.emailAddress || "N/A",
                 role: (u.publicMetadata?.role as string) || "user",
-                synced: !!dbUser
+                synced: !!dbUser,
+                banned: !!u.banned
             };
         });
 
