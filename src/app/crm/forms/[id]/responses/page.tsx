@@ -6047,6 +6047,14 @@ if (displayValues.length === 0) {
                             </button>
 
                             <button
+                                onClick={() => setIsLeadAssignHubOpen(true)}
+                                className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-[0_12px_24px_rgba(79,70,229,0.3)] hover:shadow-[0_20px_40px_rgba(79,70,229,0.4)] active:scale-95 border border-indigo-400/20"
+                            >
+                                <Sparkles size={16} />
+                                Lead Distribute
+                            </button>
+
+                            <button
                                 onClick={() => setSelectedRows([])}
                                 className="px-8 py-3.5 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 border border-white/10 hover:border-white/20 active:scale-95"
                             >
