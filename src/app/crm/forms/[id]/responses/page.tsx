@@ -1582,30 +1582,40 @@ export default function CRMSpreadsheetPage() {
 
                     if (colId === "__assigned") {
                         const result = (conds as any[]).some((cond: any) => {
-                            const targetId = (cond.val || "").toString();
+                            const fullVal = (cond.val || "").toString();
+                            let targetId = fullVal;
+                            let isStrict = fullVal.startsWith("__STRICT_ASSIGNED__");
+                            let isGlobal = fullVal.startsWith("__GLOBAL_OWNER__");
+                            
+                            if (isStrict) targetId = fullVal.replace("__STRICT_ASSIGNED__", "");
+                            if (isGlobal) targetId = fullVal.replace("__GLOBAL_OWNER__", "");
+
                             const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
                             const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
-                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId) || (r.submittedBy === targetId && rawAssigned.length === 0);
-                            const isUnassigned = rawAssigned.length === 0;
+                            
+                            const isUserAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                             const isSubmitter = r.submittedBy === targetId;
 
                             let match = false;
                             if (cond.op === "equals" || cond.op === "contains") {
-                                match = isAssigned || (isUnassigned && isSubmitter);
+                                if (isStrict) {
+                                    match = isUserAssigned && !isSubmitter;
+                                } else if (isGlobal) {
+                                    match = isUserAssigned || isSubmitter;
+                                } else {
+                                    // Default behavior for standard IDs or names
+                                    match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
+                                }
                             } else if (cond.op === "is_empty") {
-                                match = isUnassigned && !r.submittedBy;
+                                match = rawAssigned.length === 0 && !r.submittedBy;
                             } else if (cond.op === "is_not_empty") {
-                                match = !isUnassigned || !!r.submittedBy;
+                                match = rawAssigned.length > 0 || !!r.submittedBy;
                             } else if (cond.op === "not_equals") {
-                                match = !isAssigned && !(isUnassigned && isSubmitter);
+                                if (isStrict) match = !isUserAssigned || isSubmitter;
+                                else if (isGlobal) match = !isUserAssigned && !isSubmitter;
+                                else match = !isUserAssigned && !(rawAssigned.length === 0 && isSubmitter);
                             }
 
-                            if (targetId) {
-                                console.log(`[FilterDebug] Row:${r.id.slice(-4)} | Target:${targetId} | Op:${cond.op}`);
-                                console.log(`  - r.assignedTo:`, JSON.stringify(rawAssigned));
-                                console.log(`  - r.submittedBy:`, r.submittedBy);
-                                console.log(`  - Flags: isAssigned:${isAssigned}, isUnassigned:${isUnassigned}, isSubmitter:${isSubmitter} => Match:${match}`);
-                            }
                             return match;
                         });
                         return result;
@@ -2627,13 +2637,6 @@ export default function CRMSpreadsheetPage() {
     };
 
 
-    const safeFormat = (dateStr: string, pattern: string) => {
-        try {
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return "—";
-            return format(d, pattern);
-        } catch (e) { return "—"; }
-    };
 
     const dynamicStats = useMemo(() => {
         if (!data || !data.responses) return null;
