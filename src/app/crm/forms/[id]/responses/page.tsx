@@ -3660,14 +3660,20 @@ export default function CRMSpreadsheetPage() {
                                                                                     }).sort((a, b) => a.label.localeCompare(b.label));
 
                                                                                     if (isMaster || isPureMaster) {
+                                                                                        const ownerOptions = teamMembers.map(m => {
+                                                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                            return { label: `Owner: ${name}`, value: `__GLOBAL_OWNER__${m.clerkId}` };
+                                                                                        }).sort((a, b) => a.label.localeCompare(b.label));
+
                                                                                         const strictOptions = teamMembers.map(m => {
                                                                                             const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
                                                                                             return {
-                                                                                                label: `[Reassigned] ${name}`,
+                                                                                                label: `[Strict] Reassigned to ${name}`,
                                                                                                 value: `__STRICT_ASSIGNED__${m.clerkId}`
                                                                                             };
                                                                                         }).sort((a, b) => a.label.localeCompare(b.label));
-                                                                                        availableValues = [...availableValues, ...strictOptions];
+                                                                                        
+                                                                                        availableValues = [...availableValues, ...ownerOptions, ...strictOptions];
                                                                                     }
 
                                                                                     availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });

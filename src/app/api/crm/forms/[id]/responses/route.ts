@@ -211,6 +211,9 @@ export async function GET(
                         columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { assignedTo: null } }, { NOT: { submittedBy: null } }] });
                     } else if (val === "__REASSIGNED_TO_ME__") {
                         columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
+                    } else if (typeof val === 'string' && val.startsWith("__GLOBAL_OWNER__")) {
+                        const targetId = val.replace("__GLOBAL_OWNER__", "");
+                        columnFilters.push({ OR: [{ assignedTo: { has: targetId } }, { submittedBy: targetId }] });
                     } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
                         const targetId = val.replace("__STRICT_ASSIGNED__", "");
                         columnFilters.push({ AND: [{ assignedTo: { has: targetId } }, { NOT: { submittedBy: targetId } }] });
