@@ -1,32 +1,42 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { 
     Search, Filter, Users, UserPlus, CheckCircle2, 
-    History, X, ExternalLink, Sparkles, LayoutGrid, 
-    FileText, Calendar, ChevronDown, Loader2, ArrowRight,
-    ArrowUpDown, MoreHorizontal, ShieldCheck, Mail, Phone,
-    Clock, Database
+    X, LayoutGrid, FileText, ChevronDown, ShieldCheck, Phone,
+    Database, Plus, Trash2, ListChecks, ArrowRight, ArrowUpDown,
+    Clock, AlertCircle, Zap, Layers, Send, RefreshCw,
+    BarChart3, Settings, Menu, Bell, UserCheck, HardDrive,
+    MoveRight, MousePointer2, Info, Calendar as CalendarIcon, User as UserIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { format } from "date-fns";
+import { format, subHours, isAfter } from "date-fns";
 import StatusMatrixModal from "@/app/components/StatusMatrixModal";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
+
+const CALL_STATUS_OPTIONS = [
+    "New Lead", "In Progress", "Call Back", "RNR", "Interested", "Closed", "Dead Lead"
+];
+
+const QUICK_FILTERS = [
+    { label: "ALL", value: "" },
+    { label: "FRESH", value: "New Lead" },
+    { label: "RNR", value: "RNR" },
+    { label: "IN PROGRESS", value: "In Progress" },
+    { label: "INTERESTED", value: "Interested" },
+];
 
 interface Lead {
     id: string;
     formId: string;
     submittedByName: string;
-    assignedTo: string[];
+    submittedBy: string;
     submittedAt: string;
+    assignedTo: string[];
     values: { fieldId: string; value: string }[];
-    form: {
-        id: string;
-        title: string;
-        fields: { id: string; label: string; type: string }[];
-    };
+    internalValues?: { columnId: string; value: string }[];
     remarks: any[];
 }
 
@@ -38,504 +48,362 @@ interface TeamMember {
     imageUrl?: string;
 }
 
-export default function AdminLeadsDashboard() {
+export default function LeadDistributionTerminal() {
     const router = useRouter();
     const [leads, setLeads] = useState<Lead[]>([]);
     const [loading, setLoading] = useState(true);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
-    const [limit] = useState(50);
     
-    // Filters
+    // Config
+    const [formId, setFormId] = useState("69b8f819a8a6f09fd11148c7");
+    const [formStructure, setFormStructure] = useState<any>(null);
     const [search, setSearch] = useState("");
-    const [formId, setFormId] = useState("");
-    const [assignedTo, setAssignedTo] = useState("");
+    const [activeStatus, setActiveStatus] = useState("");
+    
+    // Advanced Filters
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
+    const [selectedSubmitter, setSelectedSubmitter] = useState("");
+    const [selectedAssignee, setSelectedAssignee] = useState("");
+    const [availableSubmitters, setAvailableSubmitters] = useState<any[]>([]);
+    
+    // Selection & Assignment
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
     const [forms, setForms] = useState<any[]>([]);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-    
-    // Selection
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-    const [assigneeSearch, setAssigneeSearch] = useState("");
 
-    // Detail/Modals
+    // Modals
     const [statusModal, setStatusModal] = useState<{ lead: Lead, val: string } | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
 
-    useEffect(() => {
-        fetchForms();
-        fetchMembers();
-    }, []);
+    const initData = async () => {
+         try {
+             const [fRes, uRes] = await Promise.all([
+                 fetch("/api/crm/forms"),
+                 fetch("/api/crm/users?limit=200")
+             ]);
+             const fd = await fRes.json();
+             const ud = await uRes.json();
+             setForms(fd.forms || []);
+             setTeamMembers(ud.users || []);
+         } catch (e) {}
+    };
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            fetchLeads();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, [search, formId, assignedTo, page]);
+    useEffect(() => { initData(); }, []);
 
-    const fetchLeads = async () => {
+    const fetchLeads = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/crm/admin/leads?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&formId=${formId}&assignedTo=${assignedTo}`);
+            const params = new URLSearchParams({
+                page: page.toString(),
+                limit: "25",
+                search,
+                formId,
+                startDate,
+                endDate,
+                submitterId: selectedSubmitter,
+                assignedTo: selectedAssignee
+            });
+
+            if (activeStatus) {
+                const conds = JSON.stringify([{ colId: "__status", op: "equals", val: activeStatus }]);
+                params.append("conditions", conds);
+            }
+
+            const res = await fetch(`/api/crm/admin/leads?${params.toString()}`);
             const data = await res.json();
             if (data.responses) {
                 setLeads(data.responses);
                 setTotal(data.total);
+                setFormStructure(data.formStructure);
+                setAvailableSubmitters(data.uniqueSubmitters || []);
             }
-        } catch (err) {
-            toast.error("Failed to load leads");
-        } finally {
-            setLoading(false);
+        } catch (e) { toast.error("Sync Failed"); } finally { setLoading(false); }
+    }, [page, search, formId, activeStatus, startDate, endDate, selectedSubmitter, selectedAssignee]);
+
+    useEffect(() => {
+        const t = setTimeout(() => fetchLeads(), (search || startDate || endDate) ? 500 : 0);
+        return () => clearTimeout(t);
+    }, [fetchLeads]);
+
+    const handleBatchAssign = async () => {
+        if (selectedIds.length === 0 || !selectedAgentId) {
+            toast.error("Select leads and an agent first!");
+            return;
         }
-    };
-
-    const fetchForms = async () => {
-        try {
-            const res = await fetch("/api/crm/forms");
-            const data = await res.json();
-            setForms(data.forms || []);
-        } catch (err) {}
-    };
-
-    const fetchMembers = async () => {
-        try {
-            const res = await fetch("/api/crm/users?limit=500");
-            const data = await res.json();
-            setTeamMembers(data.users || []);
-        } catch (err) {}
-    };
-
-    const handleBulkAssign = async (targetClerkId: string) => {
-        if (selectedIds.length === 0) return;
-        const tid = toast.loading(`Reassigning ${selectedIds.length} leads...`);
+        const tid = toast.loading(`Rerouting ${selectedIds.length} leads...`);
         try {
             const res = await fetch("/api/crm/admin/leads", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids: selectedIds, assignedTo: [targetClerkId] })
+                body: JSON.stringify({ ids: selectedIds, assignedTo: [selectedAgentId] })
             });
-
             if (res.ok) {
-                toast.success(`Successfully reassigned ${selectedIds.length} leads`, { id: tid });
+                toast.success("Distribution Successful", { id: tid });
                 setSelectedIds([]);
-                setIsAssignModalOpen(false);
+                setSelectedAgentId(null);
                 fetchLeads();
-            } else {
-                throw new Error();
-            }
-        } catch (err) {
-            toast.error("Reassignment failed", { id: tid });
+            } else throw new Error();
+        } catch (e) { toast.error("API Error", { id: tid }); }
+    };
+
+    const getSubmitterInfo = useCallback((lead: Lead) => {
+        let name = lead.submittedByName;
+        let num = "—";
+        if (formStructure?.fields) {
+            const numField = formStructure.fields.find((f: any) => /phone|mobile|number|contact|व्हाट्सएप|मोबाइल/i.test(f.label));
+            if (numField) num = lead.values?.find(v => v.fieldId === numField.id)?.value || "—";
         }
+        if (!name || name === "Public Submitter" || name === "Vivek Kunwar") {
+            const first = lead.values?.[0]?.value;
+            if (first && first.length > 2 && first.length < 25) name = first;
+            else {
+                const staff = teamMembers.find(m => m.clerkId === lead.submittedBy);
+                if (staff) name = staff.firstName || staff.email.split('@')[0];
+                else name = num !== "—" ? "Node-" + num.slice(-4) : "L-" + lead.id.slice(-4);
+            }
+        }
+        return { name, number: num };
+    }, [formStructure, teamMembers]);
+
+    const clearFilters = () => {
+        setStartDate("");
+        setEndDate("");
+        setSelectedSubmitter("");
+        setSelectedAssignee("");
+        setActiveStatus("");
+        setSearch("");
     };
-
-    const getLeadMainDisplay = (lead: Lead) => {
-        // Try to find Name, Phone, Email in values
-        const vals = lead.values || [];
-        const nameVal = vals[0]?.value || lead.submittedByName || "Lead Record";
-        const emailVal = vals.find(v => v.value?.includes("@"))?.value;
-        const phoneVal = vals.find(v => /^\d{10}$/.test(v.value?.replace(/[^0-9]/g, "")))?.value;
-
-        return { name: nameVal, email: emailVal, phone: phoneVal };
-    };
-
-    const filteredTeam = useMemo(() => {
-        if (!assigneeSearch) return teamMembers.slice(0, 50);
-        const s = assigneeSearch.toLowerCase();
-        return teamMembers.filter(m => 
-            m.firstName?.toLowerCase().includes(s) || 
-            m.lastName?.toLowerCase().includes(s) || 
-            m.email?.toLowerCase().includes(s)
-        );
-    }, [teamMembers, assigneeSearch]);
 
     return (
-        <div className="min-h-screen bg-[#F0F2F5] flex flex-col font-sans text-slate-900">
-            {/* 🏆 ULTRA-MODERN HEADER */}
-            <header className="fixed top-0 left-0 right-0 z-[60] bg-white/80 backdrop-blur-3xl border-b border-slate-200 shadow-sm px-8 py-4">
-                <div className="max-w-[1920px] mx-auto flex items-center justify-between gap-10">
+        <div className="flex h-screen bg-[#F8FAFC] text-slate-900 overflow-hidden font-sans">
+            
+            {/* 📁 SIDEBAR (Sector Switcher) */}
+            <aside className={`bg-white border-r border-slate-200 transition-all duration-300 flex flex-col z-[100] ${isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden opacity-0'}`}>
+                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                    <div><h2 className="text-xl font-black tracking-tighter text-indigo-600 leading-none mb-1">HUB</h2><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lead Terminal</p></div>
+                    <button onClick={() => setIsSidebarOpen(false)} className="p-2 text-slate-300 hover:text-rose-500 transition-colors"><X size={16} /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                    {forms.map(f => (
+                        <button key={f.id} onClick={() => { setFormId(f.id); setPage(1); }} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all border-2 text-left animate-in slide-in-from-left-2 ${formId === f.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white border-transparent hover:bg-slate-50 hover:border-slate-100'}`}>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${formId === f.id ? 'bg-white/20' : 'bg-slate-100 text-slate-400'}`}><FileText size={16} /></div>
+                            <div className="flex-1 min-w-0"><h4 className="text-[12px] font-black uppercase truncate leading-none mb-1">{f.title}</h4><span className={`text-[8px] font-bold uppercase transition-colors ${formId === f.id ? 'text-indigo-100' : 'text-slate-300'}`}>{f._count?.responses || 0} Leads</span></div>
+                        </button>
+                    ))}
+                </div>
+            </aside>
+
+            {/* 🏢 MAIN AREA */}
+            <main className="flex-1 flex flex-col min-w-0 bg-white">
+                
+                {/* 🛡️ TOP NAVIGATION & QUICK FILTERS */}
+                <header className="h-20 px-8 border-b border-slate-100 flex items-center justify-between shadow-sm relative z-50">
                     <div className="flex items-center gap-6">
-                        <div className="w-12 h-12 bg-indigo-600 rounded-[18px] flex items-center justify-center shadow-lg shadow-indigo-200">
-                            <ShieldCheck className="text-white" size={24} />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-1">Lead Terminal</h1>
-                            <p className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.3em]">Master Operations Control</p>
+                        {!isSidebarOpen && <button onClick={() => setIsSidebarOpen(true)} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><Menu size={18} /></button>}
+                        <div className="relative w-80 group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" size={16} />
+                            <input type="text" placeholder="Deep scan database..." className="w-full pl-11 pr-4 py-2.5 bg-slate-100 rounded-2xl border-transparent focus:bg-white focus:border-indigo-600 outline-none transition-all font-black text-[12px] uppercase" value={search} onChange={(e) => setSearch(e.target.value)} />
                         </div>
                     </div>
 
-                    <div className="flex-1 max-w-2xl relative group">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
-                        <input 
-                            type="text"
-                            placeholder="Search by meta, identity or attribute across all sectors..."
-                            className="w-full pl-14 pr-6 py-4 bg-slate-100/50 border border-slate-200 rounded-2xl outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-bold text-sm"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="flex flex-col items-end mr-6 border-r border-slate-200 pr-8">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Active</span>
-                            <span className="text-xl font-black text-slate-900 tabular-nums tracking-tighter">{total.toLocaleString()}</span>
-                        </div>
-                        <button 
-                            onClick={() => router.push("/crm/forms/new")}
-                            className="px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all active:scale-95 shadow-xl shadow-slate-200"
-                        >
-                            Build Sector
+                    <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl">
+                        {QUICK_FILTERS.map(f => (
+                            <button key={f.label} onClick={() => { setActiveStatus(f.value); setPage(1); }} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${activeStatus === f.value ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>{f.label}</button>
+                        ))}
+                        <div className="w-px h-6 bg-slate-200 mx-2" />
+                        <button onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${isFilterPanelOpen ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                            <Filter size={14} /> Matrix Filters
                         </button>
                     </div>
-                </div>
-            </header>
+                </header>
 
-            {/* 🛸 GLOBAL OPERATOR CONTROL PANEL */}
-            <main className="flex-1 pt-32 pb-20 px-8 max-w-[1920px] mx-auto w-full">
-                
-                {/* 🧪 SMART FILTERS */}
-                <div className="grid grid-cols-4 gap-6 mb-8">
-                    <div className="bg-white p-6 rounded-[32px] border border-slate-200/60 shadow-sm flex items-center gap-5 group hover:border-indigo-200 transition-all">
-                        <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-                            <LayoutGrid size={22} />
-                        </div>
-                        <div className="flex-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Form Sector</label>
-                            <select 
-                                className="w-full bg-transparent font-black text-slate-800 text-sm outline-none cursor-pointer"
-                                value={formId}
-                                onChange={(e) => setFormId(e.target.value)}
-                            >
-                                <option value="">Global Scanner (All)</option>
-                                {forms.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}
-                            </select>
-                        </div>
-                    </div>
+                {/* 📊 ADVANCED FILTER PANEL */}
+                <AnimatePresence>
+                    {isFilterPanelOpen && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="bg-slate-50 border-b border-slate-200 overflow-hidden relative z-40 px-8 py-6">
+                            <div className="grid grid-cols-4 gap-6 max-w-[1400px]">
+                                {/* DATE RANGE */}
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><CalendarIcon size={12} /> Submission Timeline</label>
+                                    <div className="flex items-center gap-2">
+                                        <input type="date" className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-black outline-none focus:border-indigo-600" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                        <span className="text-slate-300 font-bold">to</span>
+                                        <input type="date" className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-black outline-none focus:border-indigo-600" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                    </div>
+                                </div>
 
-                    <div className="bg-white p-6 rounded-[32px] border border-slate-200/60 shadow-sm flex items-center gap-5 group hover:border-indigo-200 transition-all">
-                        <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
-                            <Users size={22} />
-                        </div>
-                        <div className="flex-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Staff/Agent</label>
-                            <select 
-                                className="w-full bg-transparent font-black text-slate-800 text-sm outline-none cursor-pointer"
-                                value={assignedTo}
-                                onChange={(e) => setAssignedTo(e.target.value)}
-                            >
-                                <option value="">Network Peak (All)</option>
-                                {teamMembers.map(m => <option key={m.clerkId} value={m.clerkId}>{m.firstName || m.email}</option>)}
-                            </select>
-                        </div>
-                    </div>
+                                {/* SUBMITTER DROP DOWN */}
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={12} /> Origin Submitter</label>
+                                    <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[11px] font-black outline-none focus:border-indigo-600 uppercase" value={selectedSubmitter} onChange={(e) => setSelectedSubmitter(e.target.value)}>
+                                        <option value="">All Submitters</option>
+                                        {availableSubmitters.map(s => (
+                                            <option key={s.submittedBy} value={s.submittedBy}>{s.submittedByName || "Unknown User"}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                    <div className="bg-white p-6 rounded-[32px] border border-slate-200/60 shadow-sm flex items-center gap-5 group hover:border-indigo-200 transition-all">
-                        <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
-                            <Calendar size={22} />
-                        </div>
-                        <div className="flex-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Time Dimension</label>
-                            <span className="font-black text-slate-800 text-sm">Real-time Stream</span>
-                        </div>
-                    </div>
+                                {/* ASSIGNEE / UNASSIGNED */}
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><UserCheck size={12} /> Allocation Status</label>
+                                    <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[11px] font-black outline-none focus:border-indigo-600 uppercase" value={selectedAssignee} onChange={(e) => setSelectedAssignee(e.target.value)}>
+                                        <option value="">All Allocations</option>
+                                        <option value="unassigned" className="text-rose-600 font-black">--- UNASSIGNED ONLY ---</option>
+                                        {teamMembers.map(m => (
+                                            <option key={m.clerkId} value={m.clerkId}>{m.firstName || m.email.split('@')[0]}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                    <div className="bg-indigo-600 p-6 rounded-[32px] shadow-2xl shadow-indigo-200 group relative overflow-hidden flex items-center gap-5 cursor-pointer hover:-translate-y-1 transition-all active:scale-95"
-                         onClick={() => { if (selectedIds.length > 0) setIsAssignModalOpen(true); else toast.info("Select leads in the matrix first"); }}>
-                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <Sparkles size={60} />
-                        </div>
-                        <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white">
-                            <UserPlus size={22} />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-white font-black text-sm uppercase tracking-widest leading-none mb-1">Mass Distribute</h3>
-                            <p className="text-indigo-100 text-[9px] font-bold uppercase tracking-widest">{selectedIds.length} Selected Units</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* 📊 MASTER DATA MATRIX */}
-                <div className="bg-white rounded-[40px] shadow-2xl border border-white/40 overflow-hidden relative">
-                    {loading && (
-                        <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-50 flex items-center justify-center">
-                            <div className="flex flex-col items-center gap-4">
-                                <Loader2 size={32} className="text-indigo-600 animate-spin" />
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Calibrating Data Matrix...</span>
+                                <div className="flex items-end pb-0.5">
+                                    <button onClick={clearFilters} className="px-6 py-2.5 bg-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all w-full">Wipe Matrix Filters</button>
+                                </div>
                             </div>
-                        </div>
+                        </motion.div>
                     )}
+                </AnimatePresence>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-100 bg-slate-50/50">
-                                    <th className="px-8 py-6 w-16">
-                                        <div className="flex items-center justify-center">
-                                            <input 
-                                                type="checkbox" 
-                                                className="w-5 h-5 rounded-lg border-2 border-slate-200 checked:bg-indigo-600 transition-all cursor-pointer"
-                                                checked={selectedIds.length === leads.length && leads.length > 0}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedIds(leads.map(l => l.id));
-                                                    else setSelectedIds([]);
-                                                }}
-                                            />
-                                        </div>
-                                    </th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Submitter Detail</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Context Info</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Current Status</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assigned Agent</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Origin Sector</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {leads.length === 0 && !loading ? (
-                                    <tr>
-                                        <td colSpan={7} className="py-32 text-center">
-                                            <div className="flex flex-col items-center gap-6 opacity-30">
-                                                <Database size={60} />
-                                                <h3 className="text-xl font-black uppercase tracking-widest">Sector Empty</h3>
-                                            </div>
-                                        </td>
+                {/* 📊 GRID AREA */}
+                <div className="flex-1 overflow-auto custom-scrollbar p-8 bg-slate-50/30">
+                    <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden flex flex-col relative h-full">
+                        {loading && (
+                            <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-[200] flex items-center justify-center">
+                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-12 h-12 border-4 border-slate-100 border-t-indigo-600 rounded-full shadow-lg" />
+                            </div>
+                        )}
+                        
+                        <div className="flex-1 overflow-auto custom-scrollbar">
+                            <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
+                                <thead className="sticky top-0 bg-white border-b border-slate-100 z-[100]">
+                                    <tr className="bg-slate-50/50">
+                                        <th className="px-8 py-5 w-16 text-center border-r border-slate-100"><input type="checkbox" className="w-5 h-5 rounded-[7px] border-2 border-slate-200 text-indigo-600" checked={selectedIds.length === leads.length && leads.length > 0} onChange={(e) => { if(e.target.checked) setSelectedIds(leads.map(l => l.id)); else setSelectedIds([]); }} /></th>
+                                        <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[280px] border-r border-slate-100">Client Identity</th>
+                                        <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[140px] border-r border-slate-100">Entry Matrix</th>
+                                        <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[160px] text-center border-r border-slate-100">Current Phase</th>
+                                        <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[220px]">Assigned Personnel</th>
                                     </tr>
-                                ) : (
-                                    leads.map(lead => {
-                                        const display = getLeadMainDisplay(lead);
-                                        const isSelected = selectedIds.includes(lead.id);
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {leads.map(lead => {
+                                        const isSel = selectedIds.includes(lead.id);
+                                        const { name, number } = getSubmitterInfo(lead);
                                         const status = lead.remarks?.[0]?.followUpStatus || "New Lead";
-                                        const lastRemark = lead.remarks?.[0]?.remark;
-                                        const agents = lead.assignedTo || [];
-
+                                        const assigned = Array.from(new Set([...(lead.assignedTo || [])]));
                                         return (
-                                            <motion.tr 
-                                                key={lead.id}
-                                                initial={false}
-                                                className={`group border-b border-slate-50 transition-all hover:bg-slate-50 shadow-inner ${isSelected ? 'bg-indigo-50/40' : ''}`}
-                                            >
-                                                <td className="px-8 py-6">
-                                                    <div className="flex items-center justify-center">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            className="w-5 h-5 rounded-lg border-2 border-slate-200 checked:bg-indigo-600 transition-all cursor-pointer"
-                                                            checked={isSelected}
-                                                            onChange={() => {
-                                                                if (isSelected) setSelectedIds(prev => prev.filter(id => id !== lead.id));
-                                                                else setSelectedIds(prev => [...prev, lead.id]);
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-6">
-                                                    <div>
-                                                        <h4 className="text-[15px] font-black text-slate-900 tracking-tight mb-1 group-hover:text-indigo-600 transition-colors uppercase">{display.name}</h4>
-                                                        <div className="flex items-center gap-3">
-                                                            {display.phone && <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400"><Phone size={10} /> {display.phone}</span>}
-                                                            {display.email && <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400"><Mail size={10} /> {display.email}</span>}
+                                            <tr key={lead.id} className={`group hover:bg-slate-50/50 transition-all ${isSel ? 'bg-indigo-50/30' : ''}`}>
+                                                <td className="px-8 py-5 w-16 text-center border-r border-slate-50"><input type="checkbox" className="w-5 h-5 rounded-[7px] border-2 border-slate-200 text-indigo-600 shadow-sm" checked={isSel} onChange={() => { if(isSel) setSelectedIds(p => p.filter(id => id !== lead.id)); else setSelectedIds(p => [...p, lead.id]); }} /></td>
+                                                <td className="px-6 py-5 border-r border-slate-50">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 bg-slate-50 rounded-[18px] border border-slate-100 flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm text-[11px] uppercase truncate px-2">{name[0]}</div>
+                                                        <div className="min-w-0">
+                                                            <h4 className="text-[14px] font-black text-slate-900 truncate uppercase mb-1">{name}</h4>
+                                                            <p className="text-[10px] font-black text-slate-400 flex items-center gap-2 opacity-60 group-hover:opacity-100 transition-opacity"><Phone size={10} className="text-indigo-600" /><span className="tabular-nums">{number}</span></p>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-6">
-                                                    <div className="max-w-[240px]">
-                                                        {lastRemark ? (
-                                                            <p className="text-[11px] font-bold text-slate-500 leading-relaxed line-clamp-2 italic">"{lastRemark}"</p>
-                                                        ) : (
-                                                            <div className="flex gap-2">
-                                                                {lead.values.slice(0, 2).map((v, i) => (
-                                                                    <span key={i} className="text-[9px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded border border-slate-200 uppercase truncate max-w-[100px]">{v.value || 'N/A'}</span>
-                                                                ))}
-                                                            </div>
-                                                        )}
+                                                <td className="px-6 py-5 border-r border-slate-50"><p className="text-[11px] font-black text-slate-600 tabular-nums uppercase leading-none mb-1.5">{format(new Date(lead.submittedAt), "MMM dd")}</p><span className="text-[10px] font-bold text-slate-300 uppercase leading-none">{format(new Date(lead.submittedAt), "hh:mm a")}</span></td>
+                                                <td className="px-6 py-5 border-r border-slate-50 text-center">
+                                                    <button onClick={() => setStatusModal({ lead, val: status })} className={`text-[9px] font-black px-5 py-2.5 rounded-2xl border transition-all uppercase tracking-widest shadow-sm ${status === 'Closed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-indigo-600 hover:text-indigo-600'}`}>{status}</button>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="flex -space-x-2.5 items-center pointer-events-none">
+                                                        {assigned.length === 0 ? <div className="text-[10px] font-black text-slate-300 uppercase flex items-center gap-2"><div className="w-10 h-10 rounded-xl border-2 border-dashed border-slate-100 flex items-center justify-center"><UserPlus size={14} /></div> Idle Node</div> : assigned.slice(0, 3).map(uid => {
+                                                            const m = teamMembers.find(t => t.clerkId === uid);
+                                                            return <div key={uid} className="w-11 h-11 rounded-2xl ring-4 ring-white bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden shadow-sm">{m?.imageUrl ? <img src={m.imageUrl} className="w-full h-full object-cover" /> : <span className="text-[10px] font-black text-slate-400 uppercase">{(m?.firstName || 'U')[0]}</span>}</div>
+                                                        })}
+                                                        {assigned.length > 3 && <div className="w-11 h-11 rounded-2xl ring-4 ring-white bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400">+{assigned.length - 3}</div>}
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-6">
-                                                    <div className="flex justify-center">
-                                                        <button 
-                                                            onClick={() => setStatusModal({ lead, val: status })}
-                                                            className={`text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all uppercase tracking-widest shadow-sm hover:scale-105 active:scale-95 ${
-                                                                ['Closed', 'Call done'].includes(status) ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
-                                                                ['RNR', 'Missed', 'Switch off'].includes(status) ? 'bg-rose-50 text-rose-600 border-rose-200' :
-                                                                'bg-indigo-50 text-indigo-600 border-indigo-200'
-                                                            }`}
-                                                        >
-                                                            {status}
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-6">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        {agents.length > 0 ? (
-                                                            agents.map(aid => {
-                                                                const m = teamMembers.find(t => t.clerkId === aid);
-                                                                return (
-                                                                    <div key={aid} className="flex items-center gap-2 bg-white border border-slate-100 pl-1 pr-3 py-1 rounded-full shadow-sm">
-                                                                        <div className="w-6 h-6 rounded-full bg-slate-100 overflow-hidden text-[9px] flex items-center justify-center font-black">
-                                                                            {m?.imageUrl ? <img src={m.imageUrl} className="w-full h-full object-cover" /> : (m?.firstName?.[0] || 'U')}
-                                                                        </div>
-                                                                        <span className="text-[10px] font-black text-slate-700 uppercase">{m?.firstName || 'Staff'}</span>
-                                                                    </div>
-                                                                )
-                                                            })
-                                                        ) : (
-                                                            <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 uppercase tracking-widest">Unassigned</span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-6">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
-                                                        <span className="text-[11px] font-black text-slate-800 tracking-tighter uppercase whitespace-nowrap">{lead.form?.title || 'System'}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-6 text-right">
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-[11px] font-black text-slate-900 tracking-tighter uppercase">{format(new Date(lead.submittedAt), "MMM dd, yyyy")}</span>
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">{format(new Date(lead.submittedAt), "hh:mm a")}</span>
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* 🕹️ FOOTER CONTROLS */}
-                    <div className="px-10 py-8 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-6">
-                             <div className="flex flex-col">
-                                <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest block mb-1">Matrix Data Stream</span>
-                                <p className="text-[11px] font-black text-slate-400">Showing {leads.length} units out of {total} available in sector.</p>
-                             </div>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                             <button 
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                                className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-400 transition-all disabled:opacity-30 active:scale-90"
-                             >
-                                <X size={20} className="rotate-180" />
-                             </button>
-                             <div className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-[0.2em]">
-                                Page {page} <span className="text-slate-300 mx-2">/</span> {Math.ceil(total / limit)}
-                             </div>
-                             <button 
-                                onClick={() => setPage(p => p + 1)}
-                                disabled={page >= Math.ceil(total / limit)}
-                                className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:border-indigo-400 transition-all disabled:opacity-30 active:scale-90"
-                             >
-                                <ArrowRight size={20} />
-                             </button>
+                        {/* 💿 GRID FOOTER */}
+                        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-8">
+                                <div className="flex flex-col"><p className="text-[14px] font-black text-slate-900 tabular-nums leading-none mb-1">{total.toLocaleString()}</p><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Global Matrix Signals</span></div>
+                                <div className="h-8 w-px bg-slate-200" />
+                                <div className="flex flex-col"><p className="text-[14px] font-black text-indigo-600 uppercase leading-none mb-1">{selectedIds.length}</p><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Active Selections</span></div>
+                            </div>
+
+                            <div className="flex items-center gap-4 bg-white p-2 rounded-3xl border border-slate-200 shadow-sm">
+                                <button onClick={() => setPage(p => Math.max(1, p - 1))} className="w-11 h-11 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all border border-transparent hover:border-slate-200 active:scale-90"><ArrowRight size={20} className="rotate-180" /></button>
+                                <div className="px-8 py-2 text-[12px] font-black uppercase text-slate-900 tracking-widest">Page <span className="text-indigo-600 text-xl">{page}</span> OF {Math.ceil(total / 25) || 1}</div>
+                                <button onClick={() => setPage(p => p + 1)} className="w-11 h-11 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all border border-transparent hover:border-slate-200 active:scale-90"><ArrowRight size={20} /></button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </main>
 
-            {/* 🎯 REASSIGN MODAL */}
-            <AnimatePresence>
-                {isAssignModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsAssignModalOpen(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-                        <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="bg-white rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden relative z-10 border-4 border-white flex flex-col max-h-[85vh]">
-                            <div className="p-10 border-b border-slate-50 bg-[#F9FAFB] flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-xs font-black uppercase tracking-[0.3em] text-indigo-600 mb-2">Target Distribution</h3>
-                                    <p className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Reassign {selectedIds.length} Leads</p>
-                                </div>
-                                <button onClick={() => setIsAssignModalOpen(false)} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 hover:text-rose-600 transition-all shadow-sm border border-slate-100">
-                                    <X size={24} />
-                                </button>
-                            </div>
-                            
-                            <div className="p-4 bg-slate-50/50 border-b border-slate-100">
-                                <div className="relative group">
-                                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input 
-                                        type="text" 
-                                        placeholder="Find elite agent by name or email..."
-                                        className="w-full pl-14 pr-6 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 font-bold text-sm shadow-inner transition-all"
-                                        value={assigneeSearch}
-                                        onChange={(e) => setAssigneeSearch(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-8 space-y-3 custom-scrollbar">
-                                {filteredTeam.map((member) => (
-                                    <button
-                                        key={member.clerkId}
-                                        onClick={() => handleBulkAssign(member.clerkId)}
-                                        className="w-full p-6 bg-white border border-slate-100 rounded-3xl shadow-sm hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all flex items-center gap-6 group text-left"
-                                    >
-                                        <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden font-black text-slate-400 text-xl shadow-inner group-hover:scale-110 transition-transform">
-                                            {member.imageUrl ? <img src={member.imageUrl} className="w-full h-full object-cover" /> : (member.firstName?.[0] || 'U')}
-                                        </div>
-                                        <div className="flex-1">
-                                            <h6 className="text-[17px] font-black text-slate-900 leading-none mb-1.5">{member.firstName ? `${member.firstName} ${member.lastName || ''}` : member.email}</h6>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{member.email}</p>
-                                        </div>
-                                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all border border-indigo-100">
-                                            <UserPlus size={20} />
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="p-8 bg-slate-50 border-t border-slate-100 text-center">
-                                <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">Operational Security Protocol Active</span>
-                            </div>
-                        </motion.div>
+            {/* 🛰️ ALLOCATION PANEL */}
+            <aside className="w-[420px] bg-[#F1F5F9] border-l border-slate-200 flex flex-col relative z-50">
+                <div className="p-10 border-b border-slate-200 bg-white">
+                    <h3 className="text-2xl font-black tracking-tighter text-slate-900 leading-none mb-2 uppercase">Distribution</h3>
+                    <div className="flex items-center justify-between">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Reroute Batch Protocol</p>
+                         <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1 rounded-full"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /><span className="text-[9px] font-black text-emerald-600 uppercase">Active Net</span></div>
                     </div>
-                )}
-            </AnimatePresence>
+                </div>
 
-            {/* STATUS MODAL */}
-            <StatusMatrixModal 
-                isOpen={!!statusModal}
-                onClose={() => setStatusModal(null)}
-                label="Lead Status Matrix"
-                val={statusModal?.val || ""}
-                options={[]}
-                onSelect={async (opt) => {
-                    const lead = statusModal?.lead;
-                    if (!lead) return;
-                    const tid = toast.loading("Updating status...");
-                    try {
-                        const res = await fetch(`/api/crm/forms/${lead.formId}/responses/${lead.id}/remarks`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ followUpStatus: opt, remark: `Global Matrix Status Update: ${opt}` })
-                        });
-                        if (res.ok) {
-                            toast.success("Status Updated", { id: tid });
-                            setStatusModal(null);
-                            fetchLeads();
-                        } else throw new Error();
-                    } catch (err) {
-                        toast.error("Failed to update status", { id: tid });
-                    }
-                }}
-                onFullLog={() => {
-                   if (statusModal) {
-                       setOpenFollowUpModal({ formId: statusModal.lead.formId, responseId: statusModal.lead.id });
-                       setStatusModal(null);
-                   }
-                }}
-            />
+                <div className="p-10 flex-1 flex flex-col overflow-hidden">
+                    <div className="bg-white p-10 rounded-[44px] border border-slate-100 shadow-2xl mb-10 flex flex-col gap-6 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/20 rounded-full translate-x-12 -translate-y-12" />
+                        <div className="flex items-center gap-8">
+                             <div className="w-16 h-16 bg-indigo-600 rounded-[28px] flex items-center justify-center text-white shadow-xl shadow-indigo-100 group-hover:rotate-12 transition-transform"><MousePointer2 size={32} /></div>
+                             <div><h4 className="text-5xl font-black text-slate-900 leading-none mb-1 tabular-nums">{selectedIds.length}</h4><p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Target Leads</p></div>
+                        </div>
+                    </div>
 
-            {/* INTERACTION LOG MODAL */}
-            {openFollowUpModal && (
-                <FormRemarkModal 
-                    isOpen={!!openFollowUpModal}
-                    onClose={() => setOpenFollowUpModal(null)}
-                    formId={openFollowUpModal.formId}
-                    responseId={openFollowUpModal.responseId}
-                    onSuccess={() => { setOpenFollowUpModal(null); fetchLeads(); }}
-                />
-            )}
+                    <div className="px-4 mb-6 flex items-center justify-between"><span className="text-[11px] font-black text-slate-400 uppercase tracking-[0.4em]">Choose Personnel</span><Users size={16} className="text-slate-200" /></div>
+                    
+                    <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar space-y-4">
+                        {teamMembers.map(m => (
+                            <button key={m.clerkId} onClick={() => setSelectedAgentId(m.clerkId)} className={`w-full p-6 rounded-[38px] border-4 transition-all flex items-center gap-6 text-left group animate-in slide-in-from-right-3 ${selectedAgentId === m.clerkId ? 'bg-white border-indigo-600 shadow-2xl shadow-indigo-100 scale-105' : 'bg-transparent border-transparent hover:bg-white hover:border-slate-200'}`}>
+                                <div className="w-16 h-16 rounded-[24px] bg-slate-100 border-4 border-white overflow-hidden shrink-0 shadow-lg group-hover:scale-110 transition-transform">{m.imageUrl ? <img src={m.imageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl font-black text-slate-300 bg-white uppercase">{(m.firstName || 'U')[0]}</div>}</div>
+                                <div className="flex-1 min-w-0 pointer-events-none"><h5 className="text-[16px] font-black text-slate-900 truncate uppercase mb-1 leading-none group-hover:text-indigo-600 transition-colors">{m.firstName || m.email.split('@')[0]}</h5><span className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 py-1 bg-slate-50 rounded-full">Personnel</span></div>
+                                {selectedAgentId === m.clerkId && <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl animate-in zoom-in"><CheckCircle2 size={24} /></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="mt-10">
+                        <button onClick={handleBatchAssign} className={`w-full py-8 rounded-[48px] font-black uppercase tracking-[0.5em] flex items-center justify-center gap-5 transition-all active:scale-95 shadow-[0_50px_100px_-25px_rgba(79,70,229,0.3)] hover:-translate-y-1 ${selectedAgentId && selectedIds.length > 0 ? 'bg-indigo-600 text-white shadow-indigo-300' : 'bg-slate-300 text-slate-500 pointer-events-none opacity-40 shadow-none'}`}>
+                            <Zap size={24} /> Reroute Batch
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-10 bg-white border-t border-slate-100 flex items-center justify-between">
+                     <div className="flex items-center gap-5">
+                         <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100"><ShieldCheck size={24} /></div>
+                         <div><p className="text-[12px] font-black text-slate-900 uppercase leading-none mb-1">Master Terminal</p><span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em]">Access Level 1</span></div>
+                     </div>
+                     <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 hover:bg-slate-900 hover:text-white transition-all cursor-pointer"><Settings size={22} /></div>
+                </div>
+            </aside>
+
+            {/* MODALS */}
+            <StatusMatrixModal isOpen={!!statusModal} onClose={() => setStatusModal(null)} label="State Reset" val={statusModal?.val || ""} options={CALL_STATUS_OPTIONS} onSelect={async (opt) => { if (!statusModal) return; const tid = toast.loading("Executing Phase Shift..."); try { const res = await fetch(`/api/crm/forms/${statusModal.lead.formId}/responses/${statusModal.lead.id}/remarks`, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ followUpStatus: opt, remark: `Matrix Overlay: ${opt}` }) }); if(res.ok) { toast.success("Signal Synced", {id: tid}); setStatusModal(null); fetchLeads(); } else throw new Error(); } catch (e) { toast.error("Failure", {id: tid}); } }} onFullLog={() => { if(statusModal) { setOpenFollowUpModal({ formId: statusModal.lead.formId, responseId: statusModal.lead.id }); setStatusModal(null); } }} />
+            {openFollowUpModal && (<FormRemarkModal formId={openFollowUpModal.formId} responseId={openFollowUpModal.responseId} userRole="ADMIN" onClose={() => setOpenFollowUpModal(null)} onSave={() => { setOpenFollowUpModal(null); fetchLeads(); }} />)}
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar { height: 10px; width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 12px; }
+                input[type="date"]::-webkit-calendar-picker-indicator {
+                  filter: invert(0.5);
+                  cursor: pointer;
+                }
+            `}</style>
         </div>
     );
 }

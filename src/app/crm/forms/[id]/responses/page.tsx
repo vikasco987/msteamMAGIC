@@ -600,12 +600,29 @@ export default function CRMSpreadsheetPage() {
 
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Reset to page 1 and trigger FETCH instantly for drop-down filters
+    const prevFiltersRef = useRef({ conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id });
+
     useEffect(() => {
-        if (!isAddingRow) {
-            fetchData(1, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        const filtersChanged = 
+            prevFiltersRef.current.conditions !== conditions ||
+            prevFiltersRef.current.filterConjunction !== filterConjunction ||
+            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
+            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
+            prevFiltersRef.current.sortBy !== sortBy ||
+            prevFiltersRef.current.sortOrder !== sortOrder ||
+            prevFiltersRef.current.paramsId !== params.id;
+
+        if (filtersChanged) {
+            prevFiltersRef.current = { conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id as string };
+            if (currentPage !== 1) setCurrentPage(1);
         }
-    }, [conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
+
+        if (!isAddingRow) {
+            const pageToFetch = filtersChanged ? 1 : currentPage;
+            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
 
 
 

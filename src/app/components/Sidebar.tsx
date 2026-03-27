@@ -56,6 +56,7 @@ const NAVIGATION_GROUPS = [
       { label: 'Team Sales', icon: LineChart, href: '/tl-dashboard', roles: ['tl', 'admin', 'master'] },
       { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master', 'tl'] },
       { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'tl', 'user', 'guest', 'intern', 'manager'] },
+      { label: 'Lead Terminal', icon: ShieldCheck, href: '/crm/admin/leads', roles: ['admin', 'master', 'tl'] },
       { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'tl', 'manager'] },
       { label: 'Call Report', icon: PhoneCall, href: '/call-report', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
