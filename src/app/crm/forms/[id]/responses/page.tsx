@@ -700,6 +700,7 @@ export default function CRMSpreadsheetPage() {
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
 
+        console.log(`[FetchData] Syncing matrix with conditions:`, JSON.stringify(conds));
         const syncStartTime = Date.now();
         if (!isSilent) {
             setIsSyncing(true);
@@ -3773,8 +3774,10 @@ export default function CRMSpreadsheetPage() {
                                                     ? displayValues.filter(o => o.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase()))
                                                     : displayValues;
 
-                                                if (finalDisplayOptions.length === 0) {
-                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>{activeColumnFilterSearch ? `No match found` : 'No data to filter'}</div>;
+                                                if (!finalDisplayOptions || finalDisplayOptions.length === 0) {
+                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>
+                                                        {activeColumnFilterSearch ? `No match found` : 'No data to filter'}
+                                                    </div>;
                                                 }
 
                                                 return finalDisplayOptions.map(opt => {
@@ -3835,36 +3838,6 @@ export default function CRMSpreadsheetPage() {
                                 </thead>
                                 <tbody>
                                     <AnimatePresence mode="popLayout" initial={false}>
-                                        {isSyncing && (
-                                            <motion.tr
-                                                initial={{ opacity: 0 }}
-                                                animate={{ opacity: 1 }}
-                                                exit={{ opacity: 0 }}
-                                                className="absolute inset-x-0 top-0 bottom-0 z-[1] flex items-center justify-center pointer-events-none"
-                                            >
-                                                <td colSpan={getColumns.length + 1} className="p-0 border-none">
-                                                    <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px] flex items-center justify-center transition-all duration-500">
-                                                        <div className="flex flex-col items-center gap-4 p-8 rounded-3xl bg-white/80 dark:bg-slate-900/80 shadow-2xl border border-white/20">
-                                                            <div className="relative">
-                                                                <motion.div 
-                                                                    animate={{ rotate: 360 }}
-                                                                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                                                                    className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full"
-                                                                />
-                                                                <motion.div 
-                                                                    animate={{ scale: [1, 1.2, 1] }}
-                                                                    transition={{ repeat: Infinity, duration: 2 }}
-                                                                    className="absolute inset-0 flex items-center justify-center"
-                                                                >
-                                                                    <div className="w-2 h-2 bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)]" />
-                                                                </motion.div>
-                                                            </div>
-                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 animate-pulse">Filtering Matrix...</p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                            </motion.tr>
-                                        )}
                                         {paginatedResponses.map((res, rIdx) => (
                                             <motion.tr
                                                 key={res.id}

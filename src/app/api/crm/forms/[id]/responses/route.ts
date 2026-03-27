@@ -159,7 +159,8 @@ export async function GET(
                     
                     const castVal = (v: any) => {
                         if (isNum && !isNaN(Number(v))) return String(v); 
-                        if (typeof v === "string") return v.trim();
+                        // 🔥 Important: Do NOT trim strings globally here, 
+                        // as some legacy statuses or internal values may rely on exact match including spaces
                         return v;
                     };
 
