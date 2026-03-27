@@ -10,6 +10,7 @@ interface FormRemark {
     remark: string;
     nextFollowUpDate?: string;
     followUpStatus?: string;
+    leadStatus?: string;
     columnId?: string;
     authorName: string;
     createdAt: string;
@@ -31,7 +32,8 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
     const [form, setForm] = useState({
         remark: "",
         nextFollowUpDate: "",
-        followUpStatus: "Scheduled"
+        followUpStatus: "",
+        leadStatus: ""
     });
 
     const [isAdding, setIsAdding] = useState(false);
@@ -103,6 +105,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 setForm(prev => ({ ...prev, nextFollowUpDate: "" }));
                 return;
             default:
+                // If it's empty or unknown, don't auto-fill
                 return;
         }
 
@@ -112,6 +115,21 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
             setForm(prev => ({ ...prev, nextFollowUpDate: nextDate.toISOString().split('T')[0] }));
         }
     }, [form.followUpStatus, isAdding]);
+
+    const LEAD_STATUS_OPTIONS = [
+        "Will Share today",
+        "Will let me know in 2 days",
+        "Not Intertested",
+        "Onboarded",
+        "Will Let me know 7 days",
+        "Customer Will Call",
+        "Meeting Fix",
+        "already applyed",
+        "language barrier",
+        "Already Done",
+        "Delivery Partners",
+        "CUSTOMER WILL LET ME KNOW"
+    ];
 
     useEffect(() => {
         fetchRemarks();
@@ -170,7 +188,8 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         const payload = { 
             remark: finalRemark,
             nextFollowUpDate: form.nextFollowUpDate || null,
-            followUpStatus: form.followUpStatus,
+            followUpStatus: form.followUpStatus || "Scheduled",
+            leadStatus: form.leadStatus || null,
             columnId 
         };
 
@@ -194,7 +213,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
             // Optimistic Update
             setRemarks(prev => [offlineItem as any, ...prev]);
-            setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "Scheduled" });
+            setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "", leadStatus: "" });
             setIsAdding(false);
             toast.success("Saved offline. Will sync when online.");
             if (onSave) onSave();
@@ -211,7 +230,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
             if (res.ok) {
                 toast.success(columnId ? "Status updated!" : "Follow-up added!");
-                setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "Scheduled" });
+                setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "", leadStatus: "" });
                 setIsAdding(false);
                 fetchRemarks();
                 if (onSave) onSave();
@@ -328,6 +347,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                             value={form.followUpStatus}
                                             onChange={(e) => setForm({ ...form, followUpStatus: e.target.value })}
                                         >
+                                            <option value="">Select Follow-up Status</option>
                                             <option>Scheduled</option>
                                             <option>Called</option>
                                             <option>Call Again</option>
@@ -342,6 +362,19 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                             <option>Follow-up Done</option>
                                             <option>Missed</option>
                                             <option>Closed</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Lead Status (Optional)</label>
+                                        <select
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
+                                            value={form.leadStatus}
+                                            onChange={(e) => setForm({ ...form, leadStatus: e.target.value })}
+                                        >
+                                            <option value="">Select Lead Status (None)</option>
+                                            {LEAD_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt}>{opt}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div className="flex gap-2 pt-2">
@@ -399,6 +432,11 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-[10px] font-black uppercase tracking-widest">
                                                     <FaCalendarAlt /> Next: {format(new Date(r.nextFollowUpDate), "MMM d, yyyy")}
                                                 </span>
+                                                {r.leadStatus && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-md text-[10px] font-black uppercase tracking-widest">
+                                                        {r.leadStatus}
+                                                    </span>
+                                                )}
                                                 {r.followUpStatus && (
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${
                                                         ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(r.followUpStatus || '') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
