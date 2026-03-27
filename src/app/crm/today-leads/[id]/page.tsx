@@ -74,7 +74,8 @@ import {
     TrendingUp,
     AlertCircle,
     Settings2,
-    Globe
+    Globe,
+    Filter
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import { createPortal } from "react-dom";
@@ -3607,10 +3608,27 @@ export default function CRMSpreadsheetPage() {
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
                                                     className={`px-5 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-emerald-500/30') : ''}`}
                                                 >
-                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
-                                                        <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={12} className={`${style.text} shrink-0`} />
-                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
+                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-1">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className={`rounded-full shrink-0 ${style.bg} border-[2.5px] ${style.border} shadow-lg flex items-center justify-center group-hover/h:scale-110 transition-all duration-500 group-hover/h:rotate-3 group-hover/h:shadow-indigo-500/20 active:scale-95 overflow-hidden
+                                                                ${width < 100 ? 'w-6 h-6 border-[1.5px]' : 'w-8 h-8'}
+                                                            `}>
+                                                                {col.id === "__profile" ? (
+                                                                    <Maximize2 size={width < 100 ? 10 : 14} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                ) : (
+                                                                    <TypeIcon size={width < 100 ? 12 : 16} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                )}
+                                                            </div>
+                                                            <span className={`border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight leading-[1.1]
+                                                                ${width < 150 ? 'text-[9px] tracking-tighter' : 'text-[11px]'}
+                                                            `} style={{
+                                                                display: '-webkit-box',
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: 'vertical',
+                                                                overflow: 'hidden',
+                                                                whiteSpace: 'normal',
+                                                                wordBreak: 'break-word'
+                                                            }}>{col.id === "__profile" ? "V" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
@@ -4293,7 +4311,23 @@ export default function CRMSpreadsheetPage() {
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
-                                                                {latestRemark ? <span className="text-xs font-bold text-indigo-600 truncate block max-w-full">{latestRemark}</span> : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>}
+                                                                {latestRemark ? (
+                                                                    <span 
+                                                                        className="text-[11px] font-bold text-indigo-600 block max-w-full leading-relaxed"
+                                                                        style={{
+                                                                            display: '-webkit-box',
+                                                                            WebkitLineClamp: 3,
+                                                                            WebkitBoxOrient: 'vertical',
+                                                                            overflow: 'hidden',
+                                                                            whiteSpace: 'normal',
+                                                                            wordBreak: 'break-word'
+                                                                        }}
+                                                                    >
+                                                                        {latestRemark}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>
+                                                                )}
                                                             </td>
                                                         );
                                                     }
