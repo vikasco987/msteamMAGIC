@@ -46,6 +46,7 @@ import {
     Link,
     Phone,
     Mail,
+    Zap,
     Layout,
     Trash2,
     Settings,
@@ -68,9 +69,11 @@ import {
     CloudOff,
     Wifi,
     Pin,
-    PinOff
+    PinOff,
+    Target
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
+import { createPortal } from "react-dom";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
 import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
 import BulkImportModal from "@/app/components/BulkImportModal";
@@ -1555,11 +1558,9 @@ export default function CRMSpreadsheetPage() {
             );
         }
 
-        // If server provided totalPages, it handles complex conditions/pagination logic.
-        // We only apply refined searching locally above.
-        if (isServerFiltering && conditions.length > 0) {
-            return results;
-        }
+        // NOTE: We no longer short-circuit here. We allow local filtering to run as a second pass
+        // on the server's results. This ensures that local 'pendingUpdates' and specific 
+        // operators like 'is_empty' are always respected correctly.
 
         if (conditions.length > 0) {
             const before = results.length;
@@ -1623,8 +1624,8 @@ export default function CRMSpreadsheetPage() {
                             }
                             case "starts_with": return val.startsWith(targetVal);
                             case "ends_with": return val.endsWith(targetVal);
-                            case "is_empty": return (val || "").trim().length === 0;
-                            case "is_not_empty": return (val || "").trim().length > 0;
+                            case "is_empty": return (val === "" || val === null || val === "undefined" || val === "null" || (val || "").trim().length === 0);
+                            case "is_not_empty": return (val || "").trim().length > 0 && val !== "undefined" && val !== "null";
                             case "eq": return parseFloat(val) === parseFloat(targetVal);
                             case "gt": return parseFloat(val) > parseFloat(targetVal);
                             case "lt": return parseFloat(val) < parseFloat(targetVal);
@@ -4732,394 +4733,269 @@ export default function CRMSpreadsheetPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </main >
+            </main>
 
-            {/* Sidebar Details Drawer */}
-            <AnimatePresence>
-                {
-                    selectedResponse && (
-                        <>
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
-                            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 32, stiffness: 250 }} className="fixed top-0 right-0 h-full w-full max-w-[520px] bg-white shadow-[-40px_0_120px_rgba(0,0,0,0.15)] z-[70] overflow-hidden flex flex-col border-l border-slate-100/50">
-                                <div className="p-8 border-b border-[#EAECF0] flex flex-col gap-8 shrink-0 bg-white sticky top-0 z-10 shadow-sm">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-5">
-                                            <div className="w-12 h-12 rounded-[22px] bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-200">
-                                                <Database size={22} />
-                                            </div>
-                                            <div>
-                                                <h2 className="text-xl font-black text-[#101828] tracking-tight">Record Intelligence</h2>
-                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Matrix v4.2 Deployment</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setSelectedResponse(null)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all border border-transparent hover:border-rose-100">
-                                            <X size={22} />
-                                        </button>
-                                    </div>
-
-                                    {/* 💎 🛸 MATRIX TAB HUD */}
-                                    <div className="flex bg-slate-100 p-1.5 rounded-[24px] border border-slate-200/50 w-full relative">
-                                        <button 
-                                            onClick={() => setDrawerTab('edit')} 
-                                            className={`flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded-[20px] transition-all duration-300 relative z-10 flex items-center justify-center gap-2 ${drawerTab === 'edit' ? 'bg-white text-indigo-600 shadow-xl shadow-indigo-500/10' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            <Layout size={16} /> Workspace
-                                        </button>
-                                        <button 
-                                            onClick={() => setDrawerTab('history')} 
-                                            className={`flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded-[20px] transition-all duration-300 relative z-10 flex items-center justify-center gap-2 ${drawerTab === 'history' ? 'bg-white text-emerald-600 shadow-xl shadow-emerald-500/10' : 'text-slate-400 hover:text-slate-600'}`}
-                                        >
-                                            <History size={16} /> Archive
-                                        </button>
-                                        <motion.div 
-                                            layoutId="tab-pill"
-                                            className="absolute inset-y-1.5 left-1.5 w-[calc(50%-3px)] bg-white rounded-[20px] shadow-sm z-0"
-                                            animate={{ x: drawerTab === 'edit' ? 0 : '100%' }}
-                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
-                                    <AnimatePresence mode="wait">
-                                        {drawerTab === 'edit' ? (
-                                            <motion.div 
-                                                key="edit-tab"
-                                                initial={{ opacity: 0, scale: 0.98, x: -10 }} 
-                                                animate={{ opacity: 1, scale: 1, x: 0 }} 
-                                                exit={{ opacity: 0, scale: 0.98, x: -10 }}
-                                                className="space-y-10"
-                                            >
-                                                {/* Edit Master Section */}
-                                                <div className="space-y-10">
-                                                    <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
-                                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px] -mr-32 -mt-32" />
-                                                        <div className="relative z-10">
-                                                            <div className="flex items-center justify-between mb-8">
-                                                                <h4 className="text-2xl font-black tracking-tight">Active Workflows</h4>
-                                                                <span className="px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest border border-white/10">Dynamic</span>
-                                                            </div>
-                                                            <div className="grid grid-cols-2 gap-5 mt-12">
-                                                                <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4 hover:scale-[1.02] active:scale-[0.98]">
-                                                                    <UserPlus size={22} className="text-indigo-600" /> CRM Sync
-                                                                </button>
-                                                                <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4 hover:scale-[1.02] active:scale-[0.98]">
-                                                                    <Mail size={22} className="text-indigo-400" /> Notify
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-6">
-                                                        <div className="flex items-center justify-between px-2">
-                                                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-3">Data Matrix</h3>
-                                                            <span className="flex items-center gap-2 text-[9px] font-black text-emerald-600 uppercase">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Sync
-                                                            </span>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 gap-5">
-                                                            {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => {
-                                                                const isInternal = !col.formId;
-                                                                const val = getCellValue(selectedResponse.id, col.id, isInternal);
-                                                                
-                                                                return (
-                                                                    <div key={col.id} className="group/cell w-full bg-slate-50 hover:bg-white p-6 rounded-[34px] border border-slate-100 hover:border-indigo-100 transition-all duration-300 relative overflow-hidden flex flex-col gap-4 hover:shadow-2xl hover:shadow-indigo-500/5">
-                                                                        <div className="flex items-center justify-between">
-                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{col.label}</p>
-                                                                            {savingCells.has(`${selectedResponse.id}-${col.id}`) && (
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <span className="text-[8px] font-black text-indigo-500 uppercase tracking-widest">Saving</span>
-                                                                                    <div className="w-2 h-2 rounded-full bg-indigo-500 animate-[ping_1.5s_infinite]" />
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-
-                                                                        <div className="relative">
-                                                                            {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
-                                                                                <select 
-                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-indigo-600 focus:ring-0 cursor-pointer appearance-none"
-                                                                                    value={val}
-                                                                                    onChange={(e) => handleStatusCellUpdate(selectedResponse.id, col.id, e.target.value, isInternal)}
-                                                                                >
-                                                                                    <option value="">Select Status...</option>
-                                                                                    {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                                                </select>
-                                                                            ) : col.type === "dropdown" ? (
-                                                                                <select 
-                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0 cursor-pointer appearance-none"
-                                                                                    value={val}
-                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
-                                                                                >
-                                                                                    <option value="">Select Option...</option>
-                                                                                    {Array.isArray(col.options) && col.options.map((opt: any) => {
-                                                                                        const label = typeof opt === 'string' ? opt : opt.label;
-                                                                                        return <option key={label} value={label}>{label}</option>;
-                                                                                    })}
-                                                                                </select>
-                                                                            ) : col.type === "user" ? (
-                                                                                <select 
-                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0 cursor-pointer appearance-none"
-                                                                                    value={val}
-                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
-                                                                                >
-                                                                                    <option value="">Assign Member...</option>
-                                                                                    {teamMembers.map(m => (
-                                                                                        <option key={m.clerkId} value={m.clerkId}>{m.firstName || m.email.split('@')[0]}</option>
-                                                                                    ))}
-                                                                                </select>
-                                                                            ) : col.type === "long_text" ? (
-                                                                                <textarea 
-                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-700 focus:ring-0 resize-none min-h-[80px]"
-                                                                                    value={val}
-                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
-                                                                                    placeholder="Type details..."
-                                                                                />
-                                                                            ) : (
-                                                                                <input 
-                                                                                    type={col.type === "number" || col.type === "currency" ? "number" : col.type === "date" ? "date" : "text"}
-                                                                                    className="w-full bg-transparent border-none p-0 text-base font-black text-slate-800 focus:ring-0"
-                                                                                    value={val}
-                                                                                    onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
-                                                                                    placeholder={`Enter ${col.label}...`}
-                                                                                />
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="absolute bottom-0 left-0 w-full h-[3px] bg-slate-200/50 group-hover/cell:bg-indigo-600 transition-all duration-300" />
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        ) : (
-                                            <motion.div 
-                                                key="history-tab"
-                                                initial={{ opacity: 0, scale: 0.98, x: 10 }} 
-                                                animate={{ opacity: 1, scale: 1, x: 0 }} 
-                                                exit={{ opacity: 0, scale: 0.98, x: 10 }}
-                                                className="space-y-10"
-                                            >
-                                                <div className="flex flex-col gap-6">
-                                                    <div className="flex items-center justify-between px-2">
-                                                        <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-3">Audit Timeline</h3>
-                                                        <span className="text-[9px] font-black text-slate-400 capitalize bg-slate-100 px-3 py-1 rounded-full">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Events Logged</span>
-                                                    </div>
-                                                    
-                                                    <div className="space-y-6 px-4 border-l-2 border-slate-100 ml-4">
-                                                        {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
-                                                            data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
-                                                                <div key={act.id} className="relative pl-8 pb-8 group">
-                                                                    <div className="absolute left-[-11px] top-1.5 w-5 h-5 rounded-full bg-white border-4 border-slate-200 group-hover:border-indigo-400 transition-all shadow-sm flex items-center justify-center">
-                                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-400" />
-                                                                    </div>
-                                                                    <div className="flex flex-col gap-3">
-                                                                        <div className="flex items-center justify-between">
-                                                                            <div className="flex items-center gap-3">
-                                                                                <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 border border-slate-200">{act.userName[0]}</div>
-                                                                                <p className="text-[12px] font-black text-slate-800">{act.userName}</p>
-                                                                            </div>
-                                                                            <span className="text-[10px] font-bold text-slate-400">{safeFormat(act.createdAt, "dd MMM, HH:mm")}</span>
-                                                                        </div>
-                                                                        <div className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 group-hover:bg-white group-hover:border-indigo-100 group-hover:shadow-lg transition-all">
-                                                                            <p className="text-[12px] text-slate-500 font-bold mb-4">Modified <span className="text-slate-900 font-black">{act.columnName}</span></p>
-                                                                            <div className="flex items-center gap-4 text-[11px]">
-                                                                                <div className="flex-1 px-4 py-2 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 line-through opacity-70 truncate">{act.oldValue || "-"}</div>
-                                                                                <ArrowRight size={14} className="text-slate-300" />
-                                                                                <div className="flex-1 px-4 py-2 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate">{act.newValue}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))
-                                                        ) : (
-                                                            <div className="flex flex-col items-center justify-center py-20 bg-slate-50/50 rounded-[50px] border border-dashed border-slate-200 ml-[-16px]">
-                                                                <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-6 shadow-xl shadow-slate-200/50">
-                                                                    <Clock size={40} className="text-slate-200" />
-                                                                </div>
-                                                                <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Timeline Empty</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-                            </motion.div>
-                        </>
-                    )
-                }
-            </AnimatePresence >
-
-            {/* Filter Builder Modal — Phase 2 Upgrade */}
+            {/* Filter Builder Modal             {/* 🛸 MASTER FILTER ARCHITECTURE v2 */}
             <AnimatePresence>
                 {
                     isFilterBuilderOpen && (
-                        <div className="fixed inset-0 flex items-center justify-center z-[100] p-10">
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80" />
-                            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[60px] shadow-2xl w-full max-w-[900px] relative z-10 p-12 overflow-hidden flex flex-col gap-10 border-4 border-indigo-50">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-3xl font-black tracking-tighter mb-2">Matrix Filter Hub</h3>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Architect your data segmentation</p>
+                        <div className="fixed inset-0 flex items-center justify-center z-[999999] p-8 md:p-12">
+                            {/* Backdrop with extreme blur for focus */}
+                            <motion.div 
+                                initial={{ opacity: 0 }} 
+                                animate={{ opacity: 1 }} 
+                                exit={{ opacity: 0 }} 
+                                onClick={() => setIsFilterBuilderOpen(false)} 
+                                className="absolute inset-0 bg-slate-950/80 backdrop-blur-2xl" 
+                            />
+                            
+                            <motion.div 
+                                initial={{ scale: 0.95, opacity: 0, y: 40 }} 
+                                animate={{ scale: 1, opacity: 1, y: 0 }} 
+                                exit={{ scale: 0.95, opacity: 0, y: 40 }} 
+                                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                                className="bg-slate-50 rounded-[48px] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.7)] w-full max-w-[1100px] max-h-[90vh] relative z-10 overflow-hidden flex flex-col border border-white/20"
+                            >
+                                {/* 💎 MODAL HEADER: COMMAND CENTER STYLE */}
+                                <div className="p-10 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-6">
+                                        <div className="w-16 h-16 rounded-[28px] bg-indigo-600 text-white flex items-center justify-center shadow-2xl shadow-indigo-200">
+                                            <Filter size={28} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-3xl font-black text-slate-900 tracking-tight uppercase">Segment Intelligence</h2>
+                                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.5em] mt-1">Advanced Matrix Conditioning</p>
+                                        </div>
                                     </div>
-                                    <div className="flex bg-slate-100 p-1 rounded-2xl border">
-                                        <button onClick={() => setFilterConjunction("AND")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'AND' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match All (AND)</button>
-                                        <button onClick={() => setFilterConjunction("OR")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'OR' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match Any (OR)</button>
+                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                                        <button 
+                                            onClick={() => setFilterConjunction("AND")} 
+                                            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'AND' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Logic: ALL (AND)
+                                        </button>
+                                        <button 
+                                            onClick={() => setFilterConjunction("OR")} 
+                                            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'OR' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Logic: ANY (OR)
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <button 
+                                            onClick={handleClearFilters}
+                                            className="px-6 py-3 text-[11px] font-black text-slate-400 hover:text-rose-500 uppercase tracking-widest transition-all"
+                                        >
+                                            Purge All
+                                        </button>
+                                        <button 
+                                            onClick={() => setIsFilterBuilderOpen(false)} 
+                                            className="w-14 h-14 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-3xl transition-all border border-slate-100"
+                                        >
+                                            <X size={24} />
+                                        </button>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[450px] pr-4">
-                                    {conditions.map((c, i) => {
-                                        const col = getColumns.find(col => col.id === c.colId);
-                                        const colType = col?.type || "text";
-                                        const operators = (FILTER_OPERATORS as any)[colType] || FILTER_OPERATORS.text;
+                                <div className="flex-1 overflow-y-auto p-12 space-y-12 custom-scrollbar">
+                                    {/* 🧪 ACTIVE CONDITION PIPELINE */}
+                                    <div className="space-y-8">
+                                        <div className="flex items-center justify-between px-2">
+                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-4">Logic Constraints <div className="h-px w-20 bg-slate-200" /></h3>
+                                            <span className="text-[10px] font-black text-slate-500 bg-slate-200/50 px-4 py-1.5 rounded-full">{conditions.length} Rules Active</span>
+                                        </div>
 
-                                        return (
-                                            <div key={i} className="flex gap-4 items-center bg-slate-50 p-6 rounded-[32px] border border-slate-100 group">
-                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-black text-indigo-300 border mb-auto mt-2">
-                                                    {i + 1}
-                                                </div>
-                                                <div className="flex-1 grid grid-cols-12 gap-3">
-                                                    <div className="col-span-4">
-                                                        <select value={c.colId} onChange={(e) => { const n = [...conditions]; n[i].colId = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
-                                                            <option value="">Select Field...</option>
-                                                            {getColumns.filter(f => f.type !== "static").map(f => (
-                                                                <option key={f.id} value={f.id}>{f.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div className="col-span-3">
-                                                        <select value={c.op} onChange={(e) => { const n = [...conditions]; n[i].op = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
-                                                            {operators.map((op: any) => <option key={op.value} value={op.value}>{op.label}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="col-span-4 flex gap-2">
-                                                        {!["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "is_true", "is_false"].includes(c.op) && (
-                                                            <>
-                                                                {colType === "date" ? (
-                                                                    <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                ) : colType === "dropdown" || colType === "multi_select" || colType === "user" ? (
-                                                                    <div className="flex-1 flex flex-col gap-2">
-                                                                        {c.op === "one_of" ? (
-                                                                            <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
-                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
-                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
-                                                                                    const currentVals = String(c.val || "").split(",").map(v => v.trim()).filter(Boolean);
-                                                                                    const isSelected = currentVals.includes(optLabel);
-                                                                                    return (
-                                                                                        <button
-                                                                                            key={optLabel}
-                                                                                            onClick={() => {
-                                                                                                const n = [...conditions];
-                                                                                                const newVals = isSelected
-                                                                                                    ? currentVals.filter(v => v !== optLabel)
-                                                                                                    : [...currentVals, optLabel];
-                                                                                                n[i].val = newVals.join(",");
-                                                                                                setConditions(n);
-                                                                                            }}
-                                                                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                                                                                        >
-                                                                                            {optLabel}
-                                                                                        </button>
-                                                                                    );
-                                                                                })}
-                                                                                {(!col?.options || col.options.length === 0) && <p className="text-[10px] text-slate-300 m-auto uppercase font-bold">No Options Defined</p>}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
-                                                                                <option value="">Value...</option>
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
-                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
-                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
-                                                                                    return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {conditions.map((cond, index) => {
+                                                const field = [...(data?.form?.fields || []), ...internalColumns].find(f => f.id === cond.colId);
+                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
+                                                const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
+                                                
+                                                return (
+                                                    <motion.div 
+                                                        layout
+                                                        key={index} 
+                                                        initial={{ x: -20, opacity: 0 }} 
+                                                        animate={{ x: 0, opacity: 1 }}
+                                                        className="flex items-center gap-4 bg-white p-6 rounded-[36px] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-200 transition-all group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0 border border-indigo-100">{index + 1}</div>
+                                                        
+                                                        <div className="flex-1 grid grid-cols-12 gap-4">
+                                                            {/* Field Select */}
+                                                            <div className="col-span-4 self-center">
+                                                                <select 
+                                                                    className="w-full bg-slate-50 border-none rounded-[20px] px-6 py-4 text-[12px] font-extrabold text-slate-900 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer hover:bg-slate-100 transition-colors uppercase tracking-tight"
+                                                                    value={cond.colId}
+                                                                    onChange={(e) => {
+                                                                        const n = [...conditions];
+                                                                        n[index].colId = e.target.value;
+                                                                        setConditions(n);
+                                                                    }}
+                                                                >
+                                                                    <option value="">Select Field Protocol</option>
+                                                                    {[...(data?.form?.fields || []), ...internalColumns].filter(f => f.type !== "static").map(f => (
+                                                                        <option key={f.id} value={f.id}>{f.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Operator Select */}
+                                                            <div className="col-span-3 self-center border-l border-slate-100 pl-4">
+                                                                <select 
+                                                                    className="w-full bg-transparent border-none py-4 text-[12px] font-black text-indigo-600 focus:ring-0 appearance-none cursor-pointer uppercase tracking-widest"
+                                                                    value={cond.op}
+                                                                    onChange={(e) => {
+                                                                        const n = [...conditions];
+                                                                        n[index].op = e.target.value;
+                                                                        setConditions(n);
+                                                                    }}
+                                                                >
+                                                                    {operators.map((op: any) => (
+                                                                        <option key={op.value} value={op.value}>{op.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Value Input */}
+                                                            <div className="col-span-5 self-center border-l border-slate-100 pl-4">
+                                                                {!["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "is_true", "is_false"].includes(cond.op) && (
+                                                                    <div className="flex gap-2">
+                                                                        {isInternalUserCol ? (
+                                                                            <select 
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold focus:ring-2 ring-indigo-500/20 appearance-none uppercase tracking-tight"
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            >
+                                                                                <option value="">Assignee Agent</option>
+                                                                                <option value="reassigned">🎯 Reassigned to Me</option>
+                                                                                {teamMembers.map(tm => (
+                                                                                    <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        ) : field?.type === "dropdown" ? (
+                                                                            <select 
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold focus:ring-2 ring-indigo-500/20 appearance-none uppercase tracking-tight"
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            >
+                                                                                <option value="">Option Metric</option>
+                                                                                {field?.options?.map((opt: any) => {
+                                                                                    const label = typeof opt === 'string' ? opt : opt.label;
+                                                                                    return <option key={label} value={label}>{label}</option>;
                                                                                 })}
                                                                             </select>
+                                                                        ) : (
+                                                                            <input 
+                                                                                type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'}
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold placeholder:text-slate-500 focus:ring-2 ring-indigo-500/20"
+                                                                                placeholder="Filter key..."
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            />
+                                                                        )}
+                                                                        {cond.op === "between" && (
+                                                                            <input 
+                                                                                type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'}
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold placeholder:text-slate-500 focus:ring-2 ring-indigo-500/20"
+                                                                                placeholder="Upper limit..."
+                                                                                value={cond.val2 || ""}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val2 = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            />
                                                                         )}
                                                                     </div>
-                                                                ) : (
-                                                                    <input value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} placeholder="Value..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
                                                                 )}
-                                                                {c.op === "between" && (
-                                                                    <input value={c.val2 || ""} onChange={(e) => { const n = [...conditions]; n[i].val2 = e.target.value; setConditions(n); }} placeholder="To..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    <div className="col-span-1 flex flex-col gap-1">
-                                                        <button onClick={() => {
-                                                            const n = [...conditions];
-                                                            if (i > 0) {
-                                                                [n[i], n[i - 1]] = [n[i - 1], n[i]];
-                                                                setConditions(n);
-                                                            }
-                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} className="rotate-180" /></button>
-                                                        <button onClick={() => {
-                                                            const n = [...conditions];
-                                                            if (i < n.length - 1) {
-                                                                [n[i], n[i + 1]] = [n[i + 1], n[i]];
-                                                                setConditions(n);
-                                                            }
-                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} /></button>
-                                                    </div>
-                                                    <div className="col-span-1">
-                                                        <button onClick={() => setConditions(conditions.filter((_, idx) => idx !== i))} className="w-full h-full p-4 bg-rose-50 text-rose-500 rounded-3xl hover:bg-rose-100 transition-colors flex items-center justify-center"><Trash2 size={16} /></button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    <button onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])} className="w-full py-8 border-2 border-dashed border-slate-200 rounded-[40px] text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all flex items-center justify-center gap-3">
-                                        <Plus size={18} /> Spawn New Rule
-                                    </button>
-                                    <div className="mt-12 pt-12 border-t border-slate-100">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Saved Architectures</h4>
+                                                            </div>
+                                                        </div>
+
+                                                        <button 
+                                                            onClick={() => setConditions(conditions.filter((_, idx) => idx !== index))}
+                                                            className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <button 
+                                            onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])}
+                                            className="w-full py-10 border-2 border-dashed border-slate-200 rounded-[44px] text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-3"
+                                        >
+                                            <Plus size={16} /> Injection New Condition Rule
+                                        </button>
+                                    </div>
+
+                                    {/* 🔖 SAVED SEGMENTS SECTION */}
+                                    <div className="pt-10 border-t border-slate-100">
+                                        <div className="flex items-center gap-5 mb-8">
+                                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Saved Architectures</h4>
+                                            <div className="h-px flex-1 bg-slate-50" />
+                                        </div>
                                         <div className="flex flex-wrap gap-4">
                                             {savedViews.map(view => (
                                                 <div key={view.id} className="relative group/view">
                                                     <button
                                                         onClick={() => applySavedView(view)}
-                                                        className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center gap-2 group pr-12"
+                                                        className="px-8 py-4 bg-white text-slate-900 rounded-[28px] text-[10px] font-black uppercase tracking-widest border border-slate-100 hover:border-indigo-500 hover:shadow-2xl shadow-slate-200 transition-all flex items-center gap-3 group pr-14"
                                                     >
-                                                        <Star size={12} className="group-hover:fill-current" />
+                                                        <Star size={14} className="group-hover:text-indigo-500 transition-colors" />
                                                         {view.name}
                                                     </button>
                                                     <button
                                                         onClick={(e) => handleDeleteView(view.id, e)}
-                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-rose-500 hover:text-white text-rose-300 rounded-lg transition-all opacity-0 group-hover/view:opacity-100"
+                                                        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 hover:bg-rose-500 hover:text-white text-rose-300 rounded-xl transition-all opacity-0 group-hover/view:opacity-100"
                                                     >
-                                                        <X size={10} />
+                                                        <X size={12} />
                                                     </button>
                                                 </div>
                                             ))}
-                                            {savedViews.length === 0 && (
-                                                <>
-                                                    <button onClick={() => { setConditions([{ colId: "Status", op: "equals", val: "New" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all">New Leads</button>
-                                                    <button onClick={() => { setConditions([{ colId: "Budget", op: "gt", val: "50000" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-emerald-50 text-emerald-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all">High Value</button>
-                                                </>
-                                            )}
-                                            <button onClick={handleSaveView} className="px-6 py-4 bg-slate-50 text-slate-400 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-slate-100 border-dashed hover:border-indigo-300 hover:text-indigo-500 transition-all">+ Save Current View</button>
+                                            <button 
+                                                onClick={handleSaveView}
+                                                className="px-8 py-4 border-2 border-dashed border-slate-100 rounded-[28px] text-[10px] font-black text-slate-400 uppercase tracking-widest hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center gap-3"
+                                            >
+                                                <Save size={14} /> Persist Current Flow
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="flex gap-4 pt-6">
-                                    <button onClick={() => setIsFilterBuilderOpen(false)} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em]">Neutralize</button>
-                                    <div className="flex-1 flex gap-2">
-                                        <button onClick={() => setIsFilterBuilderOpen(false)} className="flex-1 py-6 bg-slate-900 text-white rounded-[35px] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl transition-all shadow-indigo-100 border-b-4 border-indigo-600">Deploy Segmentation ({filteredResponses.length} Matches)</button>
-
-                                        {!activeViewId && conditions.length > 0 && (
-                                            <button onClick={handleSaveView} className="px-8 py-6 bg-indigo-50 text-indigo-600 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em] border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center gap-2">
-                                                <Star size={14} className="fill-indigo-600" />
-                                                Archivize Workspace
-                                            </button>
-                                        )}
-
-                                        <button onClick={() => setAutoApply(!autoApply)} className={`px-6 rounded-[35px] border-2 transition-all flex items-center gap-2 ${autoApply ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                                            <Clock size={14} />
-                                            <span className="text-[9px] font-black uppercase tracking-tighter">{autoApply ? "Live" : "Manual"}</span>
+                                {/* 🔋 ACTION BAR */}
+                                <div className="p-10 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-8">
+                                        <div className="flex items-center gap-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" /> Matrix Active
+                                        </div>
+                                        <button 
+                                            onClick={() => setAutoApply(!autoApply)}
+                                            className={`flex items-center gap-3 px-6 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${autoApply ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+                                        >
+                                            <Clock size={14} /> {autoApply ? "Live Stream" : "Manual Trigger"}
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                        <button 
+                                            onClick={() => setIsFilterBuilderOpen(false)}
+                                            className="px-16 py-6 bg-slate-950 text-white rounded-[32px] text-[13px] font-black uppercase tracking-[0.4em] hover:bg-indigo-600 shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-4"
+                                        >
+                                            Deploy Segmentation Matrix <ArrowRight size={18} />
                                         </button>
                                     </div>
                                 </div>
@@ -6231,37 +6107,353 @@ export default function CRMSpreadsheetPage() {
                     }
                 ` : ''}
             ` }} />
-            {
-                openFollowUpModal && (
-                    <FormRemarkModal
-                        formId={openFollowUpModal.formId}
-                        responseId={openFollowUpModal.responseId}
-                        columnId={openFollowUpModal.columnId}
-                        onClose={() => setOpenFollowUpModal(null)}
-                        userRole={userRole || 'GUEST'}
-                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
-                    />
-                )
-            }
-            {
-                openPaymentModal && (
-                    <PaymentHubModal
-                        formId={openPaymentModal.formId}
-                        responseId={openPaymentModal.responseId}
-                        userRole={userRole || 'GUEST'}
-                        onClose={() => setOpenPaymentModal(null)}
-                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
-                    />
-                )
-            }
-            {
-                isPaymentHubOpen && (
-                    <PaymentHubDashboard
-                        formId={params.id as string}
-                        onClose={() => setIsPaymentHubOpen(false)}
-                    />
-                )
-            }
+            {/* 🛸 OVERLAY & PORTAL ARCHITECTURE v3.0 */}
+            {typeof document !== 'undefined' && createPortal(
+                <div className="crm-global-overlays fixed inset-0 pointer-events-none z-[10000000]">
+                    <div className="pointer-events-none h-full w-full relative text-slate-900">
+                        {/* 🛸 MASTER COMMAND DRAWER */}
+                        <AnimatePresence>
+                            {selectedResponse && (
+                                <>
+                                    {/* 🌌 GLASS BACKDROP */}
+                                    <motion.div 
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} 
+                                        onClick={() => setSelectedResponse(null)} 
+                                        className="fixed inset-0 bg-slate-950/90 backdrop-blur-3xl z-[9999999] pointer-events-auto" 
+                                    />
+                                    
+                                    <motion.div 
+                                        initial={{ x: "100%", opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: "100%", opacity: 0 }} 
+                                        transition={{ type: "spring", damping: 30, stiffness: 300 }} 
+                                        className="fixed top-0 right-0 h-full w-full max-w-[800px] bg-white shadow-[-100px_0_200px_rgba(0,0,0,0.6)] z-[9999999] overflow-hidden flex flex-col border-l border-slate-100 pointer-events-auto"
+                                    >
+                                        {/* 🪐 SUPER HEADER: WEBSITE GRADE DESIGN */}
+                                        <div className="relative p-12 overflow-hidden shrink-0 bg-slate-950">
+                                            {/* Dynamic Gradient Background */}
+                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-slate-950 to-emerald-950 opacity-40" />
+                                            <div className="absolute top-0 right-0 p-20 bg-indigo-500/10 blur-[100px] rounded-full" />
+                                            
+                                            <div className="relative z-10 flex flex-col gap-10">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-5">
+                                                        <div className="w-16 h-16 rounded-[28px] bg-white text-slate-950 flex items-center justify-center shadow-2xl animate-pulse">
+                                                            <Activity size={28} />
+                                                        </div>
+                                                        <div>
+                                                            <h2 className="text-3xl font-black text-white tracking-tight uppercase leading-none mb-2">Record Intelligence</h2>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.5em]">Workspace Matrix v4</span>
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => setSelectedResponse(null)} 
+                                                        className="w-16 h-16 flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/10 rounded-[30px] transition-all border border-white/5 group"
+                                                    >
+                                                        <X size={28} className="group-hover:rotate-90 transition-transform duration-500" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex bg-white/5 p-1.5 rounded-[24px] border border-white/10 shadow-inner">
+                                                        <button onClick={() => setDrawerTab('edit')} className={`px-10 py-3.5 rounded-[20px] text-[11px] font-black uppercase tracking-[0.3em] transition-all ${drawerTab === 'edit' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400 hover:text-white'}`}>Matrix Input</button>
+                                                        <button onClick={() => setDrawerTab('history')} className={`px-10 py-3.5 rounded-[20px] text-[11px] font-black uppercase tracking-[0.3em] transition-all ${drawerTab === 'history' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400 hover:text-white'}`}>Audit Life</button>
+                                                    </div>
+                                                    <div className="h-10 w-px bg-white/10 mx-4" />
+                                                    <div className="px-6 py-3 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3">
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                                        <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-none">ID: {selectedResponse.id.slice(-8)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 🌊 DRAWER CORE */}
+                                        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar space-y-16 bg-white">
+                                            <AnimatePresence mode="wait">
+                                                {drawerTab === 'edit' ? (
+                                                    <motion.div 
+                                                        key="edit-matrix" initial={{ opacity: 0, scale: 0.98, x: -15 }} animate={{ opacity: 1, scale: 1, x: 0 }} exit={{ opacity: 0, scale: 0.98, x: -15 }}
+                                                        className="space-y-16"
+                                                    >
+                                                        {/* 🛸 FOLLOW-UP RADAR */}
+                                                        <div className="bg-slate-50 p-10 rounded-[56px] border border-slate-100 shadow-sm relative overflow-hidden group/radar">
+                                                            <div className="absolute top-0 right-0 p-16 bg-indigo-500/5 blur-[80px] rounded-full pointer-events-none" />
+                                                            <div className="flex items-center justify-between mb-10 relative z-10">
+                                                                <div className="flex items-center gap-6">
+                                                                    <div className="w-14 h-14 rounded-2xl bg-slate-950 text-white flex items-center justify-center shadow-xl">
+                                                                        <Target size={22} className="animate-pulse" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none mb-1">INTERACTION MATRIX</h3>
+                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Lifecycle & Retention Stage</p>
+                                                                    </div>
+                                                                </div>
+                                                                <button 
+                                                                    onClick={() => setOpenFollowUpModal({ formId: data?.form.id || "", responseId: selectedResponse.id })}
+                                                                    className="px-8 py-4 bg-indigo-600 hover:bg-slate-950 text-white rounded-[24px] text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-xl hover:shadow-[0_20px_40px_rgba(79,70,229,0.3)] hover:scale-[1.05] flex items-center gap-3"
+                                                                >
+                                                                    <Plus size={16} /> Deploy REMARK
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 gap-8 relative z-10">
+                                                                <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-inner group hover:bg-slate-950 hover:border-slate-800 transition-all duration-500">
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Next Scheduled Interaction</p>
+                                                                    <div className="flex items-center gap-4 text-xl font-black text-slate-950 group-hover:text-white">
+                                                                        <Calendar className="text-indigo-500" size={18} />
+                                                                        {selectedResponse.nextFollowUpDate ? safeFormat(selectedResponse.nextFollowUpDate, "dd MMM yyyy") : "UNAWAITED"}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-inner group hover:bg-slate-950 hover:border-slate-800 transition-all duration-500">
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Execution Status</p>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-sm ${
+                                                                            selectedResponse.followUpStatus === "Drained" || selectedResponse.followUpStatus === "Closed"
+                                                                            ? "bg-rose-500 text-white shadow-rose-200"
+                                                                            : "bg-emerald-500 text-white shadow-emerald-200"
+                                                                        }`}>
+                                                                            {selectedResponse.followUpStatus || "ACTIVE PIPELINE"}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {selectedResponse.recentRemark && (
+                                                                <div className="mt-8 p-10 bg-white rounded-[32px] border border-slate-100 relative group/remark hover:border-indigo-200 transition-all">
+                                                                    <Quote size={30} className="absolute -top-4 -left-2 text-slate-100 group-hover:text-indigo-500/20 transition-colors" />
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Recent Interaction Node</p>
+                                                                    <p className="text-lg font-bold text-slate-800 leading-relaxed tracking-tight italic">"{selectedResponse.recentRemark}"</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 💎 FIELD INTELLIGENCE GRID */}
+                                                        <div className="space-y-12">
+                                                            <div className="flex items-center gap-5 px-4">
+                                                                <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6 shrink-0">DATA PROTOCOLS <div className="h-[2px] w-24 bg-slate-100" /></h3>
+                                                            </div>
+                                                            
+                                                            <div className="grid grid-cols-1 gap-12 px-2">
+                                                                {[...data?.internalColumns?.map(c => ({...c, isInternal: true})) || [], ...data.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({...f, isInternal: false})) || []].map((col) => {
+                                                                    const val = getCellValue(selectedResponse.id, col.id, col.isInternal);
+                                                                    const isInternal = col.isInternal;
+                                                                    
+                                                                    return (
+                                                                        <div key={col.id} className="group/field relative">
+                                                                            <div className="flex flex-col gap-6 p-8 rounded-[48px] bg-white border-2 border-slate-100 group-hover/field:border-indigo-500/30 group-hover/field:shadow-[0_30px_70px_rgba(0,0,0,0.05)] transition-all duration-500 relative z-10">
+                                                                                <div className="flex items-center justify-between relative px-2">
+                                                                                    <div className="flex items-center gap-4">
+                                                                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] group-hover/field:text-indigo-500 transition-colors">{col.label}</label>
+                                                                                        {isInternal && <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">INTERNAL</div>}
+                                                                                    </div>
+                                                                                    {col.type === "dropdown" && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />}
+                                                                                </div>
+                                                                                
+                                                                                <div className="relative px-2">
+                                                                                    {col.type === "dropdown" ? (
+                                                                                        <select 
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                        >
+                                                                                            <option value="">Select Option Protocol...</option>
+                                                                                            {col.options?.map((opt: any) => {
+                                                                                                const optLabel = typeof opt === 'string' ? opt : opt.label;
+                                                                                                return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                                                                            })}
+                                                                                        </select>
+                                                                                    ) : col.type === "user" ? (
+                                                                                        <select 
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                        >
+                                                                                            <option value="">Choose Agent Entity...</option>
+                                                                                            {teamMembers.map(tm => (
+                                                                                                <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    ) : col.type === "textarea" ? (
+                                                                                        <textarea 
+                                                                                            className="w-full bg-white border-2 border-slate-100 rounded-[32px] p-8 text-[18px] font-bold text-slate-800 focus:border-indigo-500 focus:ring-0 min-h-[140px] resize-none leading-relaxed transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                            placeholder={`Enter detailed ${col.label} metrics...`}
+                                                                                        />
+                                                                                    ) : col.type === "file" ? (
+                                                                                        <div className="flex flex-col gap-6">
+                                                                                            <div className="grid grid-cols-2 gap-4">
+                                                                                                {String(val || "").split(",").filter(Boolean).map((fileUrl, fIdx) => (
+                                                                                                    <div key={fIdx} className="relative group/file">
+                                                                                                        <div className="aspect-square bg-slate-100 rounded-[32px] overflow-hidden border-2 border-slate-200 group-hover/file:border-indigo-400 group-hover/file:shadow-2xl transition-all duration-500">
+                                                                                                            <img src={fileUrl} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://img.icons8.com/color/96/file.png')} />
+                                                                                                            <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/file:opacity-100 transition-opacity flex items-center justify-center gap-4 backdrop-blur-sm">
+                                                                                                                <a href={fileUrl} target="_blank" className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-950 hover:bg-indigo-600 hover:text-white transition-all transform hover:scale-110"><ExternalLink size={20} /></a>
+                                                                                                                <button onClick={() => {
+                                                                                                                    const files = String(val || "").split(",").filter(Boolean);
+                                                                                                                    files.splice(fIdx, 1);
+                                                                                                                    handleUpdateValue(selectedResponse.id, col.id, files.join(","), isInternal);
+                                                                                                                }} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-600 hover:bg-rose-600 hover:text-white transition-all transform hover:scale-110"><Trash2 size={20} /></button>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                        <div className="mt-4 px-2">
+                                                                                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{fileUrl.split('/').pop()}</p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                                
+                                                                                                {/* Multi-Artifact Slot */}
+                                                                                                <div className="relative group/upload h-full">
+                                                                                                    <input 
+                                                                                                        type="file" 
+                                                                                                        onChange={(e) => {
+                                                                                                            const file = e.target.files?.[0];
+                                                                                                            if (file) {
+                                                                                                                const currentFiles = String(val || "").split(",").filter(Boolean);
+                                                                                                                if (currentFiles.length >= 4) { toast.error("Matrix storage limit reached (4 artifacts max)"); return; }
+                                                                                                                toast.loading("Encrypting Artifact...");
+                                                                                                                setTimeout(() => {
+                                                                                                                    const mockUrl = currentFiles.length === 0 ? "https://images.unsplash.com/photo-1621252179027-94459d278660?auto=format&fit=crop&q=80&w=200" : "https://images.unsplash.com/photo-1574169208507-84376144848b?auto=format&fit=crop&q=80&w=200";
+                                                                                                                    handleUpdateValue(selectedResponse.id, col.id, [...currentFiles, mockUrl].join(","), isInternal);
+                                                                                                                    toast.dismiss();
+                                                                                                                    toast.success("Artifact Synchronized");
+                                                                                                                }, 1500);
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                                                                                                    />
+                                                                                                    <div className="aspect-square border-[3px] border-dashed border-slate-200 rounded-[32px] flex flex-col items-center justify-center gap-4 group-hover/upload:border-indigo-400 group-hover/upload:bg-indigo-50/50 transition-all duration-500 shadow-inner">
+                                                                                                        <div className="w-16 h-16 rounded-[22px] bg-slate-100 text-slate-400 flex items-center justify-center group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:scale-125 group-hover/upload:rotate-12 transition-all duration-700 shadow-2xl shadow-slate-200">
+                                                                                                            <UploadCloud size={28} />
+                                                                                                        </div>
+                                                                                                        <div className="text-center">
+                                                                                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Link</p>
+                                                                                                            <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">Secondary Artifact</p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <input 
+                                                                                            type={col.type === "number" || col.type === "currency" ? "number" : col.type === "date" ? "date" : "text"}
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none transition-all shadow-inner tracking-tight"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                            placeholder={`Inject ${col.label} value...`}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="absolute inset-x-12 bottom-0 h-[8px] bg-slate-100 rounded-full group-hover/field:bg-indigo-500 group-hover/field:h-[12px] group-hover/field:inset-x-0 transition-all duration-700 pointer-events-none" />
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div 
+                                                        key="history-matrix" initial={{ opacity: 0, scale: 0.98, x: 15 }} animate={{ opacity: 1, scale: 1, x: 0 }} exit={{ opacity: 0, scale: 0.98, x: 15 }}
+                                                        className="space-y-12"
+                                                    >
+                                                        <div className="flex flex-col gap-10">
+                                                            <div className="flex items-center justify-between px-6">
+                                                                <h3 className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6">Audit Lifecycle <div className="h-[2px] w-24 bg-slate-100 rounded-full" /></h3>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Total Actions</span>
+                                                            </div>
+                                                            
+                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
+                                                                {(data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0) > 0 ? (
+                                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                                        <div key={act.id} className="relative pl-12 pb-12 group/audit">
+                                                                            <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />
+                                                                            </div>
+                                                                            <div className="flex flex-col gap-6">
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <div className="flex items-center gap-5">
+                                                                                        <div className="w-12 h-12 rounded-[18px] bg-slate-950 flex items-center justify-center text-[12px] font-black text-white shadow-xl">{act.userName[0]}</div>
+                                                                                        <div>
+                                                                                            <p className="text-[16px] font-black text-slate-950 mb-1 leading-none">{act.userName}</p>
+                                                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{safeFormat(act.createdAt, "dd MMM yyyy, HH:mm:ss")}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="bg-slate-50/50 p-10 rounded-[56px] border border-slate-100 group-hover/audit:bg-white group-hover/audit:border-indigo-200 group-hover/audit:shadow-[0_25px_80px_rgba(0,0,0,0.06)] transition-all duration-700">
+                                                                                    <div className="flex items-center gap-4 mb-6">
+                                                                                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600"><Database size={14} /></div>
+                                                                                        <p className="text-[12px] text-slate-400 font-black uppercase tracking-widest">Field Updated: <span className="text-slate-950">{act.columnName}</span></p>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-8">
+                                                                                        <div className="flex-1 px-8 py-5 rounded-3xl bg-rose-50/50 text-rose-600 border border-rose-100 line-through opacity-50 truncate font-bold text-[14px]">{act.oldValue || "-"}</div>
+                                                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 shadow-inner"><ArrowRight size={20} className="text-slate-300 group-hover/audit:text-indigo-400 transition-colors" /></div>
+                                                                                        <div className="flex-1 px-8 py-5 rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate text-[14px] shadow-sm shadow-emerald-500/5">{act.newValue}</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))
+                                                                ) : (
+                                                                    <div className="flex flex-col items-center justify-center py-24 bg-slate-50/50 rounded-[64px] border-2 border-dashed border-slate-200 ml-[-20px]">
+                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100 animate-pulse">
+                                                                            <Clock size={50} className="text-slate-200" />
+                                                                        </div>
+                                                                        <p className="text-[14px] font-black text-slate-300 uppercase tracking-[0.6em]">Timeline Deactivated</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+
+                        {/* 🛸 FOLLOW-UP & REMARK MODAL (ABOVE DRAWER) */}
+                        {openFollowUpModal && (
+                            <div className="fixed inset-0 z-[10000001] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md pointer-events-auto">
+                                <FormRemarkModal
+                                    formId={openFollowUpModal.formId}
+                                    responseId={openFollowUpModal.responseId}
+                                    columnId={openFollowUpModal.columnId}
+                                    onClose={() => setOpenFollowUpModal(null)}
+                                    userRole={userRole || 'GUEST'}
+                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                />
+                            </div>
+                        )}
+                        
+                        {/* 🛸 OTHER MODALS PORTALED */}
+                        {openPaymentModal && (
+                            <div className="fixed inset-0 z-[10000002] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md pointer-events-auto">
+                                <PaymentHubModal
+                                    formId={openPaymentModal.formId}
+                                    responseId={openPaymentModal.responseId}
+                                    userRole={userRole || 'GUEST'}
+                                    onClose={() => setOpenPaymentModal(null)}
+                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                />
+                            </div>
+                        )}
+                        
+                        {isPaymentHubOpen && (
+                            <div className="fixed inset-0 z-[10000003] pointer-events-auto">
+                                <PaymentHubDashboard
+                                    formId={params.id as string}
+                                    onClose={() => setIsPaymentHubOpen(false)}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>, 
+                document.body
+            )}
             {/* BULK IMPORT MODAL */}
             {isBulkImportOpen && (
                 <BulkImportModal
@@ -6440,7 +6632,6 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
-            {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
             <motion.button
                 initial={{ scale: 0, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}

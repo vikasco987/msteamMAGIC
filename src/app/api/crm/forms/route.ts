@@ -112,8 +112,18 @@ export async function POST(req: NextRequest) {
                 createdBy: userId,
                 visibleToRoles: visibleToRoles || [],
                 visibleToUsers: visibleToUsers || [],
-                fields: { create: fields || [] },
-                internalColumns: { create: internalColumns || [] }
+                fields: { 
+                    create: (fields || []).map((f: any) => {
+                        const { id, ...rest } = f; // Strip client-side ID
+                        return rest;
+                    }) 
+                },
+                internalColumns: { 
+                    create: (internalColumns || []).map((c: any) => {
+                        const { id, ...rest } = c; // Strip client-side ID
+                        return rest;
+                    }) 
+                }
             }
         });
 
