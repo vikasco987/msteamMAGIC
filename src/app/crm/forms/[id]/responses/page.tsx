@@ -521,7 +521,7 @@ export default function CRMSpreadsheetPage() {
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
     const [isFilterBuilderOpen, setIsFilterBuilderOpen] = useState(false);
     const [conditions, setConditions] = useState<SavedView['conditions']>([]);
-    const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("AND");
+    const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("OR");
     const [savedViews, setSavedViews] = useState<SavedView[]>([]);
     const [autoApply, setAutoApply] = useState(true);
     const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -3319,14 +3319,31 @@ export default function CRMSpreadsheetPage() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="sticky top-0 left-0 right-0 h-1 bg-indigo-50 z-[100] overflow-hidden"
+                                        className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/20 backdrop-blur-[2px] cursor-wait transition-all duration-500"
                                     >
-                                        <motion.div
-                                            className="h-full bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.8)]"
-                                            initial={{ x: "-100%" }}
-                                            animate={{ x: "100%" }}
-                                            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                                        />
+                                        <div className="flex flex-col items-center gap-6 p-10 rounded-[48px] bg-white/90 shadow-[0_32px_100px_rgba(0,0,0,0.12)] border border-white/50 animate-pulse">
+                                            <div className="relative w-20 h-20">
+                                                <motion.div 
+                                                    animate={{ rotate: 360, scale: [1, 1.1, 1] }}
+                                                    transition={{ rotate: { repeat: Infinity, duration: 2, ease: "linear" }, scale: { repeat: Infinity, duration: 2 } }}
+                                                    className="w-full h-full border-4 border-indigo-600/10 border-t-indigo-600 rounded-[28px] shadow-2xl shadow-indigo-100"
+                                                />
+                                                <Bot size={34} className="absolute inset-0 m-auto text-indigo-600 animate-bounce" />
+                                            </div>
+                                            <div className="text-center space-y-2">
+                                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-[0.3em]">Matrix Syncing</h3>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Optimizing Intelligence View...</p>
+                                            </div>
+                                        </div>
+                                        {/* Progress Bar */}
+                                        <div className="absolute top-0 left-0 right-0 h-1 overflow-hidden">
+                                            <motion.div 
+                                                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500"
+                                                initial={{ x: "-100%" }}
+                                                animate={{ x: "100%" }}
+                                                transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+                                            />
+                                        </div>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
