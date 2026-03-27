@@ -361,19 +361,38 @@ export async function POST(req: NextRequest) {
     const assignerEmail = clerkUser.emailAddresses?.[0]?.emailAddress || "unknown";
     const assignerName = clerkUser.firstName || clerkUser.username || "Unknown";
 
+    // Rule: Creator (current user) is the Assigner. Assignee is the one picked.
+    let assigneeName = assignerName;
+    let assigneeEmail = assignerEmail;
+    if (body.assigneeId && body.assigneeId !== userId) {
+      try {
+        const u = await users.getUser(body.assigneeId);
+        if (u) {
+          assigneeName = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+          assigneeEmail = u.emailAddresses?.[0]?.emailAddress || "Unknown";
+        }
+      } catch (err) {
+        console.error("Failed to fetch assignee details:", err);
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: body.title,
-        status: "todo",
-        assigneeIds: Array.isArray(body.assigneeIds)
-          ? body.assigneeIds
-          : [body.assigneeId],
-        assignerEmail,
-        assignerName,
+        status: body.status || "todo",
+        assigneeId: body.assigneeId,
+        assigneeIds: Array.isArray(body.assigneeIds) ? body.assigneeIds : (body.assigneeId ? [body.assigneeId] : []),
+        assigneeName,
+        assigneeEmail,
+        projectId: body.projectId || undefined,
+        assignerEmail: assignerEmail,
+        assignerName: assignerName,
+        assignerId: userId,
         createdByClerkId: userId,
+        createdByName: assignerName,
+        createdByEmail: assignerEmail,
         createdAt: new Date(),
         updatedAt: new Date(),
-        attachments: Array.isArray(body.attachments) ? body.attachments : [],
         tags: Array.isArray(body.tags) ? body.tags : [],
         priority: body.priority ?? null,
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
@@ -395,20 +414,49 @@ export async function GET(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const role = await getUserRole(userId);
-    const userIsPrivileged = role === "admin" || role === "master";
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUserForRole = await client.users.getUser(userId);
+    const metadataRole = (clerkUserForRole.publicMetadata as any)?.role || (clerkUserForRole.privateMetadata as any)?.role;
+    const normalizedRole = String(metadataRole || dbUser?.role || "user").toLowerCase();
+
+    const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+    const userIsPrivileged = normalizedRole === "admin" || normalizedRole === "master";
+
+    let teamMemberIds: string[] = [];
+    if (isTL) {
+        const members = await prisma.user.findMany({
+            where: { leaderId: userId } as any,
+            select: { clerkId: true }
+        });
+        teamMemberIds = members.map(m => m.clerkId);
+    }
 
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "10", 10);
     const skip = (page - 1) * limit;
 
+    const userFilter = userIsPrivileged
+      ? {}
+      : {
+          OR: [
+            { createdByClerkId: userId },
+            { assigneeIds: { has: userId } },
+            ...(isTL && teamMemberIds.length > 0 ? [
+              { createdByClerkId: { in: teamMemberIds } },
+              { assigneeIds: { hasSome: teamMemberIds } }
+            ] : [])
+          ]
+        };
+
+    console.log(`[Tasks Paginated API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, Privileged: ${userIsPrivileged}`);
+
     // ✅ Fetch tasks + top 5 latest paymentRemarks
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
-        where: userIsPrivileged
-          ? {}
-          : { OR: [{ createdByClerkId: userId }, { assigneeIds: { has: userId } }] },
+        where: userFilter as any,
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -422,9 +470,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.task.count({
-        where: userIsPrivileged
-          ? {}
-          : { OR: [{ createdByClerkId: userId }, { assigneeIds: { has: userId } }] },
+        where: userFilter as any,
       }),
     ]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { 
   Database, 
   Cloud, 
@@ -42,6 +42,47 @@ export default function BackupDashboard() {
   const [snapshotLabel, setSnapshotLabel] = useState("");
   const [snapshotDb, setSnapshotDb] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [timeLeft, setTimeLeft] = useState("");
+  const [testTimeLeft, setTestTimeLeft] = useState(60);
+  const [logs, setLogs] = useState("");
+  const [testingScript, setTestingScript] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [pulse, setPulse] = useState<{ lastRun: string | null; status: string; error?: string }>({ lastRun: null, status: 'inactive' });
+  const explorerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const nextBackup = new Date();
+      nextBackup.setHours(2, 0, 0, 0);
+      
+      if (now.getHours() >= 2) {
+        nextBackup.setDate(nextBackup.getDate() + 1);
+      }
+      
+      const diff = nextBackup.getTime() - now.getTime();
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      
+      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    const timer = setInterval(calculateTimeLeft, 1000);
+    calculateTimeLeft();
+    return () => clearInterval(timer);
+  }, []);
+
+  // Test Timer Logic (60s countdown)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTestTimeLeft((prev) => {
+        if (prev <= 1) return 60;
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
 
   const fetchBackups = () => {
@@ -60,7 +101,43 @@ export default function BackupDashboard() {
 
   useEffect(() => {
     fetchBackups();
+    fetchLogs();
+    fetchHeartbeat();
+    const interval = setInterval(fetchHeartbeat, 30000); // Check every 30s
+    return () => clearInterval(interval);
   }, []);
+
+  const fetchHeartbeat = () => {
+    fetch("/api/admin/backups/heartbeat")
+      .then(res => res.json())
+      .then(data => setPulse(data))
+      .catch(() => {});
+  };
+
+  const fetchLogs = () => {
+    fetch("/api/admin/backups/logs")
+      .then(res => res.json())
+      .then(data => setLogs(data.logs || "No logs available"))
+      .catch(() => setLogs("Error fetching logs"));
+  };
+
+  const handleTestScript = async () => {
+    try {
+      setTestingScript(true);
+      const res = await fetch("/api/admin/backups/test-script", { method: "POST" });
+      const data = await res.json();
+      fetchLogs(); // Refresh logs
+      if (data.status === "success") {
+        alert("Script test successful! Check logs below.");
+      } else {
+        alert("Script failed!\nError: " + (data.error || data.stderr || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Failed to run script test.");
+    } finally {
+      setTestingScript(false);
+    }
+  };
 
 
   const handleDownload = async (id: string, fileName: string) => {
@@ -94,6 +171,10 @@ export default function BackupDashboard() {
         setSnapshotDb(data.tempDbName);
         setSnapshotLabel(new Date(date).toLocaleString());
         setViewMode('snapshot');
+        // Scroll to explorer
+        setTimeout(() => {
+          explorerRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       } else {
         alert("Mounting failed: " + (data.details || "Unknown error"));
       }
@@ -175,7 +256,32 @@ export default function BackupDashboard() {
             <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
               Database Backup Center
             </h1>
-            <p className="text-gray-400 mt-1">Kravy POS Ultimate Security System</p>
+            <div className="flex items-center gap-4 mt-2">
+              <p className="text-gray-400">Kravy POS Ultimate Security System</p>
+              <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-orange-400 font-mono text-[10px] bg-orange-400/10 px-3 py-1 rounded-full border border-orange-400/20 shadow-lg shadow-orange-500/5">
+                  <Clock size={12} className="animate-pulse" />
+                  <span>Auto-Backup In: {timeLeft}</span>
+                </div>
+                <div className="flex items-center gap-2 text-blue-400 font-mono text-[10px] bg-blue-400/10 px-3 py-1 rounded-full border border-blue-400/20 shadow-lg shadow-blue-500/5">
+                  <AlertCircle size={12} />
+                  <span>Test Cycle: {testTimeLeft}s</span>
+                </div>
+                <div className={`flex items-center gap-2 font-mono text-[10px] px-3 py-1 rounded-full border shadow-lg ${
+                  pulse.status === 'failed' ? 'text-red-400 bg-red-400/10 border-red-400/20' :
+                  pulse.lastRun ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20 shadow-emerald-500/5' : 'text-gray-500 bg-gray-500/10 border-gray-500/20'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    pulse.status === 'failed' ? 'bg-red-400 animate-pulse' :
+                    pulse.lastRun ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'
+                  }`} />
+                  <span>
+                    {pulse.status === 'failed' ? `FAILED: ${pulse.error?.slice(0, 30)}...` : 
+                     pulse.lastRun ? `Pulse: ${new Date(pulse.lastRun).toLocaleTimeString()}` : 'No Signal'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -197,18 +303,89 @@ export default function BackupDashboard() {
             {backingUp ? 'Backing up...' : 'Create Manual Backup'}
           </button>
 
-          <button 
-            onClick={() => setShowDocs(true)}
-            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-medium transition-all group"
-          >
-            <AlertCircle className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
-            System Guide (Docs)
-          </button>
-        </div>
+            <button 
+              onClick={() => setShowDocs(true)}
+              className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-sm font-medium transition-all group"
+            >
+              <AlertCircle className="w-4 h-4 text-purple-400 group-hover:scale-110 transition" />
+              System Guide
+            </button>
+            <button 
+              onClick={() => setShowDebug(!showDebug)}
+              className={`flex items-center gap-2 px-6 py-3 rounded-2xl border transition-all text-sm font-medium ${
+                showDebug ? 'bg-orange-500/20 border-orange-500/30 text-orange-400' : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-400'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              Cron Debugger
+            </button>
+          </div>
       </div>
 
 
-      {/* DOCUMENTATION MODAL */}
+      {/* DEBUG CONSOLE */}
+      {showDebug && (
+        <div className="max-w-7xl mx-auto mb-12 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="p-8 rounded-3xl border border-orange-500/20 bg-orange-500/5 backdrop-blur-xl">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/20 text-orange-400">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-orange-400">Production Cron Debugger</h2>
+                  <p className="text-xs text-gray-500">Find the real cause of auto-backup failures</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={fetchLogs}
+                  className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-bold hover:bg-white/10 transition-all"
+                >
+                  Refresh Logs
+                </button>
+                <button 
+                  onClick={handleTestScript}
+                  disabled={testingScript}
+                  className="flex items-center gap-2 px-6 py-2 rounded-xl bg-orange-500 text-white text-xs font-black uppercase tracking-widest hover:bg-orange-600 transition-all disabled:opacity-50"
+                >
+                  {testingScript ? <Loader2 size={14} className="animate-spin" /> : <Table size={14} />}
+                  Run Script Test Now
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/5">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Diagnostic Tips</h3>
+                  <ul className="text-[11px] space-y-2 text-gray-400">
+                    <li className="flex gap-2">
+                       <span className="text-orange-400">⚡</span>
+                       <span>If "Run Script Test" fails, the <b>Node/NPM</b> path is missing on your server.</span>
+                    </li>
+                    <li className="flex gap-2">
+                       <span className="text-orange-400">⚡</span>
+                       <span>Check if your production server has <b>mongodump</b> installed or uses pure JS script.</span>
+                    </li>
+                    <li className="flex gap-2">
+                       <span className="text-orange-400">⚡</span>
+                       <span>Look for <b>"Permission denied"</b> in logs - you might need to run: <br/><code>chmod +x scripts/backup/run-cron-backup.sh</code></span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-500 px-2">Recent Logs (backup.log)</h3>
+                <div className="p-5 rounded-2xl bg-black/60 border border-white/5 font-mono text-[10px] h-[200px] overflow-y-auto custom-scrollbar text-gray-300">
+                  <pre className="whitespace-pre-wrap">{logs}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showDocs && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowDocs(false)} />
@@ -435,7 +612,7 @@ export default function BackupDashboard() {
       </div>
 
       {/* FOOTER: COLLECTIONS EXPLORER */}
-      <div className="max-w-7xl mx-auto mt-12 grid grid-cols-1 gap-8">
+      <div ref={explorerRef} className="max-w-7xl mx-auto mt-12 grid grid-cols-1 gap-8">
         <div className={`p-8 rounded-3xl border transition-all duration-500 ${
           viewMode === 'snapshot' 
           ? 'bg-blue-500/5 border-blue-500/30' 
@@ -452,21 +629,24 @@ export default function BackupDashboard() {
               </div>
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-semibold">
-                    {viewMode === 'snapshot' ? 'Backup Snapshot Viewer' : 'Live Analytics Explorer'}
+                  <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                    Database Explorer
                   </h2>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${
                     viewMode === 'snapshot' 
-                    ? 'bg-blue-500 text-white animate-pulse' 
+                    ? 'bg-blue-500 text-white animate-pulse shadow-lg shadow-blue-500/20' 
                     : 'bg-emerald-500 text-white'
                   }`}>
-                    {viewMode === 'snapshot' ? `RESTORED: ${snapshotLabel}` : 'LIVE REALTIME'}
+                    {viewMode === 'snapshot' ? `BACKUP SOURCE: ${snapshotLabel}` : 'LIVE REALTIME'}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  {viewMode === 'snapshot' 
-                    ? `Showing data exactly as it was on ${snapshotLabel}` 
-                    : 'Showing exact database state right now. Use history above for past versions.'}
+                <p className="text-sm text-gray-400 mt-1">
+                  Inspect and export individual tables directly from MongoDB. 
+                  {viewMode === 'snapshot' && (
+                    <span className="block text-blue-400 font-medium mt-1">
+                      Showing results from Backup: {snapshotLabel}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>

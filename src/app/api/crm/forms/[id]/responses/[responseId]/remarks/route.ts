@@ -34,7 +34,7 @@ export async function POST(
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const body = await req.json();
-        const { remark, nextFollowUpDate, followUpStatus, columnId } = body;
+        const { remark, nextFollowUpDate, followUpStatus, leadStatus, columnId } = body;
 
         if (!remark) {
             return NextResponse.json({ error: "Remark text is required" }, { status: 400 });
@@ -51,6 +51,7 @@ export async function POST(
                     remark,
                     nextFollowUpDate: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
                     followUpStatus: followUpStatus || "scheduled",
+                    leadStatus: leadStatus || null,
                     columnId: columnId?.trim() || null,
                     authorName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.emailAddresses[0].emailAddress.split('@')[0],
                     authorEmail: user.emailAddresses[0].emailAddress,
@@ -133,7 +134,7 @@ export async function POST(
         const remarkCols = await prisma.internalColumn.findMany({
             where: {
                 formId: cleanedFormId,
-                label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status"] }
+                label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status"] }
             }
         });
 
@@ -162,6 +163,10 @@ export async function POST(
         
         if (followUpStatus && !columnId) {
             await syncToValue("Follow-up Status", followUpStatus);
+        }
+
+        if (leadStatus) {
+            await syncToValue("Lead Status", leadStatus);
         }
 
         // Sync to specific custom column if provided

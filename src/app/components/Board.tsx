@@ -58,6 +58,36 @@ const columns = [
   },
 ];
 
+const getTaskBgColor = (task: TaskType) => {
+  if (task.status === "done") return "bg-emerald-50/50 border-emerald-100";
+  if (!task.createdAt) return "bg-white border-slate-100";
+
+  const elapsedHrs = (Date.now() - new Date(task.createdAt).getTime()) / (1000 * 60 * 60);
+  const p = (task.priority || "").toLowerCase();
+
+  // Urgent/High: gets critical quickly
+  if (p === "urgent" || p === "high") {
+    if (elapsedHrs > 24) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 12) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 4) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  } 
+  // Medium
+  else if (p === "medium") {
+    if (elapsedHrs > 48) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 24) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 12) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  } 
+  // Low or Unassigned
+  else {
+    if (elapsedHrs > 72) return "bg-rose-50 border-rose-200";
+    if (elapsedHrs > 48) return "bg-orange-50 border-orange-200";
+    if (elapsedHrs > 24) return "bg-amber-50 border-amber-200";
+    return "bg-white border-slate-100";
+  }
+};
+
 export default function Board() {
   const { user } = useUser();
   const { getToken } = useAuth();
@@ -103,30 +133,40 @@ export default function Board() {
     saveHiddenCardIds(newSet);
   };
 
+  const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
+  const lastUpdateRef = useRef<number>(0);
+
   const fetchTasks = useCallback(async (isInitial = false) => {
     if (!user) {
       setLoading(false);
       return;
     }
 
+    // Skip auto-refresh if we just did an update (3s cooldown)
+    if (!isInitial && Date.now() - lastUpdateRef.current < 3000) return;
+
     if (isInitial) setLoading(true);
 
-    const role = (user.publicMetadata?.role as string) || "";
+    const role = (user.publicMetadata?.role as string || user.unsafeMetadata?.role as string || "").toLowerCase();
     const userId = user.id;
     setUserRole(role);
 
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks?limit=200");
+      if (!res.ok) throw new Error("Fetch failed");
       const json: { tasks: TaskType[] } = await res.json();
       const taskArray: TaskType[] = Array.isArray(json.tasks) ? json.tasks : [];
 
-      const relevantTasks = showAllTasksMode
-        ? taskArray
-        : taskArray.filter(task =>
-          (task.assigneeIds && task.assigneeIds.includes(userId)) ||
-          task.assigneeId === userId ||
-          task.createdByClerkId === userId
-        );
+      if (!isInitial && taskArray.length === 0 && tasks.length > 5) {
+         // 🛡️ Safeguard: If we had tasks but now got 0, it's likely a transient error or sync issue
+         // Skip update to prevent "Invisible Tasks"
+         console.warn("Fetch returned 0 tasks while state had data. Skipping wipe-out.");
+         return;
+      }
+
+      const isAdminOrMaster = role === "admin" || role === "master";
+
+      const relevantTasks = taskArray;
 
       const seenTaskIds = seenTaskIdsRef.current;
       const newTasks = relevantTasks.filter(task => !seenTaskIds.has(task.id));
@@ -144,13 +184,27 @@ export default function Board() {
       }
 
       relevantTasks.forEach(task => seenTaskIds.add(task.id));
-      setTasks(relevantTasks);
+      
+      // Update tasks while preserving pending changes
+      setTasks(currentTasks => {
+        // Build a map of incoming tasks for faster lookup
+        const incomingTaskMap = new Map(relevantTasks.map(t => [t.id, t]));
+        
+        // Merge strategy: update existing, add new
+        // For simplicity here, we'll replace with relevantTasks but respect pendingChanges
+        return relevantTasks.map(incomingTask => {
+          if (pendingChanges[incomingTask.id]) {
+            return { ...incomingTask, status: pendingChanges[incomingTask.id] };
+          }
+          return incomingTask;
+        });
+      });
     } catch (err) {
       console.error("Fetch tasks error:", err);
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [user, showAllTasksMode]);
+  }, [user, showAllTasksMode, pendingChanges, tasks.length]); // Added tasks.length to dependency for the safeguard check
 
   useEffect(() => {
     if (!user?.id) return;
@@ -170,26 +224,56 @@ export default function Board() {
     const { destination, source, draggableId } = result;
     if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) return;
 
-    const updatedTasks = tasks.map(t => t.id === draggableId ? { ...t, status: destination.droppableId } : t);
-    setTasks(updatedTasks);
+    const newStatus = destination.droppableId;
+    lastUpdateRef.current = Date.now();
+
+    // 1. Update pending changes to prevent rubber-banding
+    setPendingChanges(prev => ({ ...prev, [draggableId]: newStatus }));
+
+    // 2. Optimistically update local state
+    setTasks(prev => prev.map(t => t.id === draggableId ? { ...t, status: newStatus } : t));
 
     try {
       const res = await fetch(`/api/tasks/${draggableId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: destination.droppableId }),
+        body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error("Update failed");
-      toast.success("Task updated!");
-    } catch (err) {
-      toast.error("Failed to update task");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Update failed");
+      }
+      toast.success(`Task moved to ${newStatus}`);
+    } catch (err: any) {
+      console.error("onDragEnd Error:", err);
+      toast.error(err.message || "Failed to update task. Reverting...");
       fetchTasks(false);
+    } finally {
+      // Small delay before clearing pending status to allow server state to propagate to GET requests
+      setTimeout(() => {
+        setPendingChanges(prev => {
+          const next = { ...prev };
+          delete next[draggableId];
+          return next;
+        });
+      }, 5000);
     }
   };
 
   const handleFieldUpdate = async (taskId: string, updatedFields: Partial<TaskType>) => {
-    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, ...updatedFields } : t);
-    setTasks(updatedTasks);
+    lastUpdateRef.current = Date.now();
+    
+    // If updating status, track it as pending
+    if (updatedFields.status) {
+      setPendingChanges(prev => ({ ...prev, [taskId]: updatedFields.status! }));
+    }
+
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updatedFields } : t));
+    
+    // Provide instant feedback for reassignments
+    if (updatedFields.assigneeId || updatedFields.assigneeIds) {
+      toast.success("Assignment updated!");
+    }
 
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
@@ -197,26 +281,46 @@ export default function Board() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedFields),
       });
-      if (!res.ok) throw new Error("Update failed");
-      toast.success("Task synchronized");
-    } catch (err) {
+      if (!res.ok) {
+         const errorData = await res.json();
+         throw new Error(errorData.error || "Update failed");
+      }
+      if (!updatedFields.status && !updatedFields.assigneeId) {
+        toast.success("Changes saved");
+      }
+    } catch (err: any) {
       console.error("Field update error:", err);
-      toast.error("Cloud sync failed");
+      toast.error(err.message || "Failed to sync changes. Reverting...");
       fetchTasks(false);
+    } finally {
+      if (updatedFields.status) {
+        setTimeout(() => {
+          setPendingChanges(prev => {
+            const next = { ...prev };
+            delete next[taskId];
+            return next;
+          });
+        }, 5000);
+      }
     }
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    // 🗑️ Optimistic UI Delete
+    const originalTasks = [...tasks];
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    toast.success("Task deleted");
+
     try {
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) throw new Error("Delete failed");
-      setTasks(tasks.filter(t => t.id !== taskId));
-      toast.success("Task deleted");
     } catch (err) {
-      toast.error("Delete failed");
+      console.error("Delete failed:", err);
+      toast.error("Failed to delete from server. Reverting...");
+      setTasks(originalTasks);
     }
   };
 
@@ -256,16 +360,20 @@ export default function Board() {
         return false;
       })();
 
+      const matchesStatus = selectedStatuses.length === 0 ||
+        selectedStatuses.includes((task.status || "").toLowerCase()) ||
+        !!pendingChanges[task.id]; // Always show if we just moved it locally
+
       const isHidden = !showAllTasksMode && hiddenCardIds.has(task.id);
 
-      return matchesSearch && matchesCategory && matchesDate && !isHidden;
+      return matchesSearch && matchesCategory && matchesDate && matchesStatus && !isHidden;
     }).sort((a, b) => {
       const valA = a[sortBy] || "";
       const valB = b[sortBy] || "";
       const dir = sortDirection === "asc" ? 1 : -1;
       return valA < valB ? -1 * dir : valA > valB ? 1 * dir : 0;
     });
-  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds]);
+  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds, pendingChanges]);
 
   const allStatuses = useMemo(() => Array.from(new Set(tasks.map(t => t.status))), [tasks]);
   const allAssignees = useMemo(() => {
@@ -339,20 +447,20 @@ export default function Board() {
             <div key={col.id} className="flex flex-col gap-4">
               <div className={`flex items-center justify-between p-4 rounded-2xl border-l-4 ${col.color} bg-white shadow-sm font-black text-slate-700 uppercase tracking-widest text-xs`}>
                 <span>{col.title}</span>
-                <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-[10px]">{filteredTasks.filter(t => t.status === col.id).length}</span>
+                <span className="bg-slate-100 px-2 py-0.5 rounded-lg text-[10px]">{filteredTasks.filter(t => (t.status || "").toLowerCase() === col.id.toLowerCase()).length}</span>
               </div>
 
               <Droppable droppableId={col.id}>
                 {(provided) => (
-                  <div {...provided.droppableProps} ref={provided.innerRef} className="min-h-[500px] flex flex-col gap-4">
-                    {filteredTasks.filter(t => t.status === col.id).map((task, index) => (
+                  <div {...provided.droppableProps} ref={provided.innerRef} className="max-h-[75vh] overflow-y-auto pr-2 flex flex-col gap-4 custom-scrollbar">
+                    {filteredTasks.filter(t => (t.status || "").toLowerCase() === col.id.toLowerCase()).map((task, index) => (
                       <Draggable key={task.id} draggableId={task.id} index={index}>
                         {(provided) => (
                           <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative"
+                            className={`${getTaskBgColor(task)} p-4 rounded-3xl shadow-sm border hover:shadow-md transition-shadow group relative`}
                             style={{
                               ...provided.draggableProps.style,
                               borderLeft: task.highlightColor ? `4px solid ${task.highlightColor}` : undefined
@@ -360,7 +468,7 @@ export default function Board() {
                           >
                             <TaskDetailsCard
                               task={task}
-                              isAdmin={userRole === "master" || userRole === "admin"}
+                              isAdmin={userRole === "master"}
                               onDelete={handleDeleteTask}
                               onUpdateTask={handleFieldUpdate}
                               onFloatRequest={setFloatingTask}

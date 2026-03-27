@@ -117,10 +117,21 @@ export async function GET(req: Request) {
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + 1);
 
-    // Fetch tasks created by this seller for the month
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const metadataRole = (clerkUser.publicMetadata as any)?.role || (clerkUser.privateMetadata as any)?.role;
+    const normalizedRole = String(metadataRole || dbUser?.role || "user").toLowerCase();
+
+    
+    let userIds = [userId];
+    // TL should only see their own sales in "My Growth" as per request
+
+    // Fetch tasks created by this seller (or team) for the month
     const tasks = await prisma.task.findMany({
       where: {
-        createdByClerkId: userId,
+        createdByClerkId: { in: userIds },
         createdAt: {
           gte: startDate,
           lt: endDate,

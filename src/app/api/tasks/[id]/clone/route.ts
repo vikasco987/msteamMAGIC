@@ -484,7 +484,7 @@ export async function POST(
 ) {
   const { id: taskId } = context.params;
 
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -508,7 +508,7 @@ export async function POST(
 
     // Prepare data for the new task
     // Using object destructuring to safely copy fields and exclude notes/id
-    const { id, notes, ...originalData } = original;
+    const { id, subtasks, ...originalData } = original;
 
     const cloned = await prisma.task.create({
       data: {
@@ -521,6 +521,14 @@ export async function POST(
         createdByClerkId: userId,
         createdByName: userName,
         createdByEmail: userEmail,
+        assigneeId: userId,
+        assigneeIds: [userId],
+        assigneeName: userName,
+        assigneeEmail: userEmail,
+        // Assigner also becomes the cloner
+        assignerId: userId,
+        assignerName: userName,
+        assignerEmail: userEmail,
         // ✅ Ensure notes, paymentHistory, amount, and received are reset
         notes: undefined, // Notes are handled by the Note model, so this is correct
         paymentHistory: [],

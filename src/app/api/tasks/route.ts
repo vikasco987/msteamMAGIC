@@ -826,17 +826,38 @@ export async function POST(req: NextRequest) {
       : [];
 
 
+    // Rule: Creator (current user) is the Assigner. Assignee is the one picked.
+    let assigneeName = assignerName;
+    let assigneeEmail = assignerEmail;
+    if (body.assigneeId && body.assigneeId !== userId) {
+      try {
+        const u = await users.getUser(body.assigneeId);
+        if (u) {
+          assigneeName = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
+          assigneeEmail = u.emailAddresses?.[0]?.emailAddress || "Unknown";
+        }
+      } catch (err) {
+        console.error("Failed to fetch assignee details:", err);
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title: body.title,
         status,
         assigneeIds: Array.isArray(body.assigneeIds)
           ? body.assigneeIds
-          : [body.assigneeId], // fallback for backward compatibility
+          : [body.assigneeId],
+        assigneeId: body.assigneeId,
+        assigneeName,
+        assigneeEmail,
 
-        assignerEmail,
-        assignerName,
+        assignerEmail: assignerEmail,
+        assignerName: assignerName,
+        assignerId: userId,
         createdByClerkId: userId,
+        createdByName: assignerName,
+        createdByEmail: assignerEmail,
         createdAt: new Date(),
         updatedAt: new Date(),
 
@@ -856,6 +877,9 @@ export async function POST(req: NextRequest) {
           timeline: toNullableString(timeline),
           amount: toNullableString(amount), // ✅ ADDED HERE
           amountReceived: toNullableString(amountReceived), // ✅ ADDED HERE
+          assignerId: userId,
+          assignerName: assignerName,
+          assignerEmail: assignerEmail,
           fields: safeFields,
           // If aadhaarUrl etc are directly inside customFields, add them here too.
           // Based on your original code, they were extracted from customFields but not explicitly placed back into the customFields object when saving.
@@ -967,14 +991,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const role = await getUserRole(userId);
-
-    const userIsPrivileged = role === "admin" || role === "master";
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUserForRole = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const metadataRole = (clerkUserForRole.publicMetadata as any)?.role || (clerkUserForRole.privateMetadata as any)?.role;
+    const normalizedRole = String(metadataRole || dbUser?.role || "user").toLowerCase();
+    const userIsPrivilegedFixed = normalizedRole === "admin" || normalizedRole === "master";
 
     const url = new URL(req.url);
     const taskId = url.searchParams.get('id'); // Get the optional task ID from query params
     const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const limit = parseInt(url.searchParams.get('limit') || '100');
     const listView = url.searchParams.get('listView') === 'true';
     const skip = (page - 1) * limit;
 
@@ -1007,14 +1035,36 @@ export async function GET(req: NextRequest) {
       totalCount = task ? 1 : 0;
     } else {
       // Build where clause
-      const userFilter = userIsPrivileged
+      // Team Leader Logic: If user is TL, they can see their team's tasks
+      const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+
+      let teamMemberIds: string[] = [];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId } as any,
+              select: { clerkId: true }
+          });
+          teamMemberIds = members.map(m => m.clerkId);
+      }
+
+      console.log(`[Tasks API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, Privileged: ${userIsPrivilegedFixed}`);
+
+      const userFilter = userIsPrivilegedFixed
         ? {}
         : {
           OR: [
             { createdByClerkId: userId },
+            { assigneeId: userId },
             { assigneeIds: { has: userId } },
+            ...(isTL && teamMemberIds.length > 0 ? [
+              { createdByClerkId: { in: teamMemberIds } },
+              { assigneeId: { in: teamMemberIds } },
+              { assigneeIds: { hasSome: teamMemberIds } }
+            ] : [])
           ],
         };
+      
+      console.log(`[Tasks API Debug] Filter Applied: ${JSON.stringify(userFilter)}`);
 
       const where: any = {
         AND: [
@@ -1061,7 +1111,8 @@ export async function GET(req: NextRequest) {
         where.AND.push({
           OR: [
             { assignerName: { in: assigners } },
-            { createdByClerkId: { in: assigners } }
+            { createdByClerkId: { in: assigners } },
+            { assignerId: { in: assigners } }
           ]
         });
       }
@@ -1158,36 +1209,22 @@ export async function GET(req: NextRequest) {
       totalCount = count;
     }
 
-    // ✅ Collect all unique user identifiers
-    const userIdentifiers = new Set<string>();
-    for (const task of tasks) {
-      if (task.assignerEmail) userIdentifiers.add(task.assignerEmail);
-      if (Array.isArray(task.assigneeIds)) {
-        task.assigneeIds.forEach((id) => userIdentifiers.add(id));
-      }
-    }
-
-    // ✅ Batch Clerk lookups (email vs ID)
-    const userLookups = await Promise.all(
-      Array.from(userIdentifiers).map((val) =>
-        val.includes("@")
-          ? users.getUserList({ emailAddress: [val] }).then((res) => res[0]).catch(() => null)
-          : users.getUser(val).catch(() => null)
-      )
-    );
+    // ✅ BULK CLERK LOOKUP: Fetch all users once for efficiency
+    // This avoids 50+ individual network calls and fixes "Fetch failed" errors.
+    const clerkResponse = await client.users.getUserList({ limit: 500 });
+    const allClerkUsers = clerkResponse.data;
 
     // ✅ Build user map by ID and email
     const userMap: Record<string, { id: string; name: string; email: string }> = {};
-    userLookups.forEach((u) => {
-      if (u) {
-        const email = u.emailAddresses?.[0]?.emailAddress || "";
-        const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unnamed";
-        userMap[u.id] = { id: u.id, name, email };
-        if (email) userMap[email] = { id: u.id, name, email };
-      }
+    allClerkUsers.forEach((u) => {
+      const email = u.emailAddresses?.[0]?.emailAddress || "";
+      const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unnamed User";
+      const userData = { id: u.id, name, email };
+      userMap[u.id] = userData;
+      if (email) userMap[email] = userData;
     });
 
-    // ✅ Enrich tasks with assigner + assignees
+    // ✅ Enrich tasks with assigner + assignees using the map
     const enrichedTasks = tasks.map((task) => {
       const assigner = userMap[task.assignerEmail ?? ""] || {
         id: "",
@@ -1214,7 +1251,7 @@ export async function GET(req: NextRequest) {
     });
 
     console.log(
-      `📄 GET /api/tasks – Role: ${role || "unknown"} – fetched ${enrichedTasks.length} tasks`
+      `📄 GET /api/tasks – Role: ${normalizedRole || "unknown"} – fetched ${enrichedTasks.length} tasks`
     );
 
     return NextResponse.json({

@@ -1,13 +1,20 @@
 #!/bin/bash
 
-# Configuration
-PROJECT_DIR="/Users/vikas/msteamMAGIC"
-LOG_FILE="$PROJECT_DIR/scripts/backup/backup.log"
+# Configuration - Auto detect project directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
-# Add standard paths for Mac (Homebrew, NVM, etc.)
+# Log file path - check if writable, else use /tmp
+LOG_FILE="$PROJECT_DIR/scripts/backup/backup.log"
+touch "$LOG_FILE" 2>/dev/null
+if [ $? -ne 0 ]; then
+    LOG_FILE="/tmp/backup.log"
+fi
+
+# Add standard paths for Mac/Linux
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-# If using NVM, try to load it (optional but keeps it robust)
+# If using NVM, try to load it
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
@@ -16,11 +23,13 @@ cd "$PROJECT_DIR"
 
 echo "------------------------------------------" >> "$LOG_FILE"
 echo "📅 Backup started at: $(date)" >> "$LOG_FILE"
+echo "📂 Project Dir: $PROJECT_DIR" >> "$LOG_FILE"
+echo "📝 Using Log File: $LOG_FILE" >> "$LOG_FILE"
 
 # Run the backup script using npm
-# Sourcing .env is usually handled by the node script itself, 
-# but we ensure node and npm are available.
-npm run db:backup >> "$LOG_FILE" 2>&1
+# We use 'node' directly to be safer about which script we run
+export NODE_ENV=production
+node "$PROJECT_DIR/scripts/backup/mongodb-backup.js" >> "$LOG_FILE" 2>&1
 
 if [ $? -eq 0 ]; then
     echo "✅ Backup process finished successfully." >> "$LOG_FILE"

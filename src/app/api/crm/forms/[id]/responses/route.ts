@@ -72,19 +72,24 @@ export async function GET(
         const rawForm = rawFormResult.cursor?.firstBatch?.[0];
         if (!rawForm) return NextResponse.json({ error: "Form not found" }, { status: 404 });
 
-        // Map raw MongoDB fields to Prisma-like shape
+        const [fields, internalColumns] = await Promise.all([
+            prisma.formField.findMany({ where: { formId }, orderBy: { order: "asc" } }),
+            prisma.internalColumn.findMany({ where: { formId }, orderBy: { order: "asc" } })
+        ]);
+
+        const colMap: Record<string, string> = {};
+        fields.forEach(f => colMap[f.id] = f.type);
+        internalColumns.forEach(c => colMap[c.id] = c.type);
+
         const form = {
             ...rawForm,
             id: rawForm._id.$oid || rawForm._id,
-            fields: await prisma.formField.findMany({
-                where: { formId },
-                orderBy: { order: "asc" }
-            })
+            fields
         };
 
         const isFormOwner = form.createdBy === userId;
         const isMasterRole = userRole === "MASTER"; // Ultimate Authority
-        const isMaster = isMasterRole || userRole === "ADMIN" || isFormOwner;
+        const isMaster = isMasterRole || userRole === "ADMIN" || userRole === "TL" || isFormOwner;
 
         const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get("page") || "1");
@@ -108,13 +113,27 @@ export async function GET(
         const userPerms = gac.users?.[userId] || {};
         const colAccess = { ...rolePerms, ...userPerms };
 
-        // Construct where clause for filtering based on permissions
+        // Team Leader Logic: If user is TL, they can see their team's data
+        const isTL = dbUser?.isTeamLeader || userRole?.toUpperCase() === 'TL';
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId },
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
+
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
                 { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
                 { visibleToRoles: { has: userRole } },
-                { visibleToUsers: { has: userId } }
+                { visibleToUsers: { has: userId } },
+                ...(isTL && teamMemberIds.length > 0 ? [
+                    { assignedTo: { hasSome: teamMemberIds } },
+                    { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
+                ] : [])
             ]
         };
 
@@ -128,35 +147,44 @@ export async function GET(
         const advancedFilters: any[] = [];
         Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
             const columnFilters: any[] = [];
+            const colType = colMap[colId] || "text";
 
             conds.forEach((cond: any) => {
                 const { op, val, val2 } = cond;
                 if (!op) return;
 
                 const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
+                    const isNum = colType === "number" || colType === "currency";
+                    const isDate = colType === "date";
+
+                    const castVal = (v: any) => {
+                        if (isNum && !isNaN(Number(v))) return String(v);
+                        // 🔥 Important: Do NOT trim strings globally here, 
+                        // as some legacy statuses or internal values may rely on exact match including spaces
+                        return v;
+                    };
+
                     switch (operator) {
-                        case "equals": return { equals: value, mode: 'insensitive' };
-                        case "not_equals": return { not: value };
-                        case "contains": return { contains: value, mode: 'insensitive' };
-                        case "starts_with": return { startsWith: value, mode: 'insensitive' };
-                        case "ends_with": return { endsWith: value, mode: 'insensitive' };
-                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' };
+                        case "equals": return isNum ? { equals: castVal(value) } : { equals: castVal(value), mode: 'insensitive' as const };
+                        case "not_equals": return isNum ? { not: castVal(value) } : { not: castVal(value), mode: 'insensitive' as const };
+                        case "contains": return { contains: value, mode: 'insensitive' as const };
+                        case "starts_with": return { startsWith: value, mode: 'insensitive' as const };
+                        case "ends_with": return { endsWith: value, mode: 'insensitive' as const };
+                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' as const };
                         case "is_empty": return { equals: "" };
                         case "is_not_empty": return { not: "" };
                         case "is_true": return { equals: "true" };
                         case "is_false": return { equals: "false" };
-                        case "eq": return { equals: value };
-                        case "gt": return { gt: value };
-                        case "lt": return { lt: value };
-                        case "gte": return { gte: value };
-                        case "lte": return { lte: value };
-                        case "between": return { gte: value, lte: secondValue };
-                        default: return { contains: value, mode: 'insensitive' };
+                        case "gt": return { gt: castVal(value) };
+                        case "lt": return { lt: castVal(value) };
+                        case "gte": return { gte: castVal(value) };
+                        case "lte": return { lte: castVal(value) };
+                        case "between": return { gte: castVal(value), lte: castVal(secondValue) };
+                        default: return { contains: value, mode: 'insensitive' as const };
                     }
                 };
 
                 if (colId === "__submittedAt") {
-                    // Proper date filtering for submittedAt
                     if (op === "today") {
                         const start = new Date(); start.setHours(0, 0, 0, 0);
                         const end = new Date(); end.setHours(23, 59, 59, 999);
@@ -176,105 +204,101 @@ export async function GET(
                         columnFilters.push({ submittedAt: { gte: start, lte: end } });
                     }
                 } else if (colId === "__contributor") {
-                    const c = getPrismaOp(op, val, val2);
-                    columnFilters.push({ submittedByName: c });
+                    columnFilters.push({ submittedByName: getPrismaOp(op, val, val2) });
                 } else if (colId === "__assigned") {
-                    if (op === "is_empty") {
-                        columnFilters.push({ AND: [{ assignedTo: { equals: [] } }, { submittedBy: null }] });
+                    if (op === "is_empty" || (op === "equals" && !val)) {
+                        columnFilters.push({ AND: [{ OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] }, { submittedBy: null }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { submittedBy: null } }] });
+                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { assignedTo: null } }, { NOT: { submittedBy: null } }] });
+                    } else if (val === "__REASSIGNED_TO_ME__") {
+                        columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
+                    } else if (typeof val === 'string' && val.startsWith("__GLOBAL_OWNER__")) {
+                        const targetId = val.replace("__GLOBAL_OWNER__", "");
+                        columnFilters.push({ OR: [{ assignedTo: { has: targetId } }, { submittedBy: targetId }] });
+                    } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
+                        const targetId = val.replace("__STRICT_ASSIGNED__", "");
+                        columnFilters.push({ AND: [{ assignedTo: { has: targetId } }, { NOT: { submittedBy: targetId } }] });
                     } else {
-                        const f = {
-                            OR: [
-                                { assignedTo: { has: val } },
-                                { visibleToUsers: { has: val } },
-                                { AND: [{ assignedTo: { equals: [] } }, { submittedBy: val }] }
-                            ]
-                        };
-                        console.log(`[BackendFilterDebug] colId:__assigned val:${val} filter:`, JSON.stringify(f, null, 2));
-                        columnFilters.push(f);
+                        columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
                     }
-                } else if (colId === "__nextFollowUpDate") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { nextFollowUpDate: null } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
-                    } else if (op === "today") {
-                        const start = new Date(); start.setHours(0, 0, 0, 0);
-                        const end = new Date(); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                    } else if (op === "this_week") {
-                        const now = new Date();
-                        const start = new Date(now.setDate(now.getDate() - now.getDay()));
-                        start.setHours(0, 0, 0, 0);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start } } } });
-                    } else if (op === "before" && val) {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
-                    } else if (op === "after" && val) {
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
-                    } else if (op === "exact_date" && val) {
-                        const start = new Date(val); start.setHours(0, 0, 0, 0);
-                        const end = new Date(val); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                    }
-                } else if (colId === "__followUpStatus") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { followUpStatus: "" } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { followUpStatus: { not: "" } } } });
-                    } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ remarks: { some: { followUpStatus: c } } });
-                    }
-                } else if (colId === "__recentRemark") {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { remarks: { none: {} } },
-                                { remarks: { every: { remark: "" } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ remarks: { some: { remark: { not: "" } } } });
-                    } else {
-                        const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({ remarks: { some: { remark: c } } });
+                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark") {
+                    // Remarks logic
+                    if (colId === "__nextFollowUpDate") {
+                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
+                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
+                        else if (op === "today") {
+                            const start = new Date(); start.setHours(0, 0, 0, 0);
+                            const end = new Date(); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "exact_date" && val) {
+                            const start = new Date(val); start.setHours(0, 0, 0, 0);
+                            const end = new Date(val); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "before" && val) {
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
+                        } else if (op === "after" && val) {
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
+                        }
+                    } else if (colId === "__followUpStatus") {
+                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
+                        else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
+                    } else if (colId === "__recentRemark" || colId === "__followup") {
+                        if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
+                        else columnFilters.push({ remarks: { some: { remark: getPrismaOp(op, val, val2) } } });
                     }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
                         columnFilters.push({
                             OR: [
-                                { values: { some: { fieldId: colId, value: { equals: "" } } } },
-                                { values: { none: { fieldId: colId } } },
-                                { internalValues: { some: { columnId: colId, value: { equals: "" } } } },
-                                { internalValues: { none: { columnId: colId } } }
+                                { AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] },
+                                { values: { some: { fieldId: colId, value: { in: ["", "null", "undefined"] } } } },
+                                { internalValues: { some: { columnId: colId, value: { in: ["", "null", "undefined"] } } } }
                             ]
                         });
                     } else if (op === "is_not_empty") {
                         columnFilters.push({
                             OR: [
-                                { values: { some: { fieldId: colId, value: { not: "" } } } },
-                                { internalValues: { some: { columnId: colId, value: { not: "" } } } }
+                                { values: { some: { fieldId: colId, value: { notIn: ["", "null", "undefined"] } } } },
+                                { internalValues: { some: { columnId: colId, value: { notIn: ["", "null", "undefined"] } } } }
                             ]
                         });
+                    } else if (colType === "date") {
+                        // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
+                        const toISO = (d: Date) => d.toISOString().split('T')[0];
+                        const now = new Date();
+
+                        if (op === "today") {
+                            const str = toISO(now);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "yesterday") {
+                            const d = new Date(); d.setDate(d.getDate() - 1);
+                            const str = toISO(d);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "tomorrow") {
+                            const d = new Date(); d.setDate(d.getDate() + 1);
+                            const str = toISO(d);
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                        } else if (op === "this_week") {
+                            const start = new Date(now.setDate(now.getDate() - now.getDay()));
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: toISO(start) } } } }, { internalValues: { some: { columnId: colId, value: { gte: toISO(start) } } } }] });
+                        } else if (op === "exact_date" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
+                        } else if (op === "before" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { lt: val } } } }, { internalValues: { some: { columnId: colId, value: { lt: val } } } }] });
+                        } else if (op === "after" && val) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gt: val } } } }, { internalValues: { some: { columnId: colId, value: { gt: val } } } }] });
+                        } else if (op === "between" && val && val2) {
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: val, lte: val2 } } } }, { internalValues: { some: { columnId: colId, value: { gte: val, lte: val2 } } } }] });
+                        } else {
+                            // Fallback for equals/equals_date
+                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
+                        }
                     } else {
+                        // Standard type-aware logic
                         const c = getPrismaOp(op, val, val2);
-                        columnFilters.push({
-                            OR: [
-                                { values: { some: { fieldId: colId, value: c } } },
-                                { internalValues: { some: { columnId: colId, value: c } } }
-                            ]
-                        });
+                        // Case insensitivity is already handled inside getPrismaOp for 'equals', 
+                        // but we ensure it's applied correctly to OR conditions for flexible matching.
+                        columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: c } } }, { internalValues: { some: { columnId: colId, value: c } } }] });
                     }
                 }
             });
@@ -291,10 +315,13 @@ export async function GET(
                 ...(search ? [{
                     OR: [
                         { submittedByName: { contains: search, mode: 'insensitive' } },
-                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                        { remarks: { some: { remark: { contains: search, mode: 'insensitive' } } } },
+                        { remarks: { some: { followUpStatus: { contains: search, mode: 'insensitive' } } } }
                     ]
                 }] : []),
-                ...(conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }])
+                ...(advancedFilters.length > 0 ? (conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }]) : [])
             ]
         };
 
@@ -308,7 +335,7 @@ export async function GET(
             orderBy = { submittedAt: sortOrder };
         }
 
-        const [totalResponses, responses, filteredTotalCount, internalColumns] = await Promise.all([
+        const [totalResponses, responses, filteredTotalCount] = await Promise.all([
             prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
             prisma.formResponse.findMany({
                 where: whereFilter,
@@ -324,10 +351,6 @@ export async function GET(
                 take: limit
             }),
             prisma.formResponse.count({ where: whereFilter }),
-            prisma.internalColumn.findMany({
-                where: { formId },
-                orderBy: { order: "asc" }
-            })
         ]);
 
         const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
@@ -364,7 +387,7 @@ export async function GET(
             });
 
             // Filter form fields
-            (form as any).fields = (form.fields || []).filter(f => {
+            (form as any).fields = (form.fields || []).filter((f: any) => {
                 const perm = colAccess[f.id];
                 return perm !== "hide";
             });
@@ -392,13 +415,15 @@ export async function GET(
             try {
                 const clerk = await clerkClient();
                 const usersList = await clerk.users.getUserList({ userId: allUserIds, limit: 100 });
-                usersList.data.forEach(u => {
-                    usersMap[u.id] = {
-                        email: u.emailAddresses[0]?.emailAddress || "Unknown",
-                        name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
-                        imageUrl: u.imageUrl || ""
-                    };
-                });
+                usersList.data
+                    .filter((u: any) => !u.banned)
+                    .forEach(u => {
+                        usersMap[u.id] = {
+                            email: u.emailAddresses[0]?.emailAddress || "Unknown",
+                            name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
+                            imageUrl: u.imageUrl || ""
+                        };
+                    });
             } catch (err) {
                 console.error("Clerk fetch users mapping error:", err);
             }
@@ -406,10 +431,12 @@ export async function GET(
 
         const enrichedForm: any = {
             ...form,
-            visibleToUsersData: allUserIds.map(uid => ({
-                id: uid,
-                ...(usersMap[uid] || { email: "Unknown", name: "User", imageUrl: "" })
-            }))
+            visibleToUsersData: allUserIds
+                .filter((uid: string) => usersMap[uid])
+                .map((uid: string) => ({
+                    id: uid,
+                    ...usersMap[uid]
+                }))
         };
 
         return NextResponse.json({
@@ -487,7 +514,7 @@ export async function PATCH(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         if (!isMaster) {
             const form = await prisma.dynamicForm.findUnique({
@@ -618,7 +645,7 @@ export async function PUT(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
         const userName = `${user.firstName} ${user.lastName}`;
 
         // Process updates in a transaction or loop (Prisma transaction is safer)
@@ -722,10 +749,26 @@ export async function DELETE(
 
         const { searchParams } = new URL(req.url);
         const responseId = searchParams.get("responseId");
-        const bulk = searchParams.get("bulk"); // comma separated list of IDs
+        let bulk = searchParams.get("bulk"); // comma separated list of IDs
 
+        let ids: string[] = [];
         if (bulk) {
-            const ids = bulk.split(",");
+            ids = bulk.split(",");
+        } else if (responseId) {
+            ids = [responseId];
+        } else {
+            // Check body for bulk delete
+            try {
+                const body = await req.json();
+                if (body.ids && Array.isArray(body.ids)) {
+                    ids = body.ids;
+                }
+            } catch (e) {
+                // No body or invalid json, continue
+            }
+        }
+
+        if (ids.length > 0) {
             await prisma.formResponse.deleteMany({
                 where: {
                     id: { in: ids },
@@ -733,14 +776,6 @@ export async function DELETE(
                 }
             });
             return NextResponse.json({ success: true, deleted: ids.length });
-        } else if (responseId) {
-            await prisma.formResponse.deleteMany({
-                where: {
-                    id: responseId,
-                    formId: formId
-                }
-            });
-            return NextResponse.json({ success: true });
         }
 
         return NextResponse.json({ error: "Missing responseId or bulk parameter" }, { status: 400 });

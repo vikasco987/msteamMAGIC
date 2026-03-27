@@ -662,11 +662,11 @@ export default function KamTableView() {
 
 
   const userEmail = user?.primaryEmailAddress?.emailAddress;
-  const userRole = user?.publicMetadata?.role as string | undefined;
+  const userRole = String(user?.publicMetadata?.role || "").toLowerCase();
 
   if (
     !userRole ||
-    (userRole !== "admin" && userRole !== "master" && userRole !== "seller")
+    (userRole !== "admin" && userRole !== "master" && userRole !== "seller" && userRole !== "tl")
   ) {
     return (
       <div className="p-8 text-center text-gray-500 bg-white rounded-2xl shadow-lg border border-gray-200 min-h-[300px] flex flex-col items-center justify-center">
@@ -1144,13 +1144,34 @@ export default function KamTableView() {
                     {t.timeline || "—"}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-left text-gray-700 border-r border-b">
-                    <span className="font-semibold text-indigo-800">
-                      {t.assignerName}
-                    </span>{" "}
-                    →{" "}
-                    {t.assignees?.map((a) => a?.name).join(", ") ||
-                      t.assigneeName ||
-                      "—"}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black uppercase text-gray-400">By</span>
+                        <span className="text-xs font-bold text-indigo-800 tracking-tight">
+                          {t.assignerName}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {Array.isArray(t.assignees) && t.assignees.length > 0 ? (
+                          t.assignees.map((a: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-1 bg-indigo-50/50 pr-2 rounded-full border border-indigo-100/50 hover:bg-indigo-100 transition-colors">
+                              {a.imageUrl ? (
+                                <img src={a.imageUrl} className="w-5 h-5 rounded-full border border-white shadow-sm" alt={a.name || ""} />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-black uppercase border border-white">
+                                  {(a.name || "U")[0]}
+                                </div>
+                              )}
+                              <span className="text-[10px] font-bold text-indigo-900">{a.name || "—"}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <span className="text-blue-600 font-medium text-xs">
+                             {t.assigneeName || "—"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right text-green-700 font-semibold border-r border-b">
                     {formatCurrency(t.packageAmount)}

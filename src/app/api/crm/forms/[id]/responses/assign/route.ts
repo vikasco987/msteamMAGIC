@@ -15,7 +15,7 @@ export async function PATCH(
         const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         const { id: formId } = await params;
         const body = await req.json();

@@ -305,7 +305,8 @@ export interface Task {
   createdAt: string | Date;
   updatedAt?: string | Date;
   assigneeId?: string; // For single assignee (legacy or alternative)
-  assigneeIds?: string[]; // For multiple assignees (Clerk IDs)
+  assigneeIds?: string[];
+  assignerId?: string;
   createdByClerkId: string;
   createdByName?: string;
 
@@ -344,6 +345,6 @@ export interface Task {
 
   // Optional nested structure for easier rendering of assigner/assignee details
   assigner?: { name: string; email: string };
-  assignees?: { name?: string; email?: string }[];
+  assignees?: { id?: string; name?: string; email?: string; imageUrl?: string }[];
   assignee?: { name: string; email: string };
 }

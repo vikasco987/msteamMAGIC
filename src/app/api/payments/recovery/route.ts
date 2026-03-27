@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
     const searchTerm = searchParams.get("searchTerm") || "";
     const filterAssigner = searchParams.get("filterAssigner") || "all";
+    const filterMember = searchParams.get("filterMember") || "all";
     const filterTaskStatus = searchParams.get("filterTaskStatus") || "all";
     const filterPriority = searchParams.get("filterPriority") || "all";
     const filterSource = searchParams.get("filterSource") || "all";
@@ -101,13 +102,49 @@ export async function GET(req: NextRequest) {
         }
 
         // Role-based filtering
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const { clerkClient: clerkClientRecovery } = await import("@clerk/nextjs/server");
+        const clientRecovery = await clerkClientRecovery();
+        const clerkUserRecovery = await clientRecovery.users.getUser(userId);
+        const metadataRoleRecovery = (clerkUserRecovery.publicMetadata as any)?.role || (clerkUserRecovery.privateMetadata as any)?.role;
+        const normalizedRoleRecovery = String(metadataRoleRecovery || dbUser?.role || "user").toLowerCase();
+
+        const isTL = (dbUser as any)?.isTeamLeader || normalizedRoleRecovery === 'tl';
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId } as any,
+                select: { clerkId: true }
+            });
+            teamMemberIds = [userId, ...members.map(m => m.clerkId)]; // TL + Team
+        }
+
         if (!isAdminOrMaster) {
-            if (isSeller) {
+            if (normalizedRoleRecovery === 'seller' || isTL) {
                 whereClause.OR = [
                     { createdByClerkId: userId },
                     { assigneeId: userId },
-                    { assigneeIds: { has: userId } }
+                    { assigneeIds: { has: userId } },
+                    ...(isTL && teamMemberIds.length > 0 ? [
+                        { createdByClerkId: { in: teamMemberIds } },
+                        { assigneeId: { in: teamMemberIds } },
+                        { assigneeIds: { hasSome: teamMemberIds } }
+                    ] : [])
                 ];
+
+                // If specialized member filter is requested by TL
+                if (isTL && filterMember !== "all") {
+                    // Safety: Ensure TL only filters their own team members
+                    if (teamMemberIds.includes(filterMember)) {
+                        whereClause.AND.push({
+                            OR: [
+                                { createdByClerkId: filterMember },
+                                { assigneeId: filterMember },
+                                { assigneeIds: { has: filterMember } }
+                            ]
+                        });
+                    }
+                }
             } else {
                 return NextResponse.json({ tasks: [], summary: { totalPending: 0, taskCount: 0 }, role, pagination: { page, totalPages: 0 } });
             }
@@ -147,13 +184,17 @@ export async function GET(req: NextRequest) {
         (async () => {
             try {
                 // Fetch all users to find Admins and Masters
-                const allUsers = await users.getUserList({ limit: 500 });
-                const adminMasterIds = allUsers.data
-                    .filter(u => {
-                        const r = ((u.publicMetadata as any)?.role || (u.privateMetadata as any)?.role || '').toLowerCase();
+                const { clerkClient } = await import("@clerk/nextjs/server");
+                const client = await clerkClient();
+                const allUsersResponse = await client.users.getUserList({ limit: 500 });
+                const allUsers = Array.isArray(allUsersResponse) ? allUsersResponse : (allUsersResponse as any).data || [];
+                
+                const adminMasterIds = allUsers
+                    .filter((u: any) => {
+                        const r = (u.publicMetadata?.role || u.privateMetadata?.role || '').toLowerCase();
                         return r === 'admin' || r === 'master';
                     })
-                    .map(u => u.id);
+                    .map((u: any) => u.id);
 
                 // 1. Follow-ups DUE TODAY
                 const dueFollowUps = await prisma.paymentRemark.findMany({

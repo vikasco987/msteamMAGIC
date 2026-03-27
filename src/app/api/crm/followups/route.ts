@@ -11,7 +11,18 @@ export async function GET(req: NextRequest) {
 
         const user = await currentUser();
         const userRole = (user?.publicMetadata?.role as string || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
+
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const isTL = dbUser?.isTeamLeader || userRole === "TL";
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId },
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
 
         // Fetch all responses that have remarks
         // We include form details and values to show customer info
@@ -37,10 +48,16 @@ export async function GET(req: NextRequest) {
             orderBy: { submittedAt: "desc" }
         });
 
-        // If not Master, filter by assignment or visibility
+        // If not Master, filter by assignment, submission, or team
         const filtered = isMaster ? responses : responses.filter(res => {
             const assignees = (res as any).assignedTo || [];
-            return res.submittedBy === userId || assignees.includes(userId);
+            const isAssignedToMe = assignees.includes(userId);
+            const isSubmittedByMe = res.submittedBy === userId;
+            
+            const isAssignedToTeam = isTL && teamMemberIds.some(id => assignees.includes(id));
+            const isSubmittedByTeam = isTL && teamMemberIds.includes(res.submittedBy || "");
+
+            return isAssignedToMe || isSubmittedByMe || isAssignedToTeam || isSubmittedByTeam;
         });
 
         return NextResponse.json({
@@ -61,7 +78,7 @@ export async function DELETE(req: NextRequest) {
 
         const user = await currentUser();
         const userRole = (user?.publicMetadata?.role as string || "GUEST").toUpperCase();
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER";
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
 
         if (!isMaster) {
             return NextResponse.json({ error: "Permission denied: Only Admin/Master can remove follow-ups" }, { status: 403 });

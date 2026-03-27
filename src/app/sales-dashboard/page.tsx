@@ -383,7 +383,8 @@ export default function SalesDashboardPage() {
     : "0.0";
 
   useEffect(() => {
-    if (user && !["admin", "master"].includes(user?.publicMetadata?.role as string)) {
+    const role = String(user?.publicMetadata?.role || "").toLowerCase();
+    if (user && !["admin", "master", "tl"].includes(role)) {
       router.push("/unauthorized");
     }
   }, [user, router]);

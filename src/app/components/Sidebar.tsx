@@ -29,7 +29,8 @@ import {
   Calendar,
   PhoneCall,
   Activity,
-  Database
+  Database,
+  Clock
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,45 +42,48 @@ const NAVIGATION_GROUPS = [
   {
     title: "Core Fleet",
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'master', 'seller'] },
-      { label: 'Team Board', icon: Users, href: '/team-board', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Create Task', icon: ClipboardList, href: '/create-task', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller'] },
+      { label: 'Dashboard', icon: LayoutDashboard, href: '/', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Team Board', icon: Users, href: '/team-board', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Create Task', icon: ClipboardList, href: '/create-task', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Assigned Task', icon: ClipboardCheck, href: '/report', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Intelligence",
     items: [
-      { label: 'Recovery Hub', icon: HandCoins, href: '/payments/recovery', roles: ['admin', 'master', 'seller'] },
-      { label: 'KAM Strategy', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller'] },
+      { label: 'Recovery Hub', icon: HandCoins, href: '/payments/recovery', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'KAM Strategy', icon: Building2, href: '/kam', roles: ['admin', 'master', 'seller', 'tl'] },
       { label: 'Sales Matrix', icon: TrendingUp, href: '/sales-dashboard', roles: ['master'] },
-      { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master'] },
-      { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'user', 'guest', 'intern', 'manager'] },
-      { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'manager'] },
-      { label: 'Call Report', icon: PhoneCall, href: '/call-report', roles: ['admin', 'master', 'seller'] },
+      { label: 'Team Sales', icon: LineChart, href: '/tl-dashboard', roles: ['tl', 'admin', 'master'] },
+      { label: 'My Growth', icon: ShoppingCart, href: '/seller/dashboard', roles: ['seller', 'admin', 'master', 'tl'] },
+      { label: 'CRM Forms', icon: Briefcase, href: '/crm/forms', roles: ['admin', 'master', 'seller', 'tl', 'user', 'guest', 'intern', 'manager'] },
+      { label: 'Lead Terminal', icon: ShieldCheck, href: '/crm/admin/leads', roles: ['admin', 'master', 'tl'] },
+      { label: 'Follow-up Board', icon: Calendar, href: '/dashboard/followups', roles: ['admin', 'master', 'seller', 'tl', 'manager'] },
+      { label: 'Call Report', icon: PhoneCall, href: '/call-report', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Operations",
     items: [
-      { label: 'Attendance', icon: CalendarCheck, href: '/dashboard/attendance', roles: ['admin', 'master', 'seller'] },
-      { label: 'Tish Control', icon: ShieldCheck, href: '/dashboard/attendance/tish', roles: ['admin', 'master'] },
-      { label: 'Activity Log', icon: History, href: '/activities', roles: ['admin', 'master', 'seller', 'user'] },
-      { label: 'Lifecycle Report', icon: LineChart, href: '/activities/report', roles: ['admin', 'master'] },
-      { label: 'Customers', icon: UserSquare2, href: '/customers', roles: ['admin', 'master', 'seller'] },
+      { label: 'Attendance', icon: CalendarCheck, href: '/dashboard/attendance', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Tish Control', icon: ShieldCheck, href: '/dashboard/attendance/tish', roles: ['admin', 'master', 'tl'] },
+      { label: 'Activity Log', icon: History, href: '/activities', roles: ['admin', 'master', 'seller', 'tl', 'user'] },
+      { label: 'Lifecycle Report', icon: LineChart, href: '/activities/report', roles: ['admin', 'master', 'tl'] },
+      { label: 'Customers', icon: UserSquare2, href: '/customers', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "Resources",
     items: [
-      { label: 'Agreements', icon: FileSpreadsheet, href: '/FullDashboard/agreement', roles: ['admin', 'master', 'seller'] },
-      { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller'] },
+      { label: 'Agreements', icon: FileSpreadsheet, href: '/FullDashboard/agreement', roles: ['admin', 'master', 'seller', 'tl'] },
+      { label: 'Timeline', icon: LineChart, href: '/timeline', roles: ['admin', 'master', 'seller', 'tl'] },
     ]
   },
   {
     title: "System",
     items: [
       { label: 'Access Control', icon: ShieldCheck, href: '/admin/roles', roles: ['master'] },
+      { label: 'Team Management', icon: Users, href: '/admin/teams', roles: ['master'] },
       { label: 'DB Backups', icon: Database, href: '/admin/backups', roles: ['master'] },
     ]
   }
@@ -237,38 +241,97 @@ export default function Sidebar() {
                 </div>
               )}
               {pinnedForms.map((form) => {
-                const href = `/crm/forms/${form.id}/responses`;
-                const isActive = pathname === href;
+                const responseHref = `/crm/forms/${form.id}/responses`;
+                const websiteHref = `/crm/website/${form.id}?fullview=true`;
+                const isResponseActive = pathname === responseHref;
+                const isWebsiteActive = pathname === `/crm/website/${form.id}`; // Match base path for active state
+                
                 return (
-                  <Tooltip.Root key={form.id} delayDuration={0}>
-                    <Tooltip.Trigger asChild>
-                      <Link
-                        href={href}
-                        onClick={() => setIsMobileOpen(false)}
-                        className={`group flex items-center gap-3 px-4 py-3 rounded-[14px] transition-all relative
-                          ${isActive
-                            ? 'bg-indigo-600/20 text-indigo-400 ring-1 ring-indigo-500/30'
-                            : 'hover:bg-slate-800/50 hover:text-white text-slate-400'}`}
-                      >
-                        <FileSpreadsheet size={20} className={`shrink-0 ${isActive ? 'text-indigo-400' : 'group-hover:text-amber-400'}`} />
-                        {!isCollapsed && (
-                          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm font-bold truncate">
-                            {form.title}
-                          </motion.span>
-                        )}
-                        {isActive && !isCollapsed && (
-                          <motion.div layoutId="pinnedHighlight" className="absolute right-2 w-1 h-4 rounded-full bg-indigo-500" />
-                        )}
-                      </Link>
-                    </Tooltip.Trigger>
-                    {isCollapsed && (
-                      <Tooltip.Portal>
-                        <Tooltip.Content side="right" sideOffset={15} className="bg-slate-900 text-white text-[11px] font-black px-4 py-2 rounded-xl shadow-2xl border border-slate-800 z-[1000] uppercase tracking-widest">
-                          {form.title}
-                        </Tooltip.Content>
-                      </Tooltip.Portal>
-                    )}
-                  </Tooltip.Root>
+                  <div key={form.id} className="space-y-1">
+                    {/* Matrix View (Original) */}
+                    <Tooltip.Root delayDuration={0}>
+                      <Tooltip.Trigger asChild>
+                        <Link
+                          href={responseHref}
+                          onClick={() => setIsMobileOpen(false)}
+                          className={`group flex items-center gap-3 px-4 py-2.5 rounded-[12px] transition-all relative
+                            ${isResponseActive
+                              ? 'bg-indigo-600/20 text-indigo-400 ring-1 ring-indigo-500/30'
+                              : 'hover:bg-slate-800/50 hover:text-white text-slate-400'}`}
+                        >
+                          <FileSpreadsheet size={18} className={`shrink-0 ${isResponseActive ? 'text-indigo-400' : 'group-hover:text-amber-400'}`} />
+                          {!isCollapsed && (
+                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[13px] font-bold truncate">
+                              {form.title} (Matrix)
+                            </motion.span>
+                          )}
+                        </Link>
+                      </Tooltip.Trigger>
+                      {isCollapsed && (
+                        <Tooltip.Portal>
+                          <Tooltip.Content side="right" sideOffset={15} className="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl border border-slate-800 z-[1000] uppercase tracking-widest">
+                            {form.title} (Matrix)
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      )}
+                    </Tooltip.Root>
+
+                    {/* Website Version (New) */}
+                    <Tooltip.Root delayDuration={0}>
+                      <Tooltip.Trigger asChild>
+                        <Link
+                          href={websiteHref}
+                          onClick={() => setIsMobileOpen(false)}
+                          className={`group flex items-center gap-3 px-4 py-2.5 rounded-[12px] transition-all relative
+                            ${isWebsiteActive
+                              ? 'bg-purple-600/20 text-purple-400 ring-1 ring-purple-500/30'
+                              : 'hover:bg-slate-800/50 hover:text-white text-slate-400'}`}
+                        >
+                          <Compass size={18} className={`shrink-0 ${isWebsiteActive ? 'text-purple-400' : 'group-hover:text-cyan-400'}`} />
+                          {!isCollapsed && (
+                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[13px] font-bold truncate">
+                              {form.title} (Website)
+                            </motion.span>
+                          )}
+                        </Link>
+                      </Tooltip.Trigger>
+                      {isCollapsed && (
+                        <Tooltip.Portal>
+                          <Tooltip.Content side="right" sideOffset={15} className="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl border border-slate-800 z-[1000] uppercase tracking-widest">
+                            {form.title} (Website Version)
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      )}
+                    </Tooltip.Root>
+
+                    {/* Today's Leads (New) */}
+                    <Tooltip.Root delayDuration={0}>
+                      <Tooltip.Trigger asChild>
+                        <Link
+                          href={`/crm/today-leads/${form.id}?fullview=true`}
+                          onClick={() => setIsMobileOpen(false)}
+                          className={`group flex items-center gap-3 px-4 py-2.5 rounded-[12px] transition-all relative
+                            ${pathname === `/crm/today-leads/${form.id}`
+                              ? 'bg-emerald-600/20 text-emerald-400 ring-1 ring-emerald-500/30'
+                              : 'hover:bg-slate-800/50 hover:text-white text-slate-400'}`}
+                        >
+                          <Clock size={18} className={`shrink-0 ${pathname === `/crm/today-leads/${form.id}` ? 'text-emerald-400' : 'group-hover:text-emerald-400'}`} />
+                          {!isCollapsed && (
+                            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[13px] font-bold truncate">
+                              {form.title} (Today)
+                            </motion.span>
+                          )}
+                        </Link>
+                      </Tooltip.Trigger>
+                      {isCollapsed && (
+                        <Tooltip.Portal>
+                          <Tooltip.Content side="right" sideOffset={15} className="bg-slate-900 text-white text-[10px] font-black px-4 py-2 rounded-xl shadow-2xl border border-slate-800 z-[1000] uppercase tracking-widest">
+                            {form.title} (Today's Leads)
+                          </Tooltip.Content>
+                        </Tooltip.Portal>
+                      )}
+                    </Tooltip.Root>
+                  </div>
                 );
               })}
             </div>
@@ -280,13 +343,13 @@ export default function Sidebar() {
               const hasHardcodedRole = i.roles.includes(userRole);
 
               // If we have dynamic permissions, they override or restrict
-              if (dynamicPermissions) {
+              if (dynamicPermissions && dynamicPermissions.length > 0) {
                 // If the item is in the dynamic list, show it. 
-                // Exceptions: master always sees Access Control
-                if (userRole === 'master' && (i.label === 'Access Control' || i.label === 'DB Backups')) return true;
+                if (userRole === 'master' && (i.label === 'Access Control' || i.label === 'DB Backups' || i.label === 'Team Management')) return true;
                 return dynamicPermissions.includes(i.label);
               }
 
+              // Fallback to hardcoded roles if no dynamic permissions are fetched yet or they are empty
               return hasHardcodedRole;
             });
             if (visibleItems.length === 0) return null;

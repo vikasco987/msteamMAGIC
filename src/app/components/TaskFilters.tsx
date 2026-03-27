@@ -1595,8 +1595,9 @@ export const TaskFilters = ({
     const names = new Set<string>();
     initialTasks.forEach(task => {
       task.assignees?.forEach(assignee => {
-        if (assignee.name || assignee.email) {
-          names.add(assignee.name || assignee.email);
+        const name = assignee.name || assignee.email;
+        if (name) {
+          names.add(name);
         }
       });
     });
@@ -1655,19 +1656,19 @@ export const TaskFilters = ({
 
   return (
     <>
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-        <div className="relative flex-grow mr-4">
+      <div className="px-3 md:px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="relative flex-grow">
           <input
             type="text"
-            placeholder="Filter tasks by title, shop name, or assignee..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            placeholder="Search tasks..."
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
           />
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Sales Filter Dropdown */}
           <select
             value={salesFilter}
@@ -1693,40 +1694,40 @@ export const TaskFilters = ({
 
 
           <button
-            className="inline-flex items-center bg-green-600 text-white font-medium px-4 py-2 rounded-lg shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 ease-in-out"
+            className="flex-1 md:flex-none inline-flex items-center justify-center bg-green-600 text-white font-medium px-4 py-2 rounded-lg shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200 ease-in-out text-sm"
             onClick={exportCSV}
           >
-            <FaDownload className="inline mr-2 -ml-1" /> Export CSV
+            <FaDownload className="inline mr-2" /> Export
           </button>
           <button
-            className={`inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-200 ease-in-out
+            className={`flex-1 md:flex-none inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-200 ease-in-out
             ${editMode
                 ? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
                 : "bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-500"
               }`}
-            onClick={() => setEditMode((prev) => !prev)}
+            onClick={() => setEditMode(!editMode)}
           >
             {editMode ? (
               <>
-                <FaTimesCircle className="mr-2" /> Exit Edit Mode
+                <FaTimesCircle className="mr-2" /> Exit
               </>
             ) : (
               <>
-                <FaEdit className="mr-2" /> Enter Edit Mode
+                <FaEdit className="mr-2" /> Edit
               </>
             )}
           </button>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 px-4 py-3 border-b border-gray-100 bg-gray-50">
+      <div className="flex flex-wrap gap-2 md:gap-4 px-3 md:px-4 py-3 border-b border-gray-100 bg-gray-50">
         {/* Status Filter */}
         <select
           value={status || ""}
           onChange={(e) => onStatusChange(e.target.value || null)}
-          className="p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          className="flex-1 md:flex-none p-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
         >
-          <option value="">All Statuses</option>
+          <option value="">Status: All</option>
           {statusOptions.map(status => (
             <option key={status} value={status}>{status}</option>
           ))}

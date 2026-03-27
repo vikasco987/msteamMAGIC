@@ -33,18 +33,28 @@ interface Attendance {
   isEarlyLeave?: boolean;
 }
 
-export default function AttendancePivotTable() {
+interface AttendancePivotTableProps {
+  month?: string;
+  all?: boolean;
+}
+
+export default function AttendancePivotTable({ month: propMonth, all = false }: AttendancePivotTableProps) {
   const [month, setMonth] = useState<string>(() => {
+    if (propMonth) return propMonth;
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const [data, setData] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    if (propMonth) setMonth(propMonth);
+  }, [propMonth]);
+
   function getMonthDates(month: string) {
     const [year, m] = month.split("-").map(Number);
-    const daysInMonth = new Date(year, m, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, i) =>
+    const lastDay = new Date(year, m, 0).getDate();
+    return Array.from({ length: lastDay }, (_, i) =>
       `${year}-${String(m).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`
     );
   }
@@ -53,7 +63,8 @@ export default function AttendancePivotTable() {
     const fetchMonthData = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/attendance/list?month=${month}`);
+        const url = `/api/attendance/list?month=${month}${all ? "&all=true" : ""}`;
+        const res = await fetch(url);
         const json = await res.json();
         if (Array.isArray(json)) setData(json);
         else setData([]);
@@ -65,7 +76,7 @@ export default function AttendancePivotTable() {
       }
     };
     fetchMonthData();
-  }, [month]);
+  }, [month, all]);
 
   const monthDates = getMonthDates(month);
 
@@ -111,134 +122,112 @@ export default function AttendancePivotTable() {
 
   return (
     <TooltipProvider>
-      <div className="overflow-x-auto p-4 bg-gray-50 min-h-[80vh]">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-gray-800">
-            Attendance Pivot Table
-          </h2>
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="border rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+      <div className="overflow-x-auto space-y-4">
+        <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
+          <h2 className="text-lg font-bold text-gray-800">Attendance Pivot Table</h2>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-500">Month:</label>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              className="border rounded px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
         </div>
 
         {loading ? (
-          <p className="p-4 text-gray-600">Loading...</p>
+          <p className="p-4 text-gray-500 text-center">Loading pivot data...</p>
         ) : (
-          <table className="min-w-[1000px] border border-gray-200 text-xs shadow-lg rounded-lg overflow-hidden">
-            <thead className="bg-blue-600 text-white sticky top-0 z-10">
-              <tr>
-                <th className="p-2 border-r">Employee</th>
-                {monthDates.map((d) => (
-                  <th key={d} className="p-2 border-r text-center">
-                    {new Date(d).getDate()}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Object.keys(grouped).map((emp, idx) => (
-                <tr
-                  key={emp}
-                  className={`${
-                    idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                  } hover:bg-gray-100 transition-all`}
-                >
-                  <td className="p-2 border-r font-medium bg-gray-100 text-gray-700 sticky left-0 z-10">
-                    {emp}
-                  </td>
-                  {monthDates.map((d) => {
-                    const rec = grouped[emp][d];
-                    const reasonText = rec
-                      ? rec.checkInReason ||
-                        rec.checkOutReason ||
-                        rec.remarks ||
-                        "-"
-                      : "-";
-
-                    return (
-                      <td
-                        key={d}
-                        className="p-1 border-r text-center align-top"
-                      >
-                        {rec ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="bg-white rounded-lg shadow-sm p-2 text-[10px] leading-tight border hover:shadow-md hover:bg-blue-50 transition-all cursor-pointer">
-                                <div className="flex justify-between">
-                                  <FiClock className="inline mr-1 text-blue-500" />{" "}
-                                  In: {formatTime(rec.checkIn)}
-                                </div>
-                                <div className="flex justify-between">
-                                  <FiClock className="inline mr-1 text-red-500" />{" "}
-                                  Out: {formatTime(rec.checkOut)}
-                                </div>
-                                <div className="mt-1 flex flex-wrap justify-center gap-1">
-                                  {rec.isLate && (
-                                    <span className="flex items-center bg-red-200 text-red-800 text-[10px] px-1 rounded">
-                                      <FiAlertCircle className="mr-1" /> Late
-                                    </span>
-                                  )}
-                                  {rec.isEarlyLeave && (
-                                    <span className="flex items-center bg-yellow-200 text-yellow-800 text-[10px] px-1 rounded">
-                                      <FiAlertCircle className="mr-1" /> Early
-                                    </span>
-                                  )}
-                                  {rec.overtimeHours &&
-                                    rec.overtimeHours > 0 && (
-                                      <span className="flex items-center bg-green-200 text-green-800 text-[10px] px-1 rounded">
-                                        <FiBriefcase className="mr-1" /> OT:{" "}
-                                        {formatHours(rec.overtimeHours)}
-                                      </span>
-                                    )}
-                                </div>
-                                <div className="mt-1">
-                                  <span className="font-semibold">
-                                    <FiClock className="inline mr-1" />
-                                    Hours:
-                                  </span>{" "}
-                                  {formatHours(rec.workingHours)}
-                                </div>
-                                {reasonText !== "-" && (
-                                  <div className="italic text-gray-500 mt-1 flex items-center">
-                                    <FiEdit className="mr-1" /> {reasonText}
-                                  </div>
-                                )}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-sm p-3 text-xs bg-white text-gray-800 rounded shadow-md border">
-                              <p>
-                                <b>Check In:</b> {formatFullTime(rec.checkIn)}
-                              </p>
-                              <p>
-                                <b>Check Out:</b> {formatFullTime(rec.checkOut)}
-                              </p>
-                              <p>
-                                <b>Status:</b> {rec.status || "-"}
-                              </p>
-                              <p>
-                                <b>Verified:</b> {rec.verified ? "Yes" : "No"}
-                              </p>
-                              <p>
-                                <b>Location:</b> {formatLocation(rec.location)}
-                              </p>
-                              <p>
-                                <b>Reason/Remarks:</b> {reasonText}
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <div className="text-gray-400">-</div>
-                        )}
-                      </td>
-                    );
-                  })}
+          <div className="border rounded-xl shadow-lg bg-white overflow-x-auto">
+            <table className="min-w-full text-[10px] border-collapse">
+              <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0 z-10">
+                <tr>
+                  <th className="p-3 border-r border-b text-left sticky left-0 bg-gray-100 z-20 min-w-[150px]">Employee</th>
+                  {monthDates.map((d) => (
+                    <th key={d} className="p-1 border-r border-b text-center min-w-[44px]">
+                      {new Date(d).getDate()}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {Object.keys(grouped).length === 0 ? (
+                  <tr>
+                    <td colSpan={monthDates.length + 1} className="p-8 text-center text-gray-500">
+                      No records found for {month}.
+                    </td>
+                  </tr>
+                ) : (
+                  Object.keys(grouped).map((emp, idx) => (
+                    <tr
+                      key={emp}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="p-3 border-r font-bold text-gray-900 sticky left-0 bg-white z-10 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                        {emp}
+                      </td>
+                      {monthDates.map((d) => {
+                        const rec = grouped[emp][d];
+                        const reasonText = rec
+                          ? rec.checkInReason ||
+                            rec.checkOutReason ||
+                            rec.remarks ||
+                            "-"
+                          : "-";
+
+                        return (
+                          <td
+                            key={d}
+                            className="p-1 border-r text-center align-top relative"
+                          >
+                            {rec ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="bg-white rounded-md shadow-sm p-1 text-[9px] leading-tight border hover:shadow-md hover:bg-blue-50 transition-all cursor-pointer min-h-[50px] flex flex-col justify-between">
+                                    <div>
+                                      <div className="flex justify-between gap-1">
+                                        <FiClock className="text-blue-500 shrink-0" />
+                                        <span>{formatTime(rec.checkIn)}</span>
+                                      </div>
+                                      <div className="flex justify-between gap-1">
+                                        <FiClock className="text-red-500 shrink-0" />
+                                        <span>{formatTime(rec.checkOut)}</span>
+                                      </div>
+                                    </div>
+                                    <div className="mt-1 flex flex-wrap justify-center gap-0.5">
+                                      {rec.isLate && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="Late" />
+                                      )}
+                                      {rec.isEarlyLeave && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" title="Early Leave" />
+                                      )}
+                                      {rec.overtimeHours && rec.overtimeHours > 0 && (
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" title="Overtime" />
+                                      )}
+                                    </div>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-sm p-3 text-xs bg-white text-gray-800 rounded shadow-md border z-50">
+                                  <div className="space-y-1">
+                                    <p><b>Check In:</b> {formatFullTime(rec.checkIn)}</p>
+                                    <p><b>Check Out:</b> {formatFullTime(rec.checkOut)}</p>
+                                    <p><b>Status:</b> {rec.status || "-"}</p>
+                                    <p><b>Working:</b> {formatHours(rec.workingHours)}</p>
+                                    <p><b>Reason/Remarks:</b> {reasonText}</p>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </TooltipProvider>

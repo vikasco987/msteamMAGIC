@@ -1,44 +1,77 @@
 import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const month = searchParams.get('month'); // YYYY-MM
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const startDate = new Date(`${month}-01`);
-  const endDate = new Date(new Date(startDate).setMonth(startDate.getMonth() + 1));
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const metadataRole = (clerkUser.publicMetadata as any)?.role || (clerkUser.privateMetadata as any)?.role;
+    const userRole = String(metadataRole || dbUser?.role || "USER").toUpperCase();
+    
+    const isTL = (dbUser as any)?.isTeamLeader || userRole === "TL";
+    const isPrivileged = userRole === "ADMIN" || userRole === "MASTER";
 
-  const tasks = await prisma.task.findMany({
-    where: {
-      createdAt: {
-        gte: startDate,
-        lt: endDate,
-      },
-    },
-  });
+    let teamMemberIds: string[] = [];
+    if (isTL) {
+      const members = await prisma.user.findMany({
+        where: { leaderId: userId } as any,
+        select: { clerkId: true }
+      });
+      teamMemberIds = members.map(m => m.clerkId);
+    }
 
-  const totalRevenue = tasks.reduce((sum, t) => sum + (t.amount || 0), 0);
-  const amountReceived = tasks.reduce((sum, t) => sum + (t.received || 0), 0);
-  const pendingAmount = totalRevenue - amountReceived;
-  const totalSales = tasks.length;
+    const { searchParams } = new URL(req.url);
+    const month = searchParams.get('month'); // YYYY-MM
 
-  // Monthly breakdown
-  const monthlyDataMap: { [key: string]: number } = {};
-  tasks.forEach((t) => {
-    const monthKey = new Date(t.createdAt).toISOString().slice(0, 7); // "2025-07"
-    monthlyDataMap[monthKey] = (monthlyDataMap[monthKey] || 0) + (t.amount || 0);
-  });
+    const startDate = new Date(`${month}-01`);
+    const endDate = new Date(new Date(startDate).setMonth(startDate.getMonth() + 1));
 
-  const monthlyData = Object.entries(monthlyDataMap).map(([month, revenue]) => ({
-    month,
-    revenue,
-  }));
+    const where: any = {
+      createdAt: { gte: startDate, lt: endDate },
+    };
 
-  return NextResponse.json({
-    totalRevenue,
-    amountReceived,
-    pendingAmount,
-    totalSales,
-    monthlyData,
-  });
+    if (!isPrivileged) {
+      if (isTL) {
+        where.createdByClerkId = { in: [userId, ...teamMemberIds] };
+      } else {
+        where.createdByClerkId = userId;
+      }
+    }
+
+    const tasks = await prisma.task.findMany({ where });
+
+    const totalRevenue = tasks.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const amountReceived = tasks.reduce((sum, t) => sum + (t.received || 0), 0);
+    const pendingAmount = totalRevenue - amountReceived;
+    const totalSales = tasks.length;
+
+    // Monthly breakdown
+    const monthlyDataMap: { [key: string]: number } = {};
+    tasks.forEach((t) => {
+      const monthKey = new Date(t.createdAt).toISOString().slice(0, 7); // "2025-07"
+      monthlyDataMap[monthKey] = (monthlyDataMap[monthKey] || 0) + (t.amount || 0);
+    });
+
+    const monthlyData = Object.entries(monthlyDataMap).map(([month, revenue]) => ({
+      month,
+      revenue,
+    }));
+
+    return NextResponse.json({
+      totalRevenue,
+      amountReceived,
+      pendingAmount,
+      totalSales,
+      monthlyData,
+    });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

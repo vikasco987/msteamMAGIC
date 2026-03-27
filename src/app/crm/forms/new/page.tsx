@@ -90,8 +90,8 @@ export default function FormBuilderPage() {
             const data = await res.json();
             const apiRole = (data.userRole || "GUEST").toUpperCase();
 
-            const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" ||
-                apiRole === "ADMIN" || apiRole === "MASTER";
+            const isAuthorized = metaRole === "ADMIN" || metaRole === "MASTER" || metaRole === "TL" ||
+                apiRole === "ADMIN" || apiRole === "MASTER" || apiRole === "TL";
 
             if (!isAuthorized) {
                 toast.error("Unauthorized: Access Denied");
@@ -107,7 +107,7 @@ export default function FormBuilderPage() {
     const [userSearchQuery, setUserSearchQuery] = useState("");
     const [userResults, setUserResults] = useState<{ clerkId: string, email: string }[]>([]);
 
-    const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
+    const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN", "TL"];
 
     const addField = (type: FieldType) => {
         const newField: FormField = {

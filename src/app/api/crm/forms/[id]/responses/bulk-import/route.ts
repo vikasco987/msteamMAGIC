@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 
+export const maxDuration = 300; // Allow 5 minutes for large bulk imports
+
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -19,275 +21,397 @@ export async function POST(
 
         const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress || "User";
         
-        if (userRole !== "ADMIN" && userRole !== "MASTER" && userRole !== "PURE_MASTER") {
+        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "PURE_MASTER" || userRole === "TL";
+        const isStaff = isMaster || userRole === "TL" || userRole === "SELLER" || userRole === "MANAGER";
+
+        if (!isStaff) {
             console.error(`Forbidden bulk-import attempt by ${user.id} (${userName}) with role ${userRole}`);
-            return NextResponse.json({ error: `Forbidden: Only admins can bulk update (Current Role: ${userRole})` }, { status: 403 });
+            return NextResponse.json({ error: `Forbidden: You do not have permission for bulk operations (Current Role: ${userRole})` }, { status: 403 });
         }
 
         console.log(`Starting bulk import for form ${formId} by ${userName} (${userRole})`);
 
         const body = await req.json();
-        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update' } = body as {
+        const payload = body as {
             data: Record<string, string>[];
             matchColumnId: string;
             matchExcelHeader: string;
             updateColumnMap: Record<string, { id: string; isInternal: boolean }>;
             isInternalMatch: boolean;
-            importMode?: 'update' | 'create';
+            importMode?: 'update' | 'create' | 'upsert';
+            disableActivityLogs?: boolean;
         };
 
-        if (!data || data.length === 0 || (importMode === 'update' && !matchColumnId)) {
+        const { data, matchColumnId, matchExcelHeader, updateColumnMap, isInternalMatch, importMode = 'update', disableActivityLogs = false } = payload;
+
+        if (!data || data.length === 0 || ((importMode === 'update' || importMode === 'upsert') && !matchColumnId)) {
             return NextResponse.json({ error: "Invalid data or match column missing" }, { status: 400 });
         }
 
         let successCount = 0;
+        let createdCount = 0;
+        let updatedCount = 0;
         let errors: string[] = [];
 
         // For faster mapping
         const processedInternalColumns = await prisma.internalColumn.findMany({ where: { formId } });
+        const intColMap = new Map(processedInternalColumns.map(c => [c.id, c]));
         const allSystemUsers = await prisma.user.findMany({ select: { clerkId: true, name: true, email: true } });
 
-        // Helper to find user by name or email
+        // Pre-index users for fast lookup
+        const userByName = new Map<string, string>();
+        const userByEmail = new Map<string, string>();
+        for (const u of allSystemUsers) {
+            if (u.name) userByName.set(u.name.toLowerCase().trim(), u.clerkId);
+            userByEmail.set(u.email.toLowerCase().trim(), u.clerkId);
+        }
+
         const findUser = (val: string) => {
             const v = val.toLowerCase().trim();
             if (!v) return null;
-            return allSystemUsers.find(u =>
-                (u.name || "").toLowerCase() === v ||
-                u.email.toLowerCase() === v ||
-                (u.name || "").toLowerCase().includes(v)
-            );
+            const byEmail = userByEmail.get(v);
+            if (byEmail) return byEmail;
+            const byName = userByName.get(v);
+            if (byName) return byName;
+            
+            // Fuzzy name check (only if really needed, but keep it minimal)
+            return allSystemUsers.find(u => (u.name || "").toLowerCase().includes(v))?.clerkId || null;
         };
 
         // Pre-fetch all target values for matching to avoid N queries and support fuzzy matching
         let allCurrentValues: { responseId: string; value: string }[] = [];
-        if (importMode === 'update') {
+        if (importMode === 'update' || importMode === 'upsert') {
             if (isInternalMatch) {
-                const recs = await prisma.internalValue.findMany({
+                allCurrentValues = await prisma.internalValue.findMany({
                     where: { columnId: matchColumnId, response: { formId } },
                     select: { responseId: true, value: true }
                 });
-                allCurrentValues = recs;
             } else {
-                const recs = await prisma.responseValue.findMany({
+                allCurrentValues = await prisma.responseValue.findMany({
                     where: { fieldId: matchColumnId, response: { formId } },
                     select: { responseId: true, value: true }
                 });
-                allCurrentValues = recs;
             }
         }
 
-        for (let i = 0; i < data.length; i++) {
-            const row = data[i];
-            const matchValue = importMode === 'update' ? row[matchExcelHeader]?.toString().trim() : null;
+        // Index all current values for ultra-fast $O(1)$ lookups
+        const exactMap = new Map<string, string>();
+        const normMap = new Map<string, string>();
+        const phoneMap = new Map<string, string>();
 
-            if (importMode === 'update' && !matchValue) {
-                errors.push(`Row ${i + 1}: Missing match value`);
-                continue;
+        for (const v of allCurrentValues) {
+            const val = (v.value || "").trim().toLowerCase();
+            const norm = val.replace(/[^a-z0-9]/g, "");
+            
+            if (val && !exactMap.has(val)) exactMap.set(val, v.responseId);
+            if (norm && !normMap.has(norm)) normMap.set(norm, v.responseId);
+            if (norm.length >= 10 && /^\d+$/.test(norm)) {
+                const last10 = norm.slice(-10);
+                if (!phoneMap.has(last10)) phoneMap.set(last10, v.responseId);
             }
+        }
 
-            try {
-                let responseIdToUpdate: string | null = null;
+        // COLLECT ALL MATCHED RESPONSE IDs FIRST (To pre-fetch values)
+        const matchedResponseIds: string[] = [];
+        if (importMode === 'update' || importMode === 'upsert') {
+            for (const row of data) {
+                const matchValue = row[matchExcelHeader]?.toString().trim()?.toLowerCase() || "";
+                if (!matchValue) continue;
 
-                if (importMode === 'update') {
-                    // Smart Fuzzy Matching logic for Phone/Emails with spaces
-                    const searchValLower = matchValue!.toLowerCase();
-                    const searchNorm = searchValLower.replace(/[^a-z0-9]/g, "");
+                const norm = matchValue.replace(/[^a-z0-9]/g, "");
 
-                    // 1. Exact match (ignoring case and outer spaces)
-                    let matched = allCurrentValues.find(v => (v.value || "").trim().toLowerCase() === searchValLower);
+                let matchedId = exactMap.get(matchValue);
+                if (!matchedId && norm) matchedId = normMap.get(norm);
+                if (!matchedId && norm.length >= 10 && /^\d+$/.test(norm)) matchedId = phoneMap.get(norm.slice(-10));
+                
+                if (matchedId) matchedResponseIds.push(matchedId);
+            }
+        }
 
-                    // 2. Normalised match (no spaces/symbols)
-                    if (!matched && searchNorm) {
-                        matched = allCurrentValues.find(v => (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase() === searchNorm);
+        // PRE-FETCH ALL VALUES FOR THESE RESPONSES
+        const [existingInternalValues, existingResponseValues] = await Promise.all([
+            prisma.internalValue.findMany({ where: { responseId: { in: matchedResponseIds } } }),
+            prisma.responseValue.findMany({ where: { responseId: { in: matchedResponseIds } } })
+        ]);
+
+        const intValMap = new Map(existingInternalValues.map(v => [`${v.responseId}_${v.columnId}`, v]));
+        const respValMap = new Map(existingResponseValues.map(v => [`${v.responseId}_${v.fieldId}`, v]));
+
+        // Helper to run batches
+        // Helper to generate Mongo IDs if needed
+        const generateId = () => {
+            const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+            const random = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            return (timestamp + random);
+        };
+
+        // Helper to run batches
+        const BATCH_SIZE = 500;
+        for (let i = 0; i < data.length; i += BATCH_SIZE) {
+            const batch = data.slice(i, i + BATCH_SIZE);
+            
+            // Maps for deduplication (preventing unique constraint crashes on duplicate rows)
+            const internalValuesToCreateMap = new Map<string, any>();
+            const responseValuesToCreateMap = new Map<string, any>();
+            const individualOpsMap = new Map<string, any>();
+
+            const activitiesToCreate: any[] = [];
+            const responsesToCreate: any[] = [];
+
+            // 1. Identify what to update and what to create
+            const batchItems = await Promise.all(batch.map(async (row, idx) => {
+                const rowIndex = i + idx;
+                let responseId: string | null = null;
+                let isNew = false;
+
+                if (importMode === 'update' || importMode === 'upsert') {
+                    const matchValueRaw = row[matchExcelHeader]?.toString().trim() || "";
+                    const val = matchValueRaw.toLowerCase();
+                    const norm = val.replace(/[^a-z0-9]/g, "");
+
+                    let matchedId = exactMap.get(val);
+                    if (!matchedId && norm) matchedId = normMap.get(norm);
+                    if (!matchedId && norm.length >= 10 && /^\d+$/.test(norm)) matchedId = phoneMap.get(norm.slice(-10));
+
+                    if (matchedId) {
+                        responseId = matchedId;
+                    } else if (importMode === 'upsert') {
+                        isNew = true;
+                        responseId = generateId();
+                    } else {
+                        errors.push(`Row ${rowIndex + 1}: No match found for "${matchValueRaw}"`);
+                        return null;
                     }
-
-                    // 3. Fallback for Phone Numbers (if at least 10 digits, match last 10 digits precisely, ignoring +91 etc)
-                    if (!matched && searchNorm.length >= 10 && /^\d+$/.test(searchNorm)) {
-                        const last10 = searchNorm.slice(-10);
-                        matched = allCurrentValues.find(v => {
-                            const vNorm = (v.value || "").replace(/[^a-z0-9]/g, "").toLowerCase();
-                            return /^\d+$/.test(vNorm) && vNorm.length >= 10 && vNorm.slice(-10) === last10;
-                        });
-                    }
-
-                    if (matched) {
-                        responseIdToUpdate = matched.responseId;
-                    }
-
-                    if (!responseIdToUpdate) {
-                        console.warn(`Row ${i + 1}: No match found for value "${matchValue}"`);
-                        errors.push(`Row ${i + 1}: No existing record found matching "${matchValue}" in the Key Column.`);
-                        continue;
-                    }
+                } else {
+                    isNew = true;
+                    responseId = generateId();
                 }
 
-                console.log(`Updating/Creating row ${i + 1} (${matchValue || 'New Row'})`);
+                return { row, responseId, isNew, rowIndex };
+            }));
 
-                // Apply Updates via Transaction
-                await prisma.$transaction(async (tx) => {
-                    let finalResponseId = responseIdToUpdate;
-
-                    if (importMode === 'create') {
-                        // Create new response
-                        const newResp = await tx.formResponse.create({
-                            data: {
-                                formId,
-                                submittedBy: user.id,
-                                submittedByName: userName,
-                                submittedAt: new Date(),
-                                assignedTo: [user.id]
-                            }
-                        });
-                        finalResponseId = newResp.id;
-
-                        // Activity log for row creation
-                        await tx.formActivity.create({
-                            data: {
-                                responseId: finalResponseId,
-                                userId: user.id,
-                                userName: userName,
-                                type: "BULK_IMPORT_CREATE",
-                                columnName: "System",
-                                oldValue: "None",
-                                newValue: "New Record via Bulk Upload"
-                            }
+            const validItems = batchItems.filter(item => item !== null) as { row: Record<string, string>; responseId: string; isNew: boolean; rowIndex: number }[];
+            
+            // 2. Queue Response creations
+            for (const item of validItems) {
+                if (item.isNew) {
+                    responsesToCreate.push({
+                        id: item.responseId,
+                        formId,
+                        submittedBy: user.id,
+                        submittedByName: userName,
+                        submittedAt: new Date(),
+                        assignedTo: [user.id]
+                    });
+                    createdCount++;
+                    if (!disableActivityLogs) {
+                        activitiesToCreate.push({
+                            responseId: item.responseId, userId: user.id, userName: userName,
+                            type: "BULK_IMPORT_CREATE", columnName: "System",
+                            oldValue: "None", newValue: "New Record via Bulk Upload"
                         });
                     }
+                } else {
+                    updatedCount++;
+                }
 
-                    for (const headerKey in updateColumnMap) {
-                        if (importMode === 'update' && headerKey === matchExcelHeader) continue;
+                // 3. Build Column Values
+                // Create a case-insensitive, trimmed lookup for row keys to prevent blank uploads due to Excel formatting
+                const rowKeyMap = new Map<string, string>();
+                Object.keys(item.row).forEach(k => rowKeyMap.set(k.trim().toLowerCase(), k));
 
-                        const mapping = updateColumnMap[headerKey];
-                        if (!mapping) continue;
+                for (const excelHeaderRaw in updateColumnMap) {
+                    if (importMode === 'update' && excelHeaderRaw === matchExcelHeader) continue;
+                    
+                    const mapping = updateColumnMap[excelHeaderRaw];
+                    if (!mapping) continue;
 
-                        // Check if the explicitly mapped header exists on the uploaded row
-                        if (row[headerKey] === undefined) continue;
+                    // Support robust matching for headers with spaces/case differences
+                    const normalizedHeader = excelHeaderRaw.trim().toLowerCase();
+                    const actualKeyInRow = rowKeyMap.get(normalizedHeader) || excelHeaderRaw;
+                    
+                    if (item.row[actualKeyInRow] === undefined) {
+                        console.warn(`[BulkImport] Missing key "${actualKeyInRow}" in row ${item.rowIndex + 1}`);
+                        continue;
+                    }
 
-                        let valueToMap = row[headerKey]?.toString() || "";
-                        const colIdToUpdate = mapping.id;
-                        const isColInternal = mapping.isInternal;
+                    let valueToMap = item.row[actualKeyInRow]?.toString().trim() || "";
 
-                        let oldValue = "";
-                        let colName = headerKey;
+                    // 🛡️ SMART UPLOAD SHIELD: Prevent blank Excel cells from erasing existing database values
+                    if (valueToMap === "" && !item.isNew && (importMode === 'update' || importMode === 'upsert')) {
+                        continue;
+                    }
+                    const colIdToUpdate = mapping.id;
+                    const isColInternal = mapping.isInternal;
 
-                        // Special Column: Assigned To
-                        if (colIdToUpdate === "__assigned") {
-                            const foundUser = findUser(valueToMap);
-                            if (foundUser) {
-                                await tx.formResponse.update({
-                                    where: { id: finalResponseId! },
-                                    data: { assignedTo: { set: [foundUser.clerkId] } }
-                                });
+                    if (colIdToUpdate === "__assigned") {
+                        const foundUserId = findUser(valueToMap);
+                        if (foundUserId) {
+                             // We use set in standard field updates or special logic
+                             individualOpsMap.set(`assigned_${item.responseId}`, prisma.formResponse.update({
+                                 where: { id: item.responseId },
+                                 data: { assignedTo: { set: [foundUserId] } }
+                             }));
+                        }
+                        continue;
+                    }
+
+                    // 🎯 SPECIAL HANDLING FOR FOLLOW-UP SYSTEM COLUMNS
+                    const followUpCols = ["__followUpStatus", "__nextFollowUpDate", "__recentRemark", "__followup"];
+                    if (followUpCols.includes(colIdToUpdate)) {
+                        const existingRemarks = await prisma.formRemark.findMany({
+                            where: { responseId: item.responseId },
+                            orderBy: { updatedAt: 'desc' },
+                            take: 1
+                        });
+                        const latestRemark = existingRemarks[0];
+
+                        const remarkData: any = {
+                            updatedBy: user.id,
+                            updatedByName: userName,
+                            updatedAt: new Date(),
+                        };
+
+                        if (colIdToUpdate === "__followUpStatus") remarkData.followUpStatus = valueToMap;
+                        if (colIdToUpdate === "__nextFollowUpDate") {
+                            let dateVal = valueToMap;
+                            if (valueToMap && !isNaN(Number(valueToMap))) {
+                                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                                const parsedDate = new Date(excelEpoch.getTime() + Math.round(Number(valueToMap) * 86400000));
+                                if (!isNaN(parsedDate.getTime())) dateVal = parsedDate.toISOString();
                             }
-                            continue; // Move to next field
+                            remarkData.nextFollowUpDate = dateVal ? new Date(dateVal) : null;
+                        }
+                        if (colIdToUpdate === "__recentRemark" || colIdToUpdate === "__followup") remarkData.remark = valueToMap;
+
+                        if (latestRemark) {
+                            individualOpsMap.set(`remark_upd_${item.responseId}_${colIdToUpdate}`, prisma.formRemark.update({
+                                where: { id: latestRemark.id },
+                                data: remarkData
+                            }));
+                        } else {
+                            // If no remark exists, create a fresh one
+                            individualOpsMap.set(`remark_new_${item.responseId}_${colIdToUpdate}`, prisma.formRemark.create({
+                                data: {
+                                    ...remarkData,
+                                    responseId: item.responseId,
+                                    remark: remarkData.remark || "Uploaded via Smart Update",
+                                    followUpStatus: remarkData.followUpStatus || "New"
+                                }
+                            }));
+                        }
+                        continue;
+                    }
+
+
+                    if (isColInternal) {
+                        const internalCol = intColMap.get(colIdToUpdate);
+                        if (internalCol?.type === 'user') {
+                            const foundUserId = findUser(valueToMap);
+                            if (foundUserId) valueToMap = foundUserId;
+                        }
+                        if (internalCol?.type === 'dropdown' && internalCol.options) {
+                            const opts = internalCol.options as any[];
+                            const matchedOpt = opts.find((o: any) => o.label?.toLowerCase() === valueToMap.toLowerCase());
+                            if (matchedOpt) valueToMap = matchedOpt.label;
+                        }
+                        if (internalCol?.type === 'date' && valueToMap && !isNaN(Number(valueToMap))) {
+                            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                            const parsedDate = new Date(excelEpoch.getTime() + Math.round(Number(valueToMap) * 86400000));
+                            if (!isNaN(parsedDate.getTime())) valueToMap = parsedDate.toISOString();
                         }
 
-                        if (isColInternal) {
-                            // Find the column setup
-                            const internalCol = processedInternalColumns.find((c: any) => c.id === colIdToUpdate);
-                            colName = internalCol?.label || headerKey;
-
-                            // Handle user type column
-                            if (internalCol?.type === 'user') {
-                                const foundUser = findUser(valueToMap);
-                                if (foundUser) valueToMap = foundUser.clerkId;
-                            }
-
-                            // Handle Dropdown label matching if options are present
-                            if (internalCol?.type === 'dropdown' && internalCol.options) {
-                                const opts = internalCol.options as any[];
-                                const matchedOpt = opts.find((o: any) => o.label?.toLowerCase() === valueToMap.toLowerCase());
-                                if (matchedOpt) valueToMap = matchedOpt.label;
-                            }
-
-                            // Auto-transform Excel Date (serial number) to ISO if it's a date col
-                            if (internalCol?.type === 'date' && valueToMap && !isNaN(Number(valueToMap))) {
-                                const excelEpoch = new Date(1899, 11, 30);
-                                const parsedDate = new Date(excelEpoch.getTime() + Number(valueToMap) * 86400000);
-                                if (!isNaN(parsedDate.getTime())) {
-                                    valueToMap = parsedDate.toISOString();
-                                }
-                            }
-
-                            if (importMode === 'create') {
-                                await tx.internalValue.create({
-                                    data: { responseId: finalResponseId!, columnId: colIdToUpdate, value: valueToMap, updatedBy: user.id, updatedByName: userName }
-                                });
-                            } else {
-                                const existing = await tx.internalValue.findFirst({
-                                    where: { responseId: finalResponseId!, columnId: colIdToUpdate }
-                                });
-                                oldValue = existing?.value || "";
-
-                                if (existing) {
-                                    await tx.internalValue.update({
-                                        where: { id: existing.id },
-                                        data: { value: valueToMap, updatedBy: user.id, updatedByName: userName }
-                                    });
-                                } else {
-                                    await tx.internalValue.create({
-                                        data: { responseId: finalResponseId!, columnId: colIdToUpdate, value: valueToMap, updatedBy: user.id, updatedByName: userName }
+                        const existing = intValMap.get(`${item.responseId}_${colIdToUpdate}`);
+                        if (existing) {
+                            if (existing.value !== valueToMap) {
+                                individualOpsMap.set(`int_${existing.id}`, prisma.internalValue.update({
+                                    where: { id: existing.id },
+                                    data: { value: valueToMap, updatedBy: user.id, updatedByName: userName, updatedAt: new Date() }
+                                }));
+                                if (!disableActivityLogs) {
+                                    activitiesToCreate.push({
+                                        responseId: item.responseId, userId: user.id, userName: userName,
+                                        type: "BULK_IMPORT_UPDATE", columnName: internalCol?.label || excelHeaderRaw,
+                                        oldValue: existing.value || "", newValue: valueToMap
                                     });
                                 }
                             }
                         } else {
-                            if (importMode === 'create') {
-                                await tx.responseValue.create({
-                                    data: { responseId: finalResponseId!, fieldId: colIdToUpdate, value: valueToMap }
-                                });
-                            } else {
-                                const existing = await tx.responseValue.findFirst({
-                                    where: { responseId: finalResponseId!, fieldId: colIdToUpdate }
-                                });
-                                oldValue = existing?.value || "";
-
-                                if (existing) {
-                                    await tx.responseValue.update({
-                                        where: { id: existing.id },
-                                        data: { value: valueToMap }
-                                    });
-                                } else {
-                                    await tx.responseValue.create({
-                                        data: { responseId: finalResponseId!, fieldId: colIdToUpdate, value: valueToMap }
+                            internalValuesToCreateMap.set(`${item.responseId}_${colIdToUpdate}`, {
+                                responseId: item.responseId, columnId: colIdToUpdate, value: valueToMap,
+                                updatedBy: user.id, updatedByName: userName, updatedAt: new Date()
+                            });
+                        }
+                    } else {
+                        const existing = respValMap.get(`${item.responseId}_${colIdToUpdate}`);
+                        if (existing) {
+                            if (existing.value !== valueToMap) {
+                                individualOpsMap.set(`resp_${existing.id}`, prisma.responseValue.update({
+                                    where: { id: existing.id },
+                                    data: { value: valueToMap }
+                                }));
+                                if (!disableActivityLogs) {
+                                    activitiesToCreate.push({
+                                        responseId: item.responseId, userId: user.id, userName: userName,
+                                        type: "BULK_IMPORT_UPDATE", columnName: excelHeaderRaw,
+                                        oldValue: existing.value || "", newValue: valueToMap
                                     });
                                 }
                             }
-                        }
-
-                        // Activity log for column change
-                        if (importMode === 'update' && oldValue !== valueToMap) {
-                            await tx.formActivity.create({
-                                data: {
-                                    responseId: finalResponseId!,
-                                    userId: user.id,
-                                    userName: userName,
-                                    type: "BULK_IMPORT_UPDATE",
-                                    columnName: colName,
-                                    oldValue: oldValue,
-                                    newValue: valueToMap
-                                }
+                        } else {
+                            responseValuesToCreateMap.set(`${item.responseId}_${colIdToUpdate}`, {
+                                responseId: item.responseId, fieldId: colIdToUpdate, value: valueToMap
                             });
                         }
                     }
-                });
-
-                successCount++;
-            } catch (err: any) {
-                console.error(`Error processing row ${i + 1}:`, err);
-                errors.push(`Row ${i + 1}: ${err.message || 'Error processing'}`);
+                }
             }
+
+            // 4. Batch Database Operations
+            // For FormResponse, using individual creates in parallel batches to be safer with ID generation
+            if (responsesToCreate.length > 0) {
+                const responseBatches = [];
+                for (let j = 0; j < responsesToCreate.length; j += 100) {
+                    const batchSlice = responsesToCreate.slice(j, j + 100);
+                    responseBatches.push(Promise.all(batchSlice.map(r => prisma.formResponse.create({ data: r }))));
+                }
+                await Promise.all(responseBatches);
+            }
+
+            const individualOps = Array.from(individualOpsMap.values());
+            const internalValuesToCreate = Array.from(internalValuesToCreateMap.values());
+            const responseValuesToCreate = Array.from(responseValuesToCreateMap.values());
+
+            const otherOps: any[] = [...individualOps];
+            if (internalValuesToCreate.length > 0) {
+                otherOps.push(prisma.internalValue.createMany({ data: internalValuesToCreate }));
+            }
+            if (responseValuesToCreate.length > 0) {
+                otherOps.push(prisma.responseValue.createMany({ data: responseValuesToCreate }));
+            }
+            if (activitiesToCreate.length > 0) {
+                otherOps.push(prisma.formActivity.createMany({ data: activitiesToCreate }));
+            }
+
+            if (otherOps.length > 0) {
+                await prisma.$transaction(otherOps);
+            }
+
+            successCount += validItems.length;
         }
 
         return NextResponse.json({
             success: true,
-            message: `Successfully processed ${successCount} records.`,
+            message: `Processed ${successCount} records: ${updatedCount} updated, ${createdCount} created.`,
             errors: errors.length > 0 ? errors : undefined,
             successCount,
+            createdCount,
+            updatedCount,
             errorCount: errors.length
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Bulk Import Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }
 }

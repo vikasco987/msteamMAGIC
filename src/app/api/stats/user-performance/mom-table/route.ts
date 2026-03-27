@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 
 export async function GET(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
@@ -10,22 +16,52 @@ export async function GET(req: NextRequest) {
     const monthFilter = searchParams.get("month");
     const assigneeId = searchParams.get("assigneeId");
 
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    
+    const role = String(clerkUser.publicMetadata?.role || dbUser?.role || "user").toLowerCase();
+    const isTL = dbUser?.isTeamLeader || role === 'tl';
+    const isPrivileged = ['admin', 'master'].includes(role);
+
+    let baseFilter: any = {
+      ...(assigneeId && { assigneeIds: { has: assigneeId } }),
+      ...(yearFilter || monthFilter
+        ? {
+            createdAt: {
+              gte: new Date(
+                `${yearFilter || "2000"}-${monthFilter || "01"}-01`
+              ),
+              lte: new Date(
+                `${yearFilter || "9999"}-${monthFilter || "12"}-31`
+              ),
+            },
+          }
+        : {}),
+    };
+
+    if (!isPrivileged) {
+      let userIds = [userId];
+      if (isTL) {
+          const members = await prisma.user.findMany({
+              where: { leaderId: userId },
+              select: { clerkId: true }
+          });
+          userIds = [userId, ...members.map(m => m.clerkId)];
+      }
+      
+      baseFilter = {
+          ...baseFilter,
+          OR: [
+              { createdByClerkId: { in: userIds } },
+              { assigneeId: { in: userIds } },
+              { assigneeIds: { hasSome: userIds } }
+          ]
+      };
+    }
+
     const tasks = await prisma.task.findMany({
-      where: {
-        ...(assigneeId && { assigneeIds: { has: assigneeId } }),
-        ...(yearFilter || monthFilter
-          ? {
-              createdAt: {
-                gte: new Date(
-                  `${yearFilter || "2000"}-${monthFilter || "01"}-01`
-                ),
-                lte: new Date(
-                  `${yearFilter || "9999"}-${monthFilter || "12"}-31`
-                ),
-              },
-            }
-          : {}),
-      },
+      where: baseFilter,
       select: {
         createdAt: true,
         amount: true,

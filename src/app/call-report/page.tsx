@@ -163,7 +163,11 @@ export default function CallReportPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {currentReport.map((user, idx) => (
-                        <div key={user.userId} className={`bg-white rounded-[40px] p-8 border ${idx === 0 ? 'border-2 border-indigo-500 shadow-2xl shadow-indigo-100' : 'border-slate-100 shadow-sm'} relative group hover:-translate-y-2 transition-all duration-500 overflow-hidden`}>
+                        <div 
+                            key={user.userId} 
+                            onClick={() => window.location.href = `/call-report/details?userId=${user.userId}&date=${format(date, "yyyy-MM-dd")}&type=${activeTab}&name=${encodeURIComponent(user.name)}`}
+                            className={`bg-white rounded-[40px] p-8 border cursor-pointer ${idx === 0 ? 'border-2 border-indigo-500 shadow-2xl shadow-indigo-100' : 'border-slate-100 shadow-sm'} relative group hover:-translate-y-2 transition-all duration-500 overflow-hidden`}
+                        >
                             {idx === 0 && (
                                 <div className="absolute -top-4 -right-4 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest px-6 py-2 rounded-full shadow-lg border-4 border-white rotate-12">
                                     Leader

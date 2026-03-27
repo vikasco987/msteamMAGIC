@@ -5,6 +5,7 @@ import {
     Database,
     UploadCloud,
     ArrowLeft,
+    ArrowRight,
     Download,
     ChevronLeft,
     ChevronRight,
@@ -45,6 +46,8 @@ import {
     Link,
     Phone,
     Mail,
+    Zap,
+    Layout,
     Trash2,
     Settings,
     Activity,
@@ -66,9 +69,15 @@ import {
     CloudOff,
     Wifi,
     Pin,
-    PinOff
+    PinOff,
+    Target,
+    Quote,
+    TrendingUp,
+    AlertCircle,
+    Settings2
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
+import { createPortal } from "react-dom";
 import PaymentHubModal from "@/app/components/PaymentHubModal";
 import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
 import BulkImportModal from "@/app/components/BulkImportModal";
@@ -103,45 +112,45 @@ const getColumnGroup = (col: any) => {
 
 const getGroupStyle = (group: string) => {
     switch (group) {
-        case "OPERATIONAL": return { 
-            bg: "bg-indigo-50/50", 
+        case "OPERATIONAL": return {
+            bg: "bg-indigo-50/50",
             headerBg: "bg-indigo-100/50",
-            text: "text-indigo-600", 
-            accent: "bg-indigo-500", 
+            text: "text-indigo-600",
+            accent: "bg-indigo-500",
             border: "border-indigo-200",
-            label: "Operations" 
+            label: "Operations"
         };
-        case "LEAD_INFO": return { 
-            bg: "bg-blue-50/50", 
+        case "LEAD_INFO": return {
+            bg: "bg-blue-50/50",
             headerBg: "bg-blue-100/50",
-            text: "text-blue-600", 
-            accent: "bg-blue-500", 
-            border: "border-blue-200", 
-            label: "Lead Entry" 
+            text: "text-blue-600",
+            accent: "bg-blue-500",
+            border: "border-blue-200",
+            label: "Lead Entry"
         };
-        case "FINANCIALS": return { 
-            bg: "bg-emerald-50/50", 
+        case "FINANCIALS": return {
+            bg: "bg-emerald-50/50",
             headerBg: "bg-emerald-100/50",
-            text: "text-emerald-600", 
-            accent: "bg-emerald-500", 
-            border: "border-emerald-200", 
-            label: "Financials" 
+            text: "text-emerald-600",
+            accent: "bg-emerald-500",
+            border: "border-emerald-200",
+            label: "Financials"
         };
-        case "CRM_TRACKING": return { 
-            bg: "bg-amber-50/50", 
+        case "CRM_TRACKING": return {
+            bg: "bg-amber-50/50",
             headerBg: "bg-amber-100/50",
-            text: "text-amber-600", 
-            accent: "bg-amber-500", 
-            border: "border-amber-200", 
-            label: "CRM Tracking" 
+            text: "text-amber-600",
+            accent: "bg-amber-500",
+            border: "border-amber-200",
+            label: "CRM Tracking"
         };
-        default: return { 
-            bg: "bg-slate-50/50", 
+        default: return {
+            bg: "bg-slate-50/50",
             headerBg: "bg-slate-100/50",
-            text: "text-slate-600", 
-            accent: "bg-slate-500", 
-            border: "border-slate-200", 
-            label: "Core Data" 
+            text: "text-slate-600",
+            accent: "bg-slate-500",
+            border: "border-slate-200",
+            label: "Core Data"
         };
     }
 };
@@ -265,7 +274,7 @@ const COLUMN_TYPES = [
     { title: "Attachment Hub", id: "file", icon: Paperclip, color: "text-[#667085]" },
 ];
 
-const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN"];
+const AVAILABLE_ROLES = ["ADMIN", "MASTER", "MANAGER", "SELLER", "INTERN", "TL"];
 
 const FILTER_OPERATORS = {
     text: [
@@ -288,6 +297,7 @@ const FILTER_OPERATORS = {
         { label: "Is Not Empty", value: "is_not_empty" }
     ],
     date: [
+        { label: "Exactly", value: "exact_date" },
         { label: "Is Today", value: "today" },
         { label: "Is Yesterday", value: "yesterday" },
         { label: "Before", value: "before" },
@@ -342,20 +352,34 @@ export default function CRMSpreadsheetPage() {
     const [loading, setLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
     const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
     const [openColorPicker, setOpenColorPicker] = useState<string | null>(null);
+
+    // ⚡ Performance Fix: Debounce Search to prevent re-filtering on every keystroke
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
+    const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
+    const [canvasTheme, setCanvasTheme] = useState<string>("default");
+    const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
@@ -364,10 +388,20 @@ export default function CRMSpreadsheetPage() {
     const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
+    const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
+    const [deleteProgress, setDeleteProgress] = useState<{ current: number; total: number } | null>(null);
+    const [isAddingRow, setIsAddingRow] = useState(false);
+    const [drawerTab, setDrawerTab] = useState<'edit' | 'history'>('edit');
+    const [isSelectAllMenuOpen, setIsSelectAllMenuOpen] = useState(false);
+    const [customSelectCount, setCustomSelectCount] = useState("50");
+    const [activeStatusDropdown, setActiveStatusDropdown] = useState<string | null>(null);
+    const [statusMatrixModal, setStatusMatrixModal] = useState<{ rowId: string, colId: string, label: string, options: any[], val: string, isInternal: boolean } | null>(null);
+    const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
     const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
+    const [pendingUpdates, setPendingUpdates] = useState<Record<string, string>>({});
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -389,9 +423,9 @@ export default function CRMSpreadsheetPage() {
     const formId = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
     const { messages, input, handleInputChange, handleSubmit: baseHandleSubmit, setMessages, isLoading: isAIFetching } = useChat({
-        api: formId ? `/api/crm/forms/${formId}/chat` : undefined as any,
+        api: formId ? `/api/crm/forms/${formId}/chat` : undefined,
         body: chatBody
-    });
+    } as any) as any;
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         if (!(input || "").trim()) return;
@@ -406,7 +440,7 @@ export default function CRMSpreadsheetPage() {
         if (lastMessage && lastMessage.role === 'assistant') {
             const toolCals = lastMessage.toolInvocations;
             if (toolCals) {
-                toolCals.forEach(invocation => {
+                toolCals.forEach((invocation: any) => {
                     if (invocation.state === 'result' && !processedToolCallsRef.current.has(invocation.toolCallId)) {
                         processedToolCallsRef.current.add(invocation.toolCallId);
 
@@ -414,7 +448,7 @@ export default function CRMSpreadsheetPage() {
                             const result = invocation.result;
                             if (result?.filtersApplied && Array.isArray(result.filtersApplied)) {
                                 console.log("Applying AI filters:", result.filtersApplied);
-                                setConditions(result.filtersApplied.map((f: any) => ({
+                                setConditions(result.filtersApplied.map((f: { columnId?: string; colId?: string; operator?: string; op?: string; value?: any; val?: any }) => ({
                                     colId: f.columnId || f.colId,
                                     op: f.operator || f.op,
                                     val: String(f.value || f.val || "")
@@ -498,6 +532,9 @@ export default function CRMSpreadsheetPage() {
 
     // Load initial width from localStorage
     useEffect(() => {
+        const savedTheme = localStorage.getItem(`matrix_theme_${params.id}`);
+        if (savedTheme) setCanvasTheme(savedTheme);
+
         const saved = localStorage.getItem(`matrix_widths_${params.id}`);
         if (saved) {
             try { setColumnWidths(JSON.parse(saved)); } catch (e) { console.error(e); }
@@ -505,6 +542,10 @@ export default function CRMSpreadsheetPage() {
     }, [params.id]);
 
     // Save width to localStorage on change
+    useEffect(() => {
+        localStorage.setItem(`matrix_theme_${params.id}`, canvasTheme);
+    }, [canvasTheme, params.id]);
+
     useEffect(() => {
         if (Object.keys(columnWidths).length > 0) {
             localStorage.setItem(`matrix_widths_${params.id}`, JSON.stringify(columnWidths));
@@ -545,6 +586,7 @@ export default function CRMSpreadsheetPage() {
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -563,9 +605,37 @@ export default function CRMSpreadsheetPage() {
     const [teamMemberSearch, setTeamMemberSearch] = useState("");
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    const prevFiltersRef = useRef({ conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id });
+
     useEffect(() => {
-        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-    }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id]);
+        const filtersChanged =
+            prevFiltersRef.current.conditions !== conditions ||
+            prevFiltersRef.current.filterConjunction !== filterConjunction ||
+            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
+            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
+            prevFiltersRef.current.sortBy !== sortBy ||
+            prevFiltersRef.current.sortOrder !== sortOrder ||
+            prevFiltersRef.current.paramsId !== params.id;
+
+        if (filtersChanged) {
+            prevFiltersRef.current = { conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id as string };
+            if (currentPage !== 1) setCurrentPage(1);
+        }
+
+        if (!isAddingRow) {
+            const pageToFetch = filtersChanged ? 1 : currentPage;
+            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
+
+
+
+
+    const tableRef = useRef<HTMLDivElement>(null);
+
 
 
     const handleResizeStart = (e: React.MouseEvent, id: string, currentWidth: number) => {
@@ -604,17 +674,17 @@ export default function CRMSpreadsheetPage() {
     const isUserInvolved = useMemo(() => {
         if (!data) return false;
         if (isMaster || isPureMaster) return true;
-        
+
         const currentClerkId = data.clerkId;
         const currentRole = userRole?.toUpperCase();
-        
+
         // 1. Explicitly added to form (Access Control settings)
         const visibleUsers = data.form?.visibleToUsers || [];
         const visibleRoles = data.form?.visibleToRoles || [];
-        
+
         if (currentClerkId && visibleUsers.includes(currentClerkId)) return true;
-        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER"].includes(currentRole))) return true;
-        
+        if (currentRole && (visibleRoles.includes(currentRole) || ["ADMIN", "MASTER", "TL"].includes(currentRole))) return true;
+
         // 2. Assigned to any response in this form
         const isAssigned = data.responses?.some(r => r.assignedTo?.includes(currentClerkId || ""));
         if (isAssigned) return true;
@@ -623,9 +693,19 @@ export default function CRMSpreadsheetPage() {
     }, [data, isMaster, isPureMaster, userRole]);
 
     const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
+        console.log(`[FetchData] Syncing matrix with conditions:`, JSON.stringify(conds));
+        const syncStartTime = Date.now();
         if (!isSilent) {
             setIsSyncing(true);
         }
+
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -666,15 +746,16 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
-            // 🔑 KEY FIX: Agar filters active hain to SAARE records fetch karo
-            // Warna sirf current page ke rows filter honge (Today, This Week sab miss hoga)
-            const effectiveLimit = conds.length > 0 ? 99999 : limit;
+            // 🔑 Performance Fix: Removed 99999 limit hack. 
+            // The backend already handles filtering, so we should always paginate.
+            const effectiveLimit = limit;
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
-                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
-                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
+
 
             const json = await dataRes.json();
 
@@ -701,7 +782,47 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            setData(json);
+            // 4. Update the state
+            setData(prev => {
+                if (!prev || !json.responses) return json;
+
+                // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
+                // even if the server just sent us old data. This prevents the "disappearing data" bug
+                // when fetchData races with a pending handleUpdateValue.
+                const updatedResponses = json.responses.map((res: any) => {
+                    const existingRes = prev.responses?.find((r: any) => r.id === res.id);
+                    if (!existingRes) return res;
+
+                    const mergedResponse = { ...res };
+                    // If this row has any cells in 'savingCells', we should consider keeping the local version
+                    // for those specific columns.
+                    savingCells.forEach(cellKey => {
+                        const [rowId, colId] = cellKey.split('-');
+                        if (rowId === res.id) {
+                            // Find the value from the previous local state (which was updated optimistically)
+                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
+                            if (localCol) {
+                                // Update mergedResponse with the local value
+                                if (!mergedResponse.responses) mergedResponse.responses = [];
+                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
+                                if (targetColIdx > -1) {
+                                    mergedResponse.responses[targetColIdx].value = localCol.value;
+                                } else {
+                                    mergedResponse.responses.push({ ...localCol });
+                                }
+                            } else {
+                                // Check for regular fields (not internal columns)
+                                if ((existingRes as any)[colId] !== undefined) {
+                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
+                                }
+                            }
+                        }
+                    });
+                    return mergedResponse;
+                });
+
+                return { ...json, responses: updatedResponses };
+            });
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
@@ -729,7 +850,12 @@ export default function CRMSpreadsheetPage() {
                 const firstDropdown = json.internalColumns?.find((c: any) => c.type === "dropdown");
                 if (firstDropdown) setGroupByColId(firstDropdown.id);
             }
-        } catch (err) {
+        } catch (err: any) {
+            if (err.name === 'AbortError') {
+                console.log("[FetchData] Request aborted -> Race condition prevented.");
+                return;
+            }
+            console.error("Fetch error:", err);
             if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
                 const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
                 if (cachedDataStr) {
@@ -768,7 +894,11 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix");
             }
         } finally {
-            if (!isSilent) {
+            if (!isSilent && !signal.aborted) {
+                const elapsed = Date.now() - syncStartTime;
+                if (elapsed < 800) {
+                    await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
+                }
                 setIsSyncing(false);
             }
         }
@@ -776,6 +906,7 @@ export default function CRMSpreadsheetPage() {
 
     const handleAddRow = async () => {
         if (!data) return;
+        setIsAddingRow(true);
         const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         const previousData = { ...data };
 
@@ -811,12 +942,22 @@ export default function CRMSpreadsheetPage() {
                     throw new Error("Invalid response format");
                 }
                 toast.success("Sector Deployed", { id: "add-row" });
-                // Replace temp with real data
+                // Replace temp with real data and update internal values IDs
                 setData(prev => {
                     if (!prev || !prev.responses) return prev;
-                    const responses = prev.responses.map(r => r.id === tempId ? result.response : r);
-                    return { ...prev, responses };
+                    const realId = result.response.id;
+                    const responses = prev.responses.map(r => r.id === tempId ? { ...result.response, isOptimistic: false } : r);
+
+                    // CRITICAL: Update orphaned internal values
+                    const internalValues = (prev.internalValues || []).map(iv =>
+                        iv.responseId === tempId ? { ...iv, responseId: realId } : iv
+                    );
+
+                    return { ...prev, responses, internalValues };
                 });
+
+                // Keep the new row highlighted for focus
+                setHighlightedRowId(result.response.id);
             } else {
                 toast.error("Deployment failed", { id: "add-row" });
                 setData(previousData); // Rollback
@@ -824,6 +965,8 @@ export default function CRMSpreadsheetPage() {
         } catch (err) {
             toast.error("Matrix failure", { id: "add-row" });
             setData(previousData); // Rollback
+        } finally {
+            setIsAddingRow(false);
         }
     };
 
@@ -856,25 +999,36 @@ export default function CRMSpreadsheetPage() {
         if (isLoaded && user) fetchData();
     }, [params.id, isLoaded, user]);
 
-    // Background mein saare responses fetch karo sirf Today Follow-ups ke liye
-    // Yeh paginated table se alag hai — pagination se affect nahi hoga
+    // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
+    // Yeh performance release ke liye zaroori hai
     useEffect(() => {
         if (!isLoaded || !user) return;
-        const fetchAllForFollowUps = async () => {
+        const fetchBackgroundData = async () => {
             try {
-                const res = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=99999&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
+                const followUpsRes = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
-                if (res.ok) {
-                    const json = await res.json();
+                if (followUpsRes.ok) {
+                    const json = await followUpsRes.json();
+                    setTodayFollowUpsData(json.responses || []);
+                }
+
+                // 2. Fetch Latest 500 records for Filter dropdowns and general data
+                const latestRes = await fetch(
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    { cache: 'no-store' }
+                );
+                if (latestRes.ok) {
+                    const json = await latestRes.json();
                     setAllResponsesForFollowUps(json.responses || []);
                 }
             } catch (err) {
-                console.error('Follow-up background fetch failed:', err);
+                console.error('Background fetch failed:', err);
             }
         };
-        fetchAllForFollowUps();
+        fetchBackgroundData();
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
@@ -902,45 +1056,63 @@ export default function CRMSpreadsheetPage() {
 
     const handleManualSync = async () => {
         if (!navigator.onLine) {
-            toast.error("Can't sync, you are still offline.");
+            toast.error("Shield down: Connectivity required for sync.");
             return;
         }
         const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
         if (offlineUpdates.length > 0) {
-            toast.loading(`Syncing ${offlineUpdates.length} offline changes...`, { id: "offline-sync" });
+            toast.loading(`Syncing ${offlineUpdates.length} matrix interactions...`, { id: "offline-sync" });
             let successCount = 0;
             const failedUpdates: any[] = [];
 
             for (const update of offlineUpdates) {
                 try {
-                    const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(update)
-                    });
+                    // 🛡️ DATA PROTECTION: Determine correct endpoint based on update type
+                    let res;
+                    if (update.type === 'STATUS_UPDATE') {
+                        res = await fetch(`/api/crm/forms/${params.id}/responses/${update.responseId}/remarks`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                remark: update.remark,
+                                followUpStatus: update.followUpStatus,
+                                columnId: update.columnId
+                            })
+                        });
+                    } else {
+                        // Default cell update
+                        res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(update)
+                        });
+                    }
+
                     if (res.ok) {
                         successCount++;
                     } else {
+                        console.error("[Sync] Entry failed:", await res.text());
                         failedUpdates.push(update);
                     }
                 } catch (err) {
+                    console.error("[Sync] Network error for entry:", err);
                     failedUpdates.push(update);
                 }
             }
 
-            // Important: Handle pending queue properly based on failed items
+            // 💎 Sync Resolution
             if (failedUpdates.length === 0) {
                 localStorage.removeItem(`offlineUpdates-${params.id}`);
                 setPendingOfflineCount(0);
-                toast.success("Offline changes synced successfully!", { id: "offline-sync" });
+                toast.success("All interactions secured and synced.", { id: "offline-sync" });
             } else {
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(failedUpdates));
                 setPendingOfflineCount(failedUpdates.length);
-                toast.error(`Synced ${successCount}/${offlineUpdates.length} changes.`, { id: "offline-sync" });
+                toast.error(`Partial sync: ${successCount}/${offlineUpdates.length} secured.`, { id: "offline-sync" });
             }
-            fetchData();
+            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
         } else {
-            toast("Everything is already synced.", { icon: '✅' });
+            toast("Matrix is consistent. No sync required.", { icon: '✅' });
         }
     };
 
@@ -1013,6 +1185,7 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleDeleteRow = async (responseId: string) => {
+        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
         if (!confirm("Are you sure you want to delete this record? This cannot be undone.")) return;
         if (!data) return;
 
@@ -1040,22 +1213,85 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleBulkDelete = async () => {
-        if (!confirm(`Are you sure you want to delete ${selectedRows.length} records? This action is irreversible.`)) return;
-        const loadingToast = toast.loading(`Purging ${selectedRows.length} records...`);
+        console.log("[BulkDelete] Button clicked. selectedRows:", selectedRows.length);
+        console.log("[BulkDelete] Role status - isMaster:", isMaster, "isPureMaster:", isPureMaster);
+
+        if (!isMaster && !isPureMaster) {
+            console.error("[BulkDelete] Permission denied: Not a Master or PureMaster");
+            return toast.error("MASTER MODE REQUIRED");
+        }
+        if (selectedRows.length === 0) {
+            console.warn("[BulkDelete] Aborted: No rows selected");
+            return;
+        }
+
+        const confirmMsg = `PURGE PROTOCOL: Are you sure you want to permanently delete ${selectedRows.length} records? This action cannot be undone.`;
+        if (!window.confirm(confirmMsg)) {
+            console.log("[BulkDelete] Aborted by user via confirm dialog");
+            return;
+        }
+
+        toast.loading(`Initializing purge of ${selectedRows.length} records...`, { id: "bulk-delete-start" });
+        setIsBulkDeleting(true);
+        setDeleteProgress({ current: 0, total: selectedRows.length });
+        const batchSize = 100;
+        const total = selectedRows.length;
+        let successCount = 0;
+        let failCount = 0;
+        const errors: string[] = [];
+
+        console.log(`[BulkDelete] Starting purge of ${total} records in batches of ${batchSize}`);
+
         try {
-            const res = await fetch(`/api/crm/forms/${params.id}/responses?bulk=${selectedRows.join(",")}`, {
-                method: "DELETE"
-            });
-            if (res.ok) {
-                toast.success("Bulk purge complete", { id: loadingToast });
-                setSelectedRows([]);
-                await fetchData();
-            } else {
-                const error = await res.json();
-                toast.error(error.error || "Bulk execution failed", { id: loadingToast });
+            for (let i = 0; i < total; i += batchSize) {
+                const batch = selectedRows.slice(i, i + batchSize);
+                const currentBatchSize = batch.length;
+
+                console.log(`[BulkDelete] Deleting batch ${Math.floor(i / batchSize) + 1} (${batch.length} records)...`);
+
+                try {
+                    const res = await fetch(`/api/crm/forms/${params.id}/responses`, {
+                        method: "DELETE",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ids: batch })
+                    });
+
+                    if (res.ok) {
+                        const result = await res.json();
+                        successCount += (result.deleted || batch.length);
+                        console.log(`[BulkDelete] Successfully deleted ${batch.length} records.`);
+                    } else {
+                        const errText = await res.text();
+                        console.error(`[BulkDelete] Batch failed:`, errText);
+                        errors.push(`Batch starting at ${i + 1}: ${errText}`);
+                        failCount += batch.length;
+                    }
+                } catch (batchErr: any) {
+                    console.error(`[BulkDelete] Network error for batch at ${i}:`, batchErr);
+                    errors.push(`Network error at ${i + 1}: ${batchErr.message}`);
+                    failCount += batch.length;
+                }
+
+                setDeleteProgress(prev => prev ? { ...prev, current: Math.min(i + batchSize, total) } : null);
             }
-        } catch (err) {
-            toast.error("Network failure during bulk purge", { id: loadingToast });
+
+            if (errors.length > 0) {
+                console.group("Bulk Delete Errors");
+                errors.forEach(e => console.error(e));
+                console.groupEnd();
+                toast.error(`Purge completed with ${errors.length} errors. See console for logs.`);
+            } else {
+                toast.success(`Successfully purged ${successCount} records.`);
+            }
+
+            setSelectedRows([]);
+            await fetchData();
+        } catch (globalErr: any) {
+            console.error("[BulkDelete] Critical failure:", globalErr);
+            toast.error(`Critical failure: ${globalErr.message}`);
+        } finally {
+            setIsBulkDeleting(false);
+            setTimeout(() => setDeleteProgress(null), 1000);
         }
     };
 
@@ -1064,7 +1300,10 @@ export default function CRMSpreadsheetPage() {
 
     // ⚡ Flash Recovery Engine: Identify items needing attention TODAY
     const todayFollowUps = useMemo(() => {
-        // allResponsesForFollowUps use karo (saare records) — sirf data.responses (paginated) pe nahi
+        // use specifically fetched todayFollowUpsData
+        if (todayFollowUpsData.length > 0) return todayFollowUpsData;
+
+        // Fallback to filtering from local data if background fetch hasn't finished
         const source = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -1079,7 +1318,7 @@ export default function CRMSpreadsheetPage() {
             }
             return false;
         });
-    }, [allResponsesForFollowUps, data?.responses]);
+    }, [todayFollowUpsData, allResponsesForFollowUps, data?.responses]);
 
     const getColumns = useMemo(() => {
         if (!data) return [];
@@ -1134,18 +1373,21 @@ export default function CRMSpreadsheetPage() {
         const colAccess = { ...rolePerms, ...userPerms };
 
         let filtered = baseCols;
-        if (!isPureMaster) {
+        if (!isMaster && !isPureMaster) {
             filtered = baseCols.filter(col => {
                 const perm = colAccess[col.id];
                 if (perm === "hide") return false;
 
-                // Legacy fallback for internal columns
-                if (col.isInternal) {
+                // NEW: Sensitive Shield logic — filter internal columns by default if no explicit permission
+                if (col.isInternal && !perm) {
                     const roles = col.visibleToRoles || [];
                     const users = col.visibleToUsers || [];
                     if (roles.length > 0 || users.length > 0) {
                         return roles.includes(userRole) || users.includes(currentClerkId);
                     }
+                    // If it's internal and has no roles/users/explicit-perm, we hide it for staff.
+                    // This prevents internal data leakage when new internal columns are added.
+                    return ["MASTER", "ADMIN", "TL"].includes(userRole);
                 }
                 return true;
             });
@@ -1239,6 +1481,8 @@ export default function CRMSpreadsheetPage() {
     }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
+        const cellKey = `${responseId}-${colId}`;
+        if (pendingUpdates[cellKey] !== undefined) return pendingUpdates[cellKey];
         if (!data) return "";
         const resp = data.responses?.find(r => r.id === responseId);
         if (!resp) return "";
@@ -1254,10 +1498,23 @@ export default function CRMSpreadsheetPage() {
             return assignedUsers.map((uid: string) => { const tm = teamMembers.find(t => t.clerkId === uid); return tm ? (tm.firstName ? `${tm.firstName} ${tm.lastName || ''}`.trim() : (tm.email ? tm.email.split('@')[0] : uid)) : uid; }).join(", ");
         }
 
+        // 🟢 FOLLOW-UP BOARD SYSTEM COLUMNS
+        const remarks = (resp as any).remarks || [];
+        const latestRemark = remarks[0];
+        if (colId === "__nextFollowUpDate") return latestRemark?.nextFollowUpDate || "";
+        if (colId === "__followUpStatus") return latestRemark?.followUpStatus || "";
+        if (colId === "__recentRemark") return latestRemark?.remark || "";
+        if (colId === "__followup") return latestRemark?.remark || ""; // Fallback for general follow-up col
+
+
         if (isInternal) {
-            return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
+            const internalVal = data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value;
+            // High priority check for status consistency from response object properties
+            return internalVal || (resp as any)[colId] || "";
         }
-        return resp.values?.find(v => v.fieldId === colId)?.value || "";
+
+        const fieldVal = resp.values?.find(v => v.fieldId === colId)?.value;
+        return fieldVal || (resp as any)[colId] || "";
     };
 
     const [isReportCached, setIsReportCached] = useState(false);
@@ -1318,17 +1575,26 @@ export default function CRMSpreadsheetPage() {
         if (!data) return [];
         let results = data.responses || [];
 
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
+        const isServerFiltering = data.totalPages !== undefined;
+
+        if (debouncedSearchTerm) {
+            const term = debouncedSearchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
                 (r.submittedBy || "").toLowerCase().includes(term) ||
                 (r.assignedTo || []).some(uid => uid.toLowerCase().includes(term)) ||
-                (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term)))
+                (r.values && Array.isArray(r.values) && r.values.some(v => (v.value || "").toLowerCase().includes(term))) ||
+                (data.internalValues && Array.isArray(data.internalValues) && data.internalValues.some(iv => iv.responseId === r.id && (iv.value || "").toLowerCase().includes(term))) ||
+                (r.remarks || []).some((rem: any) => (rem.remark || "").toLowerCase().includes(term) || (rem.followUpStatus || "").toLowerCase().includes(term))
             );
         }
 
+        // NOTE: We no longer short-circuit here. We allow local filtering to run as a second pass
+        // on the server's results. This ensures that local 'pendingUpdates' and specific 
+        // operators like 'is_empty' are always respected correctly.
+
         if (conditions.length > 0) {
+            const before = results.length;
             results = results.filter(r => {
                 // Group conditions by column ID so multiple selections on the same column work as OR
                 const groupedConditions = conditions.reduce((acc, cond) => {
@@ -1343,54 +1609,65 @@ export default function CRMSpreadsheetPage() {
 
                     if (colId === "__assigned") {
                         const result = (conds as any[]).some((cond: any) => {
-                            const targetId = (cond.val || "").toString();
+                            const fullVal = (cond.val || "").toString();
+                            let targetId = fullVal;
+                            let isStrict = fullVal.startsWith("__STRICT_ASSIGNED__");
+                            let isGlobal = fullVal.startsWith("__GLOBAL_OWNER__");
+
+                            if (isStrict) targetId = fullVal.replace("__STRICT_ASSIGNED__", "");
+                            if (isGlobal) targetId = fullVal.replace("__GLOBAL_OWNER__", "");
+
                             const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
                             const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
-                            const isAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
-                            const isUnassigned = rawAssigned.length === 0;
+
+                            const isUserAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                             const isSubmitter = r.submittedBy === targetId;
 
                             let match = false;
                             if (cond.op === "equals" || cond.op === "contains") {
-                                match = isAssigned || (isUnassigned && isSubmitter);
+                                if (isStrict) {
+                                    match = isUserAssigned && !isSubmitter;
+                                } else if (isGlobal) {
+                                    match = isUserAssigned || isSubmitter;
+                                } else {
+                                    // Default behavior for standard IDs or names
+                                    match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
+                                }
                             } else if (cond.op === "is_empty") {
-                                match = isUnassigned && !r.submittedBy;
+                                match = rawAssigned.length === 0 && !r.submittedBy;
                             } else if (cond.op === "is_not_empty") {
-                                match = !isUnassigned || !!r.submittedBy;
+                                match = rawAssigned.length > 0 || !!r.submittedBy;
                             } else if (cond.op === "not_equals") {
-                                match = !isAssigned && !(isUnassigned && isSubmitter);
+                                if (isStrict) match = !isUserAssigned || isSubmitter;
+                                else if (isGlobal) match = !isUserAssigned && !isSubmitter;
+                                else match = !isUserAssigned && !(rawAssigned.length === 0 && isSubmitter);
                             }
 
-                            if (targetId) {
-                                console.log(`[FilterDebug] Row:${r.id.slice(-4)} | Target:${targetId} | Op:${cond.op}`);
-                                console.log(`  - r.assignedTo:`, JSON.stringify(rawAssigned));
-                                console.log(`  - r.submittedBy:`, r.submittedBy);
-                                console.log(`  - Flags: isAssigned:${isAssigned}, isUnassigned:${isUnassigned}, isSubmitter:${isSubmitter} => Match:${match}`);
-                            }
                             return match;
                         });
                         return result;
                     }
 
-                    const cellVal = getCellValue(r.id, colId, isInternal || false);
-                    const val = (cellVal || "").toString().toLowerCase();
+                    // ⚡ Value Logic: Try internal first, then fields if empty (for custom columns)
+                    const cellVal = getCellValue(r.id, colId, true) || getCellValue(r.id, colId, false);
+                    const val = (cellVal || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
 
                     const conditionMatches = (conds as any[]).map(cond => {
-                        const targetVal = (cond.val || "").toString().toLowerCase();
-                        const targetVal2 = (cond.val2 || "").toString().toLowerCase();
+                        const targetVal = (cond.val || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
+                        const targetVal2 = (cond.val2 || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
 
                         switch (cond.op) {
                             case "equals": return val === targetVal;
                             case "not_equals": return val !== targetVal;
                             case "contains": return val.includes(targetVal);
                             case "one_of": {
-                                const targets = (cond.val || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+                                const targets = (cond.val || "").split(",").map((t: string) => t.trim().toLowerCase()).filter(Boolean);
                                 return targets.includes(val);
                             }
                             case "starts_with": return val.startsWith(targetVal);
                             case "ends_with": return val.endsWith(targetVal);
-                            case "is_empty": return (val || "").trim().length === 0;
-                            case "is_not_empty": return (val || "").trim().length > 0;
+                            case "is_empty": return (val === "" || val === null || val === "undefined" || val === "null" || (val || "").trim().length === 0);
+                            case "is_not_empty": return (val || "").trim().length > 0 && val !== "undefined" && val !== "null";
                             case "eq": return parseFloat(val) === parseFloat(targetVal);
                             case "gt": return parseFloat(val) > parseFloat(targetVal);
                             case "lt": return parseFloat(val) < parseFloat(targetVal);
@@ -1427,9 +1704,33 @@ export default function CRMSpreadsheetPage() {
                 if (filterConjunction === "AND") return groupMatches.every(m => m);
                 return groupMatches.some(m => m);
             });
+            if (isServerFiltering && results.length < before) {
+                console.warn(`[FilterDebug] Local CONDITION filter dropped ${before - results.length} rows that server included! (Date/Timezone mismatch or logic difference)`);
+            }
         }
         return results;
-    }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+
+    const columnMetrics = useMemo(() => {
+        const columns = getColumns;
+        const metrics: Record<string, { width: number; left: number; isSticky: boolean }> = {};
+        const baseLeft = isPureMaster ? 70 : 56;
+        let currentLeft = baseLeft;
+
+        columns.forEach((col, idx) => {
+            const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
+            const isSticky = idx < 2;
+            metrics[col.id] = {
+                width,
+                left: isSticky ? currentLeft : 0,
+                isSticky
+            };
+            if (isSticky) {
+                currentLeft += width;
+            }
+        });
+        return metrics;
+    }, [getColumns, columnWidths, isPureMaster]);
 
     const paginatedResponses = useMemo(() => {
         // If server provided pagination, it's already sliced
@@ -1442,7 +1743,116 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => {
         setCurrentPage(1);
         // searchTerm change pe bhi page 1 pe jaao
-    }, [searchTerm]);
+    }, [debouncedSearchTerm]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't interfere if actively editing a cell's input
+            if (editingCell) {
+                if (e.key === "Escape") setEditingCell(null);
+                return;
+            }
+
+            // Don't interfere if focus is in a search box or other global UI input
+            const target = e.target as HTMLElement;
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+            const rowIds = paginatedResponses.map(r => r.id);
+            const cols = getColumns;
+            const colIds = cols.map(c => c.id);
+
+            if (rowIds.length === 0 || colIds.length === 0) return;
+
+            // If nothing is focused and user hits an arrow, focus the first visible cell
+            if (!focusedCell) {
+                if (e.key.startsWith("Arrow") || e.key === "Enter") {
+                    setFocusedCell({ rowId: rowIds[0], colId: colIds[0] });
+                }
+                return;
+            }
+
+            const rIdx = rowIds.indexOf(focusedCell.rowId);
+            const cIdx = colIds.indexOf(focusedCell.colId);
+
+            // Row might have disappeared due to filtering/pagination
+            if (rIdx === -1) {
+                setFocusedCell({ rowId: rowIds[0], colId: colIds[0] });
+                return;
+            }
+
+            let nextR = rIdx;
+            let nextC = cIdx;
+
+            const moveAndScroll = (r: number, c: number) => {
+                const newFocus = { rowId: rowIds[r], colId: colIds[c] };
+                setFocusedCell(newFocus);
+                // Ensure it's visible - small timeout to allow DOM to settle if needed
+                setTimeout(() => {
+                    const el = document.getElementById(`cell-${newFocus.rowId}-${newFocus.colId}`);
+                    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }, 0);
+            };
+
+            switch (e.key) {
+                case "ArrowDown":
+                    e.preventDefault();
+                    nextR = Math.min(rowIds.length - 1, rIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowUp":
+                    e.preventDefault();
+                    nextR = Math.max(0, rIdx - 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowRight":
+                    e.preventDefault();
+                    nextC = Math.min(colIds.length - 1, cIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "ArrowLeft":
+                    e.preventDefault();
+                    nextC = Math.max(0, cIdx - 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "Enter":
+                    e.preventDefault();
+                    const col = cols[cIdx];
+                    if (!col) return;
+                    // If it's a field we can edit, start editing
+                    if (col.type !== "static" && col.id !== "__profile" && col.id !== "__contributor" && col.id !== "__assigned" && col.id !== "__payment") {
+                        const canEdit = isMaster || isPureMaster || (colPermissions?.roles?.[userRole]?.[col.id] || colPermissions?.users?.[(data as any).clerkId]?.[col.id] || (col.isInternal ? "hide" : "edit")) === "edit";
+                        if (canEdit && !col.isLocked) {
+                            const res = paginatedResponses[rIdx];
+                            const val = getCellValue(res.id, col.id, !!col.isInternal);
+                            setEditingCell({ rowId: res.id, colId: col.id });
+                            setEditValue(val || "");
+                        }
+                    } else {
+                        // For special columns like profile, assigned, etc, Enter should trigger their click action
+                        const res = paginatedResponses[rIdx];
+                        if (col.id === "__profile") { setSelectedResponse(res); setHighlightedRowId(res.id); }
+                        else if (col.id === "__assigned") { setOpenAssignedCell(res.id); }
+                        else if (col.id === "__payment") { setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id }); }
+                        else if (["__followup", "__recentRemark", "__nextFollowUpDate", "__followUpStatus"].includes(col.id)) {
+                            setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                        }
+                    }
+                    break;
+                case "Tab":
+                    e.preventDefault();
+                    if (e.shiftKey) nextC = Math.max(0, cIdx - 1);
+                    else nextC = Math.min(colIds.length - 1, cIdx + 1);
+                    moveAndScroll(nextR, nextC);
+                    break;
+                case "Escape":
+                    setFocusedCell(null);
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [focusedCell, editingCell, paginatedResponses, getColumns, isMaster, isPureMaster, data, userRole, colPermissions]);
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent | TouchEvent) => {
@@ -1455,6 +1865,7 @@ export default function CRMSpreadsheetPage() {
             setActiveColumnFilter(null);
             setUserResults([]);
             setAccessUserResults([]);
+            // Don't clear focusedCell on every click here, because we want to set it in td's onClick
         };
         document.addEventListener('mousedown', handleClickOutside);
         document.addEventListener('touchstart', handleClickOutside);
@@ -1620,12 +2031,19 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        // 💎 REFRESH ENGINE: Instant Cell Closure
+        setEditingCell(null);
+
         const cellKey = `${responseId}-${columnId}`;
         const previousData = data;
 
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
         if (currentVal === value) return;
+
+        // 💎 REFRESH ENGINE: Local Sync State (Prevents 'Vanishing' Lag)
+        setPendingUpdates(prev => ({ ...prev, [cellKey]: value }));
+
         setData(prev => {
             if (!prev) return prev;
             if (isInternal) {
@@ -1663,7 +2081,22 @@ export default function CRMSpreadsheetPage() {
         try {
             if (!navigator.onLine) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: crypto.randomUUID(), updatedAt: Date.now() });
+                const existingIdx = pendingUpdates.findIndex((u: any) => u.responseId === responseId && u.columnId === columnId);
+                
+                if (existingIdx > -1) {
+                    pendingUpdates[existingIdx] = { ...pendingUpdates[existingIdx], value, updatedAt: Date.now() };
+                } else {
+                    pendingUpdates.push({ 
+                        responseId, 
+                        columnId, 
+                        value, 
+                        isInternal, 
+                        formId: params.id, 
+                        tempId: crypto.randomUUID(), 
+                        updatedAt: Date.now() 
+                    });
+                }
+                
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
                 toast("Saved offline. Will sync when online.", { icon: '📶' });
@@ -1677,17 +2110,60 @@ export default function CRMSpreadsheetPage() {
             });
 
             if (!res.ok) {
+                // If it's a server error or timeout, treat as offline rather than rollback
+                if (res.status >= 500 || res.status === 408) {
+                    throw new Error(`Server error ${res.status}`);
+                }
+
+                if (res.status === 401 || res.status === 403) {
+                    toast.error("Session expired. Please refresh.");
+                    return;
+                }
+
                 toast.error("Sync failed");
-                setData(previousData); // Rollback
+                setData(previousData); // Rollback for genuine validation/permission errors
+            } else {
+                // 💎 Instant History Update
+                setData(prev => {
+                    if (!prev) return prev;
+                    const col = getColumns.find(c => c.id === columnId);
+                    const newActivity: FormActivity = {
+                        id: crypto.randomUUID(),
+                        responseId,
+                        userName: "You",
+                        type: "CELL_UPDATE",
+                        columnName: col?.label || "Field",
+                        oldValue: currentVal || "",
+                        newValue: value,
+                        createdAt: new Date().toISOString()
+                    };
+                    return { ...prev, activities: [newActivity, ...(prev.activities || [])] };
+                });
             }
         } catch (err) {
-            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch') || String(err).includes('Server error')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ responseId, columnId, value, isInternal, formId: params.id, tempId: crypto.randomUUID(), updatedAt: Date.now() });
+                const existingIdx = pendingUpdates.findIndex((u: any) => u.responseId === responseId && u.columnId === columnId);
+                
+                if (existingIdx > -1) {
+                    pendingUpdates[existingIdx] = { ...pendingUpdates[existingIdx], value, updatedAt: Date.now() };
+                } else {
+                    pendingUpdates.push({ 
+                        responseId, 
+                        columnId, 
+                        value, 
+                        isInternal, 
+                        formId: params.id, 
+                        tempId: crypto.randomUUID(), 
+                        updatedAt: Date.now() 
+                    });
+                }
+                
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
-                toast("Saved offline. Will sync when online.", { icon: '📶' });
+                toast("Network error. Saved offline for later sync.", { icon: '📶' });
             } else {
+                console.error("Update error:", err);
                 toast.error("Matrix error");
                 setData(previousData); // Rollback
             }
@@ -1697,34 +2173,96 @@ export default function CRMSpreadsheetPage() {
                 next.delete(cellKey);
                 return next;
             });
+            // 💎 Persistence Shield: Delay cleanup to allow master state to settle
+            setTimeout(() => {
+                setPendingUpdates(prev => {
+                    const next = { ...prev };
+                    delete next[cellKey];
+                    return next;
+                });
+            }, 1000);
         }
     };
 
     const handleStatusCellUpdate = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+        // 💎 REFRESH ENGINE: Instant Cell Closure
+        setEditingCell(null);
+
+        const cellKey = `${responseId}-${columnId}`;
+        setSavingCells(prev => {
+            const next = new Set(prev);
+            next.add(cellKey);
+            return next;
+        });
+
         // 1. Optimistic Update (Immediate Feedback)
         setData(prev => {
             if (!prev) return prev;
+
+            // 1. Update Responses for Remarks and Direct Properties
+            const updatedResponses = prev.responses.map(r => {
+                if (r.id === responseId) {
+                    const updatedRow = { ...r };
+
+                    // Update property directly for instant visibility in table
+                    (updatedRow as any)[columnId] = value;
+
+                    // Update remarks for audit trail
+                    updatedRow.remarks = [{
+                        id: 'temp-' + Date.now(),
+                        remark: `Status action: ${value}`,
+                        followUpStatus: value,
+                        createdAt: new Date().toISOString()
+                    } as any, ...(r.remarks || [])];
+
+                    return updatedRow;
+                }
+                return r;
+            });
+
+            // 2. Also update internalValues array to ensure getCellValue picks it up
+            const updatedInternalValues = isInternal
+                ? prev.internalValues.map(iv =>
+                    (iv.responseId === responseId && iv.columnId === columnId)
+                        ? { ...iv, value }
+                        : iv
+                )
+                : prev.internalValues;
+
+            // If it was internal but didn't exist yet, we might need to push it
+            if (isInternal && !prev.internalValues.find(iv => iv.responseId === responseId && iv.columnId === columnId)) {
+                updatedInternalValues.push({ responseId, columnId, value });
+            }
+
             return {
                 ...prev,
-                responses: prev.responses.map(r => {
-                    if (r.id === responseId) {
-                        return { 
-                            ...r, 
-                            remarks: [{ 
-                                id: 'temp-' + Date.now(),
-                                remark: `Status action: ${value}`,
-                                followUpStatus: value,
-                                createdAt: new Date().toISOString()
-                            } as any, ...(r.remarks || [])]
-                        };
-                    }
-                    return r;
-                })
+                responses: updatedResponses,
+                internalValues: updatedInternalValues
             };
         });
-        
+
         // 2. Persistent update
         try {
+            if (!navigator.onLine) {
+                const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                pendingUpdates.push({ 
+                    responseId, 
+                    columnId, 
+                    value, 
+                    isInternal, 
+                    type: 'STATUS_UPDATE',
+                    remark: `Status action: ${value}`,
+                    followUpStatus: value,
+                    formId: params.id, 
+                    tempId: crypto.randomUUID(), 
+                    updatedAt: Date.now() 
+                });
+                localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                setPendingOfflineCount(pendingUpdates.length);
+                toast("Interaction saved offline.", { icon: '📶' });
+                return;
+            }
+
             const res = await fetch(`/api/crm/forms/${params.id}/responses/${responseId}/remarks`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1734,9 +2272,13 @@ export default function CRMSpreadsheetPage() {
                     columnId: columnId
                 })
             });
-            
+
             if (!res.ok) {
-                const errData = await res.json();
+                if (res.status === 401 || res.status === 403) {
+                    toast.error("Session expired.");
+                    return;
+                }
+                const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || "Failed to log interaction");
             }
 
@@ -1744,16 +2286,48 @@ export default function CRMSpreadsheetPage() {
                 icon: '📞',
                 duration: 2000
             });
-            
-            // Re-fetch to sync IDs and other data
-            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+
+            // DO NOT re-fetch. Rely on optimistic state.
         } catch (e: any) {
             console.error(e);
-            toast.error(e.message || "Failed to log interaction");
-            // Re-fetch to revert optimistic update if failed
-            fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+
+            if (!navigator.onLine || String(e).includes('Network') || String(e).includes('fetch') || String(e).includes('Server error')) {
+                const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
+                pendingUpdates.push({ 
+                    responseId, 
+                    columnId, 
+                    value, 
+                    isInternal, 
+                    type: 'STATUS_UPDATE',
+                    remark: `Status action: ${value}`,
+                    followUpStatus: value,
+                    formId: params.id, 
+                    tempId: crypto.randomUUID(), 
+                    updatedAt: Date.now() 
+                });
+                localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
+                setPendingOfflineCount(pendingUpdates.length);
+                toast("Network hiccup. Saved offline.", { icon: '📶' });
+            } else {
+                toast.error(e.message || "Failed to log interaction");
+                fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            }
+        } finally {
+            setSavingCells(prev => {
+                const next = new Set(prev);
+                next.delete(cellKey);
+                return next;
+            });
+            // 💎 Persistence Shield: Delay cleanup to allow master state to settle
+            setTimeout(() => {
+                setPendingUpdates(prev => {
+                    const next = { ...prev };
+                    delete next[cellKey];
+                    return next;
+                });
+            }, 1000);
+            setEditingCell(null);
         }
-        setEditingCell(null);
     };
 
     const handleUpdateRowColor = async (responseId: string, color: string | null) => {
@@ -1774,12 +2348,20 @@ export default function CRMSpreadsheetPage() {
                 body: JSON.stringify({ responseId, rowColor: color || "", formId: params.id })
             });
             if (!res.ok) {
+                if (res.status >= 500 || res.status === 408) {
+                    toast("Color saved locally, sync pending.", { icon: '📶' });
+                    return;
+                }
                 toast.error("Color sync failed");
                 setData(previousData);
             }
         } catch (err) {
             console.error("Row color error", err);
-            setData(previousData);
+            if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
+                toast("Color saved locally.", { icon: '📶' });
+            } else {
+                setData(previousData);
+            }
         }
     };
 
@@ -1888,7 +2470,7 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleDeleteColumn = async (columnId: string) => {
-        if (!isPureMaster) return toast.error("MASTER MODE REQUIRED");
+        if (!isMaster && !isPureMaster) return toast.error("MASTER MODE REQUIRED");
         if (!confirm("PURGE PROTOCOL: This will permanently delete the entire column and all associated data. Continue?")) return;
         if (!data) return;
 
@@ -1999,6 +2581,96 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleRemoveFormAccess = async (targetUserId: string | null, targetRole: string | null) => {
+        if (!isMaster && !isPureMaster) {
+            toast.error("Security: Access restricted to Master");
+            return;
+        }
+
+        const currentUsers = data?.form?.visibleToUsers || [];
+        const currentRoles = data?.form?.visibleToRoles || [];
+
+        let newUsers = [...currentUsers];
+        let newRoles = [...currentRoles];
+
+        if (targetUserId) {
+            newUsers = newUsers.filter(uid => uid !== targetUserId);
+        }
+        if (targetRole) {
+            newRoles = newRoles.filter(r => r.toUpperCase() !== targetRole.toUpperCase());
+        }
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/bulk/visibility`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "FORM",
+                    visibleToUsers: newUsers,
+                    visibleToRoles: newRoles
+                })
+            });
+            if (res.ok) {
+                toast.success("Security protocols updated");
+                fetchData();
+            }
+        } catch (err) {
+            toast.error("Failed to update access");
+        }
+    };
+
+    const handleInstantStatusUpdate = async (responseId: string, newStatus: string) => {
+        // 🚀 OPTIMISTIC UI UPDATE
+        const timestamp = new Date().toISOString();
+        setData(prev => {
+            if (!prev) return prev;
+            const updatedResponses = prev.responses.map(r => {
+                if (r.id === responseId) {
+                    const existingRemarks = r.remarks || [];
+                    const updatedRemarks = [{
+                        id: `temp-${Date.now()}`,
+                        followUpStatus: newStatus,
+                        remark: `Status update: ${newStatus}`,
+                        createdAt: timestamp,
+                        authorName: user?.firstName || "You"
+                    }, ...existingRemarks];
+
+                    // Update both remarks AND the shadow property if it exists
+                    return {
+                        ...r,
+                        remarks: updatedRemarks,
+                        __followUpStatus: newStatus // Ensure system status also updates property
+                    };
+                }
+                return r;
+            });
+            return { ...prev, responses: updatedResponses };
+        });
+
+        setActiveStatusDropdown(null);
+        toast.success(`Matrix Transition: ${newStatus}`, {
+            icon: '⚡',
+            style: { borderRadius: '15px', background: '#333', color: '#fff', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }
+        });
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses/${responseId}/remarks`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    remark: `Instant status transition to ${newStatus}`,
+                    followUpStatus: newStatus
+                })
+            });
+            if (!res.ok) throw new Error("Sync failed");
+            // DO NOT re-fetch immediately on success to prevent flicker. 
+            // The optimistic data is already correct.
+        } catch (err) {
+            toast.error("Status Matrix Sync Failed");
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true); // Only rollback on error
+        }
+    };
+
     const toggleRowSelection = (id: string) => {
         setSelectedRows(prev => prev.includes(id) ? prev.filter(rid => rid !== id) : [...prev, id]);
     };
@@ -2040,19 +2712,21 @@ export default function CRMSpreadsheetPage() {
         toast.success("Filters Neutralized");
     };
 
-    const toggleAllRows = () => {
-        if (selectedRows.length === filteredResponses.length) setSelectedRows([]);
-        else setSelectedRows(filteredResponses.map(r => r.id));
+    const toggleAllRows = (count?: number) => {
+        if (count) {
+            setSelectedRows(filteredResponses.slice(0, count).map(r => r.id));
+            toast.success(`Matrix locked: First ${count} records selected`);
+        } else {
+            if (selectedRows.length === filteredResponses.length) {
+                setSelectedRows([]);
+            } else {
+                setSelectedRows(filteredResponses.map(r => r.id));
+            }
+        }
+        setIsSelectAllMenuOpen(false);
     };
 
 
-    const safeFormat = (dateStr: string, pattern: string) => {
-        try {
-            const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return "—";
-            return format(d, pattern);
-        } catch (e) { return "—"; }
-    };
 
     const dynamicStats = useMemo(() => {
         if (!data || !data.responses) return null;
@@ -2062,16 +2736,21 @@ export default function CRMSpreadsheetPage() {
 
         const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-        const totalEntries = data.responses.length;
-        const newToday = data.responses.filter(r => new Date(r.createdAt) >= today).length;
-        const newThisMonth = data.responses.filter(r => new Date(r.createdAt) >= thisMonth).length;
+        const statsSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+
+        const totalEntries = data.filteredCount || statsSource.length;
+        const newToday = statsSource.filter(r => new Date(r.createdAt) >= today).length;
+        const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
         const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
-        if (statusCol && data.internalValues) {
-            data.internalValues.filter(v => v.columnId === statusCol.id).forEach(v => {
+        if (statusCol && (data.internalValues || []).length > 0) {
+            const valuesToCount = statsSource === data.responses ? data.internalValues : data.internalValues; // Actually internalValues only match current responses
+            // This is tricky because internalValues only come for the current page
+            // For now, we'll only show status counts for the statsSource
+            (data.internalValues || []).filter(v => v.columnId === statusCol.id).forEach(v => {
                 statusCounts[v.value] = (statusCounts[v.value] || 0) + 1;
             });
         }
@@ -2120,21 +2799,82 @@ export default function CRMSpreadsheetPage() {
     );
 
     return (
-        <div className={`min-h-screen bg-[#f8fafc] flex flex-col h-screen overflow-hidden text-slate-900 ${isFullScreen ? 'p-0' : ''}`}>
+        <div className={`min-h-screen flex flex-col h-screen overflow-hidden transition-all duration-700 ${isFullScreen ? 'p-0' : ''} ${canvasTheme === 'dark' ? 'bg-[#0f172a] text-slate-100' :
+                canvasTheme === 'midnight' ? 'bg-[#020617] text-slate-100' :
+                    canvasTheme === 'ocean' ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white' :
+                        canvasTheme === 'sunset' ? 'bg-gradient-to-br from-rose-900 via-purple-900 to-slate-900 text-white' :
+                            canvasTheme === 'aurora' ? 'bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 text-white' :
+                                canvasTheme === 'mesh' ? 'bg-[#f8fafc] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-slate-900' :
+                                    canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
+                                        'bg-[#f8fafc] text-slate-900'
+            }`}>
+            {/* Deletion Progress Overlay */}
+            <AnimatePresence>
+                {deleteProgress && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, y: 20 }}
+                            animate={{ scale: 1, y: 0 }}
+                            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200"
+                        >
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="p-3 bg-rose-50 rounded-xl">
+                                    <Trash2 className="text-rose-600 animate-pulse" size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900">Purging Matrix Data</h3>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Operation in progress...</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-end mb-1">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        Deleting {deleteProgress.current} / {deleteProgress.total}
+                                    </span>
+                                    <span className="text-sm font-black text-indigo-600">
+                                        {Math.round((deleteProgress.current / deleteProgress.total) * 100)}%
+                                    </span>
+                                </div>
+                                <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
+                                    <motion.div
+                                        className="h-full bg-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.3)]"
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                        transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-center text-slate-400 font-bold italic">
+                                    Please do not close this window during the purge cycle.
+                                </p>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Premium Enterprise Header */}
             {!isFullScreen && (
-                <header className="h-[68px] bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative">
+                <header className={`h-[68px] border-b px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative transition-colors duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                        ? 'bg-black/20 backdrop-blur-md border-white/10'
+                        : 'bg-white border-slate-200'
+                    }`}>
                     <div className="flex items-center gap-4">
                         <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
                             <ArrowLeft size={16} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
                         </button>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-lg font-black tracking-tight text-slate-900">{data?.form?.title || "Data Explorer"}</h1>
+                                <h1 className={`text-lg font-black tracking-tight transition-colors duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{data?.form?.title || "Data Explorer"}</h1>
                                 {isUserInvolved && (
                                     <button
                                         onClick={togglePin}
-                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent'}`}
+                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent')}`}
                                         title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
                                     >
                                         {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
@@ -2170,7 +2910,7 @@ export default function CRMSpreadsheetPage() {
                             <div className="flex items-center gap-4 mt-1.5">
                                 <button
                                     onClick={handleClearFilters}
-                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                 >
                                     Default Canvas
                                 </button>
@@ -2178,7 +2918,7 @@ export default function CRMSpreadsheetPage() {
                                     <button
                                         key={view.id}
                                         onClick={() => applySavedView(view)}
-                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                     >
                                         {view.name}
                                     </button>
@@ -2191,12 +2931,15 @@ export default function CRMSpreadsheetPage() {
                         {/* Integrated Search & Actions */}
                         <div className="flex flex-nowrap items-center gap-2 w-max shrink-0 pr-4">
                             <div className="relative group shrink-0">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={14} />
+                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500' : 'text-slate-400'} group-focus-within:text-indigo-500`} size={14} />
                                 <input
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search records..."
-                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-4 focus:ring-indigo-50/50 focus:border-indigo-500 transition-all min-w-[200px]"
+                                    className={`pl-9 pr-4 py-2 border rounded-lg outline-none text-xs font-bold transition-all min-w-[200px] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-white/5 border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:ring-white/5'
+                                            : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-50/50 focus:border-indigo-500'
+                                        }`}
                                 />
                             </div>
 
@@ -2257,8 +3000,19 @@ export default function CRMSpreadsheetPage() {
                             </button>
 
                             <button
+                                onClick={() => setIsThemePickerOpen(true)}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                    }`}
+                            >
+                                <Palette size={12} />
+                                Canvas
+                            </button>
+
+                            <button
                                 onClick={() => setIsFilterBuilderOpen(true)}
-                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                                className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-black text-[10px] uppercase tracking-widest ${conditions.length > 0 ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/10 text-white border-white/20 hover:bg-white/20' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50')}`}
                             >
                                 <Filter size={12} />
                                 Filters
@@ -2291,14 +3045,11 @@ export default function CRMSpreadsheetPage() {
                                 <Plus size={14} />
                                 Add Row
                             </button>
-
-                            <div className="w-[1px] h-8 bg-slate-200 mx-2" />
-
-                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
-                                <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                            <div className={`flex bg-slate-50 p-1 rounded-lg border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+                                <button onClick={() => setCurrentView("table")} className={`p-1.5 rounded-md transition-all ${currentView === 'table' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}>
                                     <Table size={16} />
                                 </button>
-                                <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>
+                                <button onClick={() => setCurrentView("kanban")} className={`p-1.5 rounded-md transition-all ${currentView === 'kanban' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}>
                                     <LayoutGrid size={16} />
                                 </button>
                             </div>
@@ -2310,10 +3061,10 @@ export default function CRMSpreadsheetPage() {
                                 <Plus size={14} /> Add Column
                             </button>
 
-                            <div className="flex bg-slate-50 p-1 rounded-lg border border-slate-200">
+                            <div className={`flex p-1 rounded-lg border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
                                 <button
                                     onClick={() => setDensity("compact")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'compact' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'compact' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Compact View"
                                 >
                                     <Minimize2 size={16} />
@@ -2321,7 +3072,7 @@ export default function CRMSpreadsheetPage() {
                                 </button>
                                 <button
                                     onClick={() => setDensity("standard")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'standard' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'standard' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Standard View"
                                 >
                                     <Table size={16} />
@@ -2329,7 +3080,7 @@ export default function CRMSpreadsheetPage() {
                                 </button>
                                 <button
                                     onClick={() => setDensity("comfortable")}
-                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'comfortable' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                                    className={`p-1.5 px-3 rounded-md transition-all flex items-center gap-2 ${density === 'comfortable' ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white text-indigo-400 shadow-sm border border-white/10' : 'bg-white text-indigo-600 shadow-sm border border-slate-200') : 'text-slate-400 hover:text-slate-600'}`}
                                     title="Comfortable View"
                                 >
                                     <Maximize2 size={16} />
@@ -2339,7 +3090,10 @@ export default function CRMSpreadsheetPage() {
 
                             <button
                                 onClick={() => setIsFullScreen(true)}
-                                className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 transition-all active:scale-95"
+                                className={`p-2 rounded-lg transition-all active:scale-95 border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+                                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    }`}
                                 title="Full Screen Mode"
                             >
                                 <Maximize2 size={16} />
@@ -2364,7 +3118,104 @@ export default function CRMSpreadsheetPage() {
             }
 
             {/* Matrix Console */}
-            <main className="flex-1 overflow-hidden bg-slate-50 relative flex flex-col">
+            <main className={`flex-1 overflow-hidden relative flex flex-col transition-all duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-transparent' : 'bg-slate-50'
+                }`}>
+
+                {/* ☣️ MATRIX PURGE PROGRESS OVERLAY */}
+                {deleteProgress && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" />
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            className="relative bg-white rounded-[40px] p-10 max-w-sm w-full shadow-[0_32px_128px_-16px_rgba(0,0,0,0.5)] border border-white overflow-hidden"
+                        >
+                            <div className="absolute top-0 left-0 w-full h-2 bg-slate-50">
+                                <motion.div
+                                    className="h-full bg-indigo-600 shadow-[0_0_20px_rgba(79,70,229,0.5)]"
+                                    animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                />
+                            </div>
+
+                            <div className="flex flex-col items-center text-center">
+                                <div className="w-20 h-20 rounded-3xl bg-rose-50 text-rose-500 flex items-center justify-center mb-6 shadow-inner ring-8 ring-rose-50/50">
+                                    <Activity size={40} className="animate-pulse" />
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-900 tracking-tighter mb-2">Matrix Purge in Progress</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-8 px-4">Sector extraction and record incineration cycle active.</p>
+
+                                <div className="w-full space-y-2">
+                                    <div className="flex justify-between items-end px-1">
+                                        <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{deleteProgress.current} / {deleteProgress.total}</p>
+                                        <p className="text-2xl font-black text-indigo-600">{Math.round((deleteProgress.current / deleteProgress.total) * 100)}<span className="text-xs">%</span></p>
+                                    </div>
+                                    <div className="h-4 w-full bg-slate-100 rounded-2xl overflow-hidden border-2 border-slate-50 p-1">
+                                        <motion.div
+                                            className="h-full bg-indigo-600 rounded-xl"
+                                            animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
+                                            transition={{ type: 'spring', bounce: 0, duration: 0.5 }}
+                                        />
+                                    </div>
+                                </div>
+                                <p className="mt-8 text-[9px] font-black text-rose-500 uppercase tracking-widest animate-pulse border border-rose-100 px-4 py-2 rounded-full bg-rose-50">CRITICAL: Stability Interlock Active</p>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* 🚀 REAL-TIME METRICS HUB */}
+                {!isFullScreen && (
+                    <div className="px-6 py-4 bg-white border-b border-slate-200/60 flex items-center gap-6 shrink-0 z-40 overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100">
+                            <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-xl shadow-slate-200">
+                                <Activity size={20} />
+                            </div>
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Pulse</h4>
+                                <p className="text-xs font-black text-slate-900">Performance Metrics</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-8">
+                            <div className="flex flex-col">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Core</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-slate-900">{data?.totalCount || "..."}</span>
+                                    <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">+Live</span>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Matrix Yield</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-slate-900">84.2%</span>
+                                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                        <div className="h-full bg-indigo-500 w-[84%]" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col pr-8 border-r border-slate-100">
+                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Attention Matrix</p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg font-black text-amber-600">{todayFollowUps.length}</span>
+                                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                                <div className="flex -space-x-2">
+                                    {teamMembers.slice(0, 3).map(m => (
+                                        <div key={m.clerkId} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-slate-100 shadow-sm">
+                                            <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="auth" className="w-full h-full object-cover" />
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{teamMembers.length} Agents Online</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ⚡ FLASH RECOVERY: Today's High priority actions */}
                 {todayFollowUps.length > 0 && !isFullScreen && (
@@ -2377,12 +3228,12 @@ export default function CRMSpreadsheetPage() {
                             <span className="text-xl font-black tracking-tight text-slate-800">{todayFollowUps.length} Pending Actions</span>
                         </div>
                         <div className="flex items-center gap-4 py-1">
-                            {todayFollowUps.slice(0, 10).map((res) => {
+                            {todayFollowUps.slice(0, 10).map((res: any) => {
                                 // Smart Search for Number
                                 const phoneField = data?.form?.fields?.find(f =>
                                     f.label.toLowerCase().includes("phone") || f.label.toLowerCase().includes("number") || f.label.toLowerCase().includes("contact")
                                 );
-                                const phone = res.values?.find(v => v.fieldId === phoneField?.id)?.value || "—";
+                                const phone = res.values?.find((v: any) => v.fieldId === phoneField?.id)?.value || "—";
                                 const latestRemarkFull = res.remarks?.[0];
                                 const latestRemark = latestRemarkFull?.remark || "Waiting for interaction protocol...";
                                 const followUpCount = res.remarks?.length || 0;
@@ -2508,6 +3359,24 @@ export default function CRMSpreadsheetPage() {
                                                     </div>
                                                     <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m.email || 'No email'}</p>
                                                 </div>
+                                                {(isMaster || isPureMaster) && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (window.confirm(`Are you sure you want to remove access for ${m.firstName || m.email}?`)) {
+                                                                const isExplicit = explicitUsers.some((eu: any) => eu.clerkId === m.clerkId);
+                                                                const roleMatch = m.role && visibleRoles.includes(m.role.toUpperCase()) ? m.role.toUpperCase() : null;
+
+                                                                if (isExplicit) handleRemoveFormAccess(m.clerkId, null);
+                                                                else if (roleMatch) handleRemoveFormAccess(null, roleMatch);
+                                                            }
+                                                        }}
+                                                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                                                        title="Revoke Access"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
                                             </div>
                                         )
                                     })}
@@ -2525,7 +3394,10 @@ export default function CRMSpreadsheetPage() {
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
-                            className="flex-1 w-full overflow-auto custom-scrollbar bg-white rounded-xl shadow-sm border border-slate-200 relative"
+                            className={`flex-1 w-full overflow-auto custom-scrollbar rounded-xl border relative transition-all duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                    ? 'bg-black/40 backdrop-blur-xl border-white/10 shadow-2xl'
+                                    : 'bg-white border-slate-200 shadow-sm'
+                                }`}
                         >
                             <AnimatePresence>
                                 {isSyncing && (
@@ -2533,25 +3405,44 @@ export default function CRMSpreadsheetPage() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="sticky top-0 left-0 right-0 h-1 bg-indigo-50 z-[100] overflow-hidden"
+                                        className="fixed inset-0 z-[100000] flex flex-col items-center justify-center pointer-events-none transition-all duration-500"
                                     >
-                                        <motion.div
-                                            className="h-full bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.8)]"
-                                            initial={{ x: "-100%" }}
-                                            animate={{ x: "100%" }}
-                                            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                                        />
+                                        <div className="flex flex-col items-center gap-6 p-12 rounded-[48px] bg-white/95 shadow-[0_32px_100px_rgba(0,0,0,0.25)] border border-slate-200/50 animate-pulse relative">
+                                            {/* Glow effect */}
+                                            <div className="absolute inset-0 bg-indigo-500/5 blur-3xl rounded-full" />
+                                            
+                                            <div className="relative w-24 h-24">
+                                                <motion.div
+                                                    animate={{ rotate: 360, scale: [1, 1.05, 1] }}
+                                                    transition={{ rotate: { repeat: Infinity, duration: 3, ease: "linear" }, scale: { repeat: Infinity, duration: 2 } }}
+                                                    className="w-full h-full border-[6px] border-indigo-600/10 border-t-indigo-600 rounded-[32px] shadow-2xl shadow-indigo-200"
+                                                />
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <Bot size={40} className="text-indigo-600 animate-bounce" />
+                                                </div>
+                                            </div>
+                                            <div className="text-center space-y-2 relative z-10">
+                                                <h3 className="text-base font-black text-slate-900 uppercase tracking-[0.4em]">Intelligence Matrix</h3>
+                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Neural Stream active...</p>
+                                            </div>
+                                        </div>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                             <table
                                 style={{ minWidth: Math.max(totalTableWidth, 1200) }}
-                                className={`table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${isSyncing ? 'opacity-50' : 'opacity-100'}`}
+                                className={`matrix-table table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${ (isSyncing || isBulkDeleting) ? 'select-none cursor-wait' : ''}`}
                             >
-                                <thead className="sticky top-0 z-[40]">
+                                <thead className="sticky top-0 z-[50]">
                                     {/* Excel Column Labels Header with Group Indication */}
-                                    <tr className="bg-slate-50 divide-x divide-slate-100 h-9 transition-colors">
-                                        <th className={`sticky left-0 bg-slate-200 z-[45] border-b border-slate-300 text-[9px] font-black text-slate-500 uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0]`}>
+                                    <tr className={`divide-x h-9 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-900/80 divide-white/5 border-b border-white/10'
+                                            : 'bg-slate-50 divide-slate-100 border-b border-slate-200'
+                                        }`}>
+                                        <th className={`sticky left-0 z-[45] text-[9px] font-black uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0] transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                ? 'bg-slate-800 border-b border-white/10 text-slate-400 shadow-none'
+                                                : 'bg-slate-200 border-b border-slate-300 text-slate-500'
+                                            }`}>
                                             #
                                         </th>
                                         {getColumns.map((col, idx) => {
@@ -2563,7 +3454,10 @@ export default function CRMSpreadsheetPage() {
                                             return (
                                                 <th
                                                     key={`excel-label-${col.id}`}
-                                                    className={`${style.headerBg} border-b border-slate-200 text-[9px] font-black text-slate-400 uppercase p-0 h-9 text-center relative overflow-hidden`}
+                                                    className={`border-b text-[9px] font-black uppercase p-0 h-9 text-center relative overflow-hidden transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                            ? 'bg-slate-900 border-white/10 text-slate-500'
+                                                            : `${style.headerBg} border-slate-200 text-slate-400`
+                                                        }`}
                                                     style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
                                                 >
                                                     <div className="flex flex-col items-center justify-center h-full">
@@ -2581,51 +3475,111 @@ export default function CRMSpreadsheetPage() {
                                             );
                                         })}
                                     </tr>
-                                    <tr className="bg-[#F9FAFB] border-b border-[#EAECF0] h-14">
-                                        <th className={`px-4 py-3 border-b border-[#EAECF0] sticky left-0 bg-[#F9FAFB] z-[45] shadow-[1px_0_0_#EAECF0] ${isPureMaster ? 'w-[70px]' : 'w-[56px]'}`}>
-                                            <div className="flex items-center justify-center gap-1.5">
-                                                <div
-                                                    onClick={toggleAllRows}
-                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-[#D0D5DD]'}`}
-                                                >
-                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
+                                    <tr className={`h-14 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-900 border-b border-white/10'
+                                            : 'bg-[#F9FAFB] border-b border-[#EAECF0]'
+                                        }`}>
+                                        <th className={`px-4 py-3 sticky left-0 z-[45] transition-colors ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                ? 'bg-slate-900 border-b border-white/10 shadow-[1px_0_0_rgba(255,255,255,0.1)]'
+                                                : 'bg-[#F9FAFB] border-b border-[#EAECF0] shadow-[1px_0_0_#EAECF0]'
+                                            }`}>
+                                            <div className="flex items-center justify-center gap-1.5 relative">
+                                                <div className="relative flex items-center gap-1">
+                                                    <div
+                                                        onClick={() => toggleAllRows()}
+                                                        className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length > 0
+                                                                ? (selectedRows.length === (filteredResponses?.length || 0) ? 'bg-indigo-600 border-indigo-600' : 'bg-indigo-100 border-indigo-400')
+                                                                : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')
+                                                            }`}
+                                                    >
+                                                        {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? (
+                                                            <Check size={10} className="text-white" />
+                                                        ) : selectedRows.length > 0 ? (
+                                                            <div className="w-2 h-0.5 bg-indigo-600 rounded" />
+                                                        ) : null}
+                                                    </div>
+
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setIsSelectAllMenuOpen(!isSelectAllMenuOpen); }}
+                                                        className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${isSelectAllMenuOpen ? 'bg-slate-200 text-indigo-600' : 'text-slate-400'}`}
+                                                    >
+                                                        <ChevronDown size={10} />
+                                                    </button>
+
+                                                    <AnimatePresence>
+                                                        {isSelectAllMenuOpen && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                className={`absolute top-full left-0 mt-2 w-48 rounded-2xl shadow-2xl border z-[300] overflow-hidden p-1.5 backdrop-blur-3xl ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'bg-slate-900/95 border-white/10'
+                                                                        : 'bg-white border-slate-200'
+                                                                    }`}
+                                                            >
+                                                                <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Batch Control</p>
+                                                                </div>
+                                                                {[50, 100, 200, 500].map(num => (
+                                                                    <button
+                                                                        key={num}
+                                                                        onClick={() => toggleAllRows(num)}
+                                                                        className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold flex items-center justify-between group/row transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'text-slate-300 hover:bg-white/10 hover:text-white'
+                                                                                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                                                                            }`}
+                                                                    >
+                                                                        <span>Select First {num}</span>
+                                                                        <span className="text-[10px] opacity-0 group-hover/row:opacity-100 transition-opacity">Rows</span>
+                                                                    </button>
+                                                                ))}
+                                                                <div className="p-2 mt-1 border-t border-slate-100">
+                                                                    <div className="flex gap-1.5">
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder="Custom"
+                                                                            value={customSelectCount}
+                                                                            onChange={(e) => setCustomSelectCount(e.target.value)}
+                                                                            className="w-full px-2 py-1.5 rounded-lg border text-[10px] font-bold bg-slate-50 outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => toggleAllRows(parseInt(customSelectCount))}
+                                                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase"
+                                                                        >
+                                                                            Go
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
                                                 </div>
-                                                <span className="text-[9px] font-black text-slate-400">ID</span>
+                                                <span className={`text-[9px] font-black ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500' : 'text-slate-400'}`}>ID</span>
                                             </div>
                                         </th>
                                         {getColumns.map((col, cIdx) => {
-                                            const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : 180);
-                                            const isSticky = cIdx < 2;
+                                            const metrics = columnMetrics[col.id];
+                                            const { width, left: leftOffset, isSticky } = metrics;
                                             const groupKey = getColumnGroup(col);
                                             const style = getGroupStyle(groupKey);
 
-                                            // Dynamic left offset
-                                            let leftOffset = isPureMaster ? 70 : 50;
-                                            if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
-                                            if (isSticky && cIdx > 0) {
-                                                for (let i = 0; i < cIdx; i++) {
-                                                    const prevCol = getColumns[i];
-                                                    // use same logic as totalTableWidth
-                                                    leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
-                                                }
-                                            }
-
                                             const TypeIcon = col.type === 'static' ? (col.id === '__profile' ? Maximize2 : Users) : (COLUMN_TYPES.find(t => t.id === col.type)?.icon || Type);
 
+                                            const isFiltered = conditions.some(c => c.colId === col.id);
                                             return (
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[10px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky z-40 shadow-[1px_0_0_#EAECF0]' : ''} ${style.bg} ${style.text}`}
+                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-emerald-500/30') : ''}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
                                                         <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={10} className={`${style.text} shrink-0`} />
+                                                            <TypeIcon size={12} className={`${style.text} shrink-0`} />
                                                             <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
-                                                            <div className="flex items-center gap-0.5 isolate shrink-0 relative">
+                                                            <div className="flex items-center gap-0.5 shrink-0 relative">
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -2643,8 +3597,13 @@ export default function CRMSpreadsheetPage() {
                                                                 </button>
                                                                 <button title="Filter"
                                                                     onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setActiveColumnFilter(activeColumnFilter === col.id ? null : col.id);
+                                                                        if (activeColumnFilter === col.id) {
+                                                                            setActiveColumnFilter(null);
+                                                                            setActiveColumnFilterSearch("");
+                                                                        } else {
+                                                                            setActiveColumnFilter(col.id);
+                                                                            setActiveColumnFilterSearch("");
+                                                                        }
                                                                     }}
                                                                     className={`ignore-click-outside p-1 rounded transition-colors ${conditions.some(c => c.colId === col.id) ? 'text-indigo-600 opacity-100 bg-indigo-50' : 'text-slate-400 opacity-0 group-hover/h:opacity-100 hover:bg-slate-200 focus:opacity-100'}`}
                                                                 >
@@ -2652,39 +3611,58 @@ export default function CRMSpreadsheetPage() {
                                                                 </button>
                                                                 {activeColumnFilter === col.id && (
                                                                     <div
-                                                                        className="ignore-click-outside absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-xl rounded-lg py-0 min-w-[200px] max-w-[280px] z-[9999] max-h-72 flex flex-col font-sans"
+                                                                        className={`ignore-click-outside absolute top-full right-0 mt-1 shadow-2xl rounded-xl py-0 min-w-[220px] max-w-[300px] z-[9999] max-h-80 flex flex-col font-sans border backdrop-blur-3xl ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'bg-slate-900/95 border-white/10 text-white'
+                                                                                : 'bg-white border-slate-200 text-slate-900'
+                                                                            }`}
                                                                         onClick={(e) => e.stopPropagation()}
                                                                         onMouseDown={(e) => e.stopPropagation()}
                                                                     >
-                                                                        <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
-                                                                            <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest">{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
-                                                                            <button onClick={() => setActiveColumnFilter(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors">
+                                                                        <div className={`px-4 py-2.5 border-b flex items-center justify-between shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50/50 border-slate-100'
+                                                                            }`}>
+                                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-800'}`}>{col.id === "__contributor" ? "By Submitter" : `Filter ${col.label}`}</span>
+                                                                            <button onClick={() => setActiveColumnFilter(null)} className={`p-1 rounded-lg transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200'}`}>
                                                                                 <X size={10} />
                                                                             </button>
                                                                         </div>
+                                                                        <div className={`px-4 py-2.5 border-b sticky top-0 z-10 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900/50 border-white/10' : 'bg-white border-slate-100'}`}>
+                                                                            <div className="relative">
+                                                                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={10} />
+                                                                                <input
+                                                                                    autoFocus
+                                                                                    placeholder="Find value..."
+                                                                                    value={activeColumnFilterSearch}
+                                                                                    onChange={(e) => setActiveColumnFilterSearch(e.target.value)}
+                                                                                    className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-[10px] font-bold outline-none transition-all border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                            ? 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-indigo-500'
+                                                                                            : 'bg-slate-100/50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-300 shadow-inner'
+                                                                                        }`}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
                                                                         <div className="overflow-y-auto custom-scrollbar flex-1 py-1">
                                                                             {col.type === "date" && (
-                                                                                <div className="p-3 border-b border-slate-100 bg-slate-50 space-y-3 shrink-0">
+                                                                                <div className={`p-3 rounded-lg border m-1 space-y-3 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
                                                                                     <div className="grid grid-cols-2 gap-2">
                                                                                         <button
                                                                                             onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'today', val: '' }])}
-                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'today') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                                                            className={`py-2 rounded-lg text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'today') ? 'bg-indigo-600 text-white shadow-lg' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100')}`}
                                                                                         >
                                                                                             Today
                                                                                         </button>
                                                                                         <button
                                                                                             onClick={() => setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'this_week', val: '' }])}
-                                                                                            className={`py-1.5 rounded text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'this_week') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                                                                            className={`py-2 rounded-lg text-[9px] font-black uppercase tracking-widest text-center transition-all ${conditions.some(c => c.colId === col.id && c.op === 'this_week') ? 'bg-indigo-600 text-white shadow-lg' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10 hover:text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100')}`}
                                                                                         >
                                                                                             This Week
                                                                                         </button>
                                                                                     </div>
                                                                                     <div>
-                                                                                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Specific Date</span>
+                                                                                        <span className={`text-[9px] font-black uppercase tracking-widest mb-1.5 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>Specific Date</span>
                                                                                         <div className="flex gap-2">
                                                                                             <input
                                                                                                 type="date"
-                                                                                                className="flex-1 text-[10px] font-bold text-slate-600 p-1.5 bg-white border border-slate-200 rounded outline-none focus:border-indigo-500"
+                                                                                                className={`flex-1 text-[10px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 focus:border-indigo-500 shadow-sm'}`}
                                                                                                 onChange={(e) => {
                                                                                                     const val = e.target.value;
                                                                                                     if (val) {
@@ -2698,16 +3676,16 @@ export default function CRMSpreadsheetPage() {
                                                                                     </div>
                                                                                     <div className="grid grid-cols-2 gap-2">
                                                                                         <div>
-                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">After</span>
-                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className={`text-[8px] font-black uppercase tracking-widest mb-1 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>After</span>
+                                                                                            <input type="date" className={`w-full text-[9px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 shadow-sm'}`} onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'after'), { colId: col.id, op: 'after', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'after')));
                                                                                             }} />
                                                                                         </div>
                                                                                         <div>
-                                                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Before</span>
-                                                                                            <input type="date" className="w-full text-[9px] font-bold p-1 border border-slate-200 rounded text-slate-600 outline-none" onChange={e => {
+                                                                                            <span className={`text-[8px] font-black uppercase tracking-widest mb-1 block ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-slate-500'}`}>Before</span>
+                                                                                            <input type="date" className={`w-full text-[9px] font-bold p-1.5 rounded-lg outline-none border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10 text-white focus:border-indigo-500' : 'bg-white border-slate-200 text-slate-600 shadow-sm'}`} onChange={e => {
                                                                                                 const val = e.target.value;
                                                                                                 if (val) setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.op !== 'before'), { colId: col.id, op: 'before', val }]);
                                                                                                 else setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'before')));
@@ -2718,37 +3696,62 @@ export default function CRMSpreadsheetPage() {
                                                                             )}
 
                                                                             {/* Universal Quick Filters: Is Empty / Is Not Empty */}
-                                                                            <div className="px-1 py-1 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-0.5 shrink-0">
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_empty');
-                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_empty')));
-                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_empty', val: '' }]);
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
-                                                                                >
-                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
-                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_empty') && <Check size={8} className="text-white" />}
-                                                                                    </div>
-                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_empty') ? 'text-white' : 'text-slate-600'}`}>Is Empty</span>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => {
-                                                                                        const isSelected = conditions.some(c => c.colId === col.id && c.op === 'is_not_empty');
-                                                                                        if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === 'is_not_empty')));
-                                                                                        else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op: 'is_not_empty', val: '' }]);
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition-all ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-indigo-600 text-white shadow-sm' : 'hover:bg-slate-100 text-slate-600'}`}
-                                                                                >
-                                                                                    <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'bg-white/20 border-white/40' : 'bg-slate-200 border-slate-300'}`}>
-                                                                                        {conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') && <Check size={8} className="text-white" />}
-                                                                                    </div>
-                                                                                    <span className={`text-[10px] font-black uppercase tracking-widest ${conditions.some(c => c.colId === col.id && c.op === 'is_not_empty') ? 'text-white' : 'text-slate-600'}`}>Is Not Empty</span>
-                                                                                </button>
+                                                                            <div className={`px-1 py-1.5 border-b flex flex-col gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50/50 border-slate-100'}`}>
+                                                                                {[
+                                                                                    { op: 'is_empty', label: 'Is Empty' },
+                                                                                    { op: 'is_not_empty', label: 'Is Not Empty' }
+                                                                                ].map(({ op, label }) => {
+                                                                                    const isSelected = conditions.some(c => c.colId === col.id && c.op === op);
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={op}
+                                                                                            onClick={() => {
+                                                                                                if (isSelected) setConditions(prev => prev.filter(c => !(c.colId === col.id && c.op === op)));
+                                                                                                else setConditions(prev => [...prev.filter(c => c.colId !== col.id), { colId: col.id, op, val: '' }]);
+                                                                                            }}
+                                                                                            className={`w-full text-left px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all ${isSelected ? 'bg-indigo-600 text-white shadow-md' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-600')}`}
+                                                                                        >
+                                                                                            <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border ${isSelected ? 'bg-white/20 border-white/40' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 border-white/10' : 'bg-slate-200 border-slate-300')}`}>
+                                                                                                {isSelected && <Check size={8} className="text-white" />}
+                                                                                            </div>
+                                                                                            <span className={`text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-white' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-600')}`}>{label}</span>
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
                                                                             </div>
                                                                             {(() => {
                                                                                 let availableValues: { label: string, value: string }[] = [];
-                                                                                if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
+
+                                                                                if (col.id === "__assigned") {
+                                                                                    availableValues = teamMembers.map(m => {
+                                                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                        return {
+                                                                                            label: name,
+                                                                                            value: m.clerkId
+                                                                                        };
+                                                                                    }).sort((a, b) => a.label.localeCompare(b.label));
+
+                                                                                    if (isMaster || isPureMaster) {
+                                                                                        const ownerOptions = teamMembers.map(m => {
+                                                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                            return { label: `Owner: ${name}`, value: `__GLOBAL_OWNER__${m.clerkId}` };
+                                                                                        }).sort((a, b) => a.label.localeCompare(b.label));
+
+                                                                                        const strictOptions = teamMembers.map(m => {
+                                                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                                                            return {
+                                                                                                label: `[Strict] Reassigned to ${name}`,
+                                                                                                value: `__STRICT_ASSIGNED__${m.clerkId}`
+                                                                                            };
+                                                                                        }).sort((a, b) => a.label.localeCompare(b.label));
+
+                                                                                        availableValues = [...availableValues, ...ownerOptions, ...strictOptions];
+                                                                                    }
+
+                                                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
+                                                                                    availableValues.unshift({ label: "Unassigned", value: "" });
+
+                                                                                } else if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
                                                                                         if (col.type === "user" && typeof o === 'string') {
                                                                                             const tm = teamMembers.find(t => t.clerkId === o);
@@ -2758,15 +3761,32 @@ export default function CRMSpreadsheetPage() {
                                                                                         const label = typeof o === 'string' ? o : o.label;
                                                                                         return { label, value: label };
                                                                                     });
+                                                                                } else if (col.id === "__contributor") {
+                                                                                    const bestNames = new Map<string, string>(); // lowercase -> display
+                                                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+
+                                                                                    const register = (raw: string) => {
+                                                                                        if (!raw) return;
+                                                                                        const full = raw.trim(); const low = full.toLowerCase();
+                                                                                        if (!bestNames.has(low) || (full !== low && bestNames.get(low) === low)) bestNames.set(low, full);
+                                                                                    };
+
+                                                                                    dataSource.forEach(res => register(res.submittedByName));
+                                                                                    teamMembers.forEach(m => {
+                                                                                        const name = `${m.firstName || ""} ${m.lastName || ""}`.trim();
+                                                                                        if (name) register(name);
+                                                                                        else register(m.email.split('@')[0]);
+                                                                                    });
+
+                                                                                    availableValues = Array.from(bestNames.values())
+                                                                                        .map(name => ({ label: name, value: name }))
+                                                                                        .sort((a, b) => a.label.localeCompare(b.label));
                                                                                 } else {
                                                                                     const vals = new Set<string>();
-                                                                                    (data?.responses || []).forEach(res => {
-                                                                                        if (col.id === "__contributor") {
-                                                                                            if (res.submittedByName) vals.add(res.submittedByName);
-                                                                                        } else {
-                                                                                            const v = getCellValue(res.id, col.id, col.isInternal);
-                                                                                            if (v) vals.add(v.toString());
-                                                                                        }
+                                                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+                                                                                    dataSource.forEach(res => {
+                                                                                        const v = getCellValue(res.id, col.id, col.isInternal);
+                                                                                        if (v) vals.add(v.toString());
                                                                                     });
                                                                                     availableValues = Array.from(vals)
                                                                                         .filter(Boolean)
@@ -2780,16 +3800,57 @@ export default function CRMSpreadsheetPage() {
                                                                                         });
                                                                                 }
 
-                                                                                if (availableValues.length === 0) {
-                                                                                    return <div className="px-3 py-4 text-center text-xs text-slate-400">No data found</div>;
+                                                                                // 🛡️ Filter & Deduplicate the display options
+                                                                                const isUserCol = col.id === "__assigned" || col.id === "__contributor" || col.type === "user";
+
+                                                                                // 1. First, pass through whitelists and active filters
+                                                                                const filteredOptions = availableValues.filter(opt => {
+                                                                                    if (!opt.label || !opt.label.trim()) return false;
+                                                                                    if (!isUserCol) return true;
+                                                                                    if (opt.value === "" || opt.value === "unassigned") return true;
+
+                                                                                    const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
+                                                                                    if (isInternalOp) return true;
+
+                                                                                    // Only show users who are active in teamMembers
+                                                                                    return teamMembers.some(m =>
+                                                                                        m.clerkId === opt.value ||
+                                                                                        m.email === opt.label ||
+                                                                                        m.name === opt.label ||
+                                                                                        (m.firstName && opt.label.includes(m.firstName))
+                                                                                    );
+                                                                                });
+
+                                                                                // 2. Deduplicate by label
+                                                                                const displayValues: typeof availableValues = [];
+                                                                                const seenLabels = new Set<string>();
+
+                                                                                filteredOptions.forEach(opt => {
+                                                                                    const lowLabel = opt.label.trim().toLowerCase();
+                                                                                    if (!seenLabels.has(lowLabel)) {
+                                                                                        seenLabels.add(lowLabel);
+                                                                                        displayValues.push(opt);
+                                                                                    }
+                                                                                });
+
+                                                                                const finalDisplayOptions = activeColumnFilterSearch
+                                                                                    ? displayValues.filter(o => o.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase()))
+                                                                                    : displayValues;
+
+                                                                                if (!finalDisplayOptions || finalDisplayOptions.length === 0) {
+                                                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>
+                                                                                        {activeColumnFilterSearch ? `No match found` : 'No data to filter'}
+                                                                                    </div>;
                                                                                 }
 
-                                                                                return availableValues.map(opt => {
+                                                                                return finalDisplayOptions.map(opt => {
                                                                                     const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
                                                                                     return (
                                                                                         <button
                                                                                             key={opt.value}
                                                                                             onClick={() => {
+                                                                                                if (autoApply) setIsSyncing(true); // 🔥 Immediate feedback for Status and other filters
+                                                                                                setCurrentPage(1); // Reset to first page on filter change
                                                                                                 if (isSelected) {
                                                                                                     setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
                                                                                                 } else {
@@ -2798,12 +3859,12 @@ export default function CRMSpreadsheetPage() {
                                                                                                     setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
                                                                                                 }
                                                                                             }}
-                                                                                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 flex items-center gap-2 group/btn"
+                                                                                            className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 group/btn transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}
                                                                                         >
-                                                                                            <div className={`w-3 h-3 shrink-0 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'bg-slate-100 border-slate-300 group-hover/btn:border-indigo-400'}`}>
+                                                                                            <div className={`w-3.5 h-3.5 shrink-0 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/20' : 'bg-slate-100 border-slate-300 group-hover/btn:border-indigo-400')}`}>
                                                                                                 {isSelected && <Check size={8} className="text-white relative top-[0.5px]" strokeWidth={3} />}
                                                                                             </div>
-                                                                                            <span className={`text-[11px] truncate tracking-normal normal-case transition-colors ${isSelected ? 'font-black text-slate-900' : 'font-bold text-slate-600'}`} title={opt.label}>
+                                                                                            <span className={`text-[11px] truncate tracking-normal normal-case transition-colors ${isSelected ? 'font-black text-indigo-500' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'font-bold text-slate-300 group-hover/btn:text-white' : 'font-bold text-slate-600')}`} title={opt.label}>
                                                                                                 {opt.label}
                                                                                             </span>
                                                                                         </button>
@@ -2812,12 +3873,13 @@ export default function CRMSpreadsheetPage() {
                                                                             })()}
                                                                         </div>
                                                                         {conditions.some(c => c.colId === col.id) && (
-                                                                            <div className="p-2 border-t border-slate-100 bg-slate-50 shrink-0">
+                                                                            <div className={`p-3 border-t shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-100'}`}>
                                                                                 <button
-                                                                                    onClick={() => {
-                                                                                        setConditions(prev => prev.filter(c => c.colId !== col.id));
-                                                                                    }}
-                                                                                    className="w-full text-center py-1 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 rounded text-[9px] font-black uppercase tracking-widest transition-all shadow-sm"
+                                                                                    onClick={() => setConditions(prev => prev.filter(c => c.colId !== col.id))}
+                                                                                    className={`w-full text-center py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                            ? 'bg-rose-950/40 border-rose-500/30 text-rose-400 hover:bg-rose-900/60'
+                                                                                            : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                                                                                        }`}
                                                                                 >
                                                                                     Clear Filter
                                                                                 </button>
@@ -2842,16 +3904,25 @@ export default function CRMSpreadsheetPage() {
                                         {paginatedResponses.map((res, rIdx) => (
                                             <motion.tr
                                                 key={res.id}
-                                                initial={{ opacity: 1 }}
-                                                animate={{ opacity: 1 }}
-                                                exit={{ opacity: 0 }}
-                                                transition={{ duration: 0 }}
-                                                onClick={() => setHighlightedRowId(res.id)}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{
+                                                    opacity: (isSyncing || isBulkDeleting) ? 0.3 : 1,
+                                                    y: 0,
+                                                    scale: (isSyncing || isBulkDeleting) ? 0.995 : 1,
+                                                    filter: (isSyncing || isBulkDeleting) ? 'blur(2px)' : 'blur(0px)'
+                                                }}
+                                                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                                                transition={{
+                                                    duration: 0.3,
+                                                    ease: [0.23, 1, 0.32, 1], // Custom cubic-bezier for smooth feel
+                                                    delay: isSyncing ? 0 : rIdx * 0.01 // Stagger effect
+                                                }}
+                                                layout
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-none relative [&>td]:border-r [&>td]:border-[#EAECF0] ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
-                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
-                                                    ${(() => {
+                                                className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                    ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? '[&>td]:border-white/5' : '[&>td]:border-[#EAECF0]'}
+                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'}                                                     ${(() => {
                                                         const remarks = res.remarks || [];
                                                         const latestRemark = remarks[0];
                                                         if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -2878,13 +3949,28 @@ export default function CRMSpreadsheetPage() {
                                                             {selectedRows.includes(res.id) && <Check size={8} className="text-white" />}
                                                         </div>
                                                         <div className="flex flex-col items-center">
-                                                            <span className="text-[10px] font-black text-slate-400">
+                                                            <span className="text-[9px] font-black text-slate-400">
                                                                 {((currentPage - 1) * rowsPerPage) + rIdx + 1}
                                                             </span>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); }}
+                                                                className={`p-1 rounded-md transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-indigo-400 hover:bg-white/10' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                                                title="Activity Archive"
+                                                            >
+                                                                <History size={10} />
+                                                            </button>
                                                             {isPureMaster && (
                                                                 <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteRow(res.id); }}
-                                                                    className="p-1 px-2 text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (window.confirm("Are you sure you want to delete this response? This action cannot be undone.")) {
+                                                                            handleDeleteRow(res.id);
+                                                                        }
+                                                                    }}
+                                                                    className={`p-1 px-2 border rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? 'text-rose-400 bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/60'
+                                                                            : 'text-rose-500 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                                                                        }`}
                                                                     title="Master Purge"
                                                                 >
                                                                     <Trash2 size={12} />
@@ -2899,29 +3985,32 @@ export default function CRMSpreadsheetPage() {
                                                         ? ""
                                                         : getCellValue(res.id, col.id, col.isInternal);
 
-                                                    const isSticky = cIdx < 2;
-                                                    let leftOffset = isPureMaster ? 70 : 50;
-                                                    if (cIdx === 0) leftOffset = isPureMaster ? 70 : 50; // Ensure first col starts at correct width
-                                                    if (isSticky && cIdx > 0) {
-                                                        for (let i = 0; i < cIdx; i++) {
-                                                            const prevCol = getColumns[i];
-                                                            // Match logic we put in `<th>` above
-                                                            leftOffset += (columnWidths[prevCol.id] || (prevCol.id === "__profile" ? 70 : prevCol.id === "__contributor" ? 220 : prevCol.id === "__assigned" ? 200 : 180));
-                                                        }
-                                                    }
-                                                    const width = columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180);
+                                                    const metrics = columnMetrics[col.id];
+                                                    const { width, left: leftOffset, isSticky } = metrics;
+                                                    const isFocused = focusedCell?.rowId === res.id && focusedCell?.colId === col.id;
 
                                                     if (col.id === "__profile") {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-4 py-2 border-b border-[#EAECF0] text-center transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                }}
+                                                                className={`px-4 py-2 border-b text-center transition-colors relative ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-center gap-1">
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
-                                                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all border border-transparent hover:border-indigo-100"
+                                                                        className={`p-1.5 rounded-lg transition-all border border-transparent ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'text-slate-400 hover:text-indigo-400 hover:bg-white/5 hover:border-white/10'
+                                                                                : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'
+                                                                            }`}
                                                                     >
                                                                         <Maximize2 size={14} />
                                                                     </button>
@@ -2929,12 +4018,15 @@ export default function CRMSpreadsheetPage() {
                                                                     <div className="relative">
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
-                                                                            className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent hover:border-amber-200 ${res.rowColor ? 'text-amber-600 bg-amber-50' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'}`}
+                                                                            className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent ${res.rowColor
+                                                                                    ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-amber-400 bg-amber-950/40 border-amber-500/30' : 'text-amber-600 bg-amber-50 border-amber-200')
+                                                                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-amber-400 hover:bg-white/5 hover:border-white/10' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200')
+                                                                                }`}
                                                                         >
                                                                             <Palette size={14} />
                                                                         </button>
                                                                         {openColorPicker === res.id && (
-                                                                            <div 
+                                                                            <div
                                                                                 className="ignore-click-outside absolute bottom-full left-0 mb-3 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-2xl p-2.5 border border-slate-200 z-[99999] flex gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300"
                                                                                 onClick={(e) => e.stopPropagation()}
                                                                                 onMouseDown={(e) => e.stopPropagation()}
@@ -2970,18 +4062,29 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                }}
+                                                                className={`px-5 py-3 border-b transition-colors relative ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm border border-indigo-100 overflow-hidden">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm border overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? 'bg-indigo-950 text-indigo-400 border-indigo-500/30'
+                                                                            : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                                                        }`}>
                                                                         {(() => {
                                                                             const m = teamMembers.find(t => t.clerkId === res.submittedBy);
                                                                             return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
                                                                     <div className="min-w-0">
-                                                                        <p className="text-[13px] font-black text-slate-900 truncate uppercase tracking-tight leading-none mb-1">{res.submittedByName || "Guest User"}</p>
+                                                                        <p className={`text-[13px] font-black truncate uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
                                                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
                                                                     </div>
                                                                 </div>
@@ -2997,7 +4100,7 @@ export default function CRMSpreadsheetPage() {
                                                         if (res.submittedBy) defaultVisibleIds.push(res.submittedBy);
                                                         const authorityIds = teamMembers.filter(m => {
                                                             const r = (m.role || "").toUpperCase();
-                                                            return r === "ADMIN" || r === "MASTER";
+                                                            return r === "ADMIN" || r === "MASTER" || r === "TL";
                                                         }).map(m => m.clerkId);
 
                                                         const assignedUsers = Array.from(new Set([...rawAssigned, ...rawVisible, ...defaultVisibleIds]));
@@ -3005,10 +4108,15 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`ignore-click-outside px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white shadow-[1px_0_0_#EAECF0]' : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')}`}
+                                                                className={`ignore-click-outside px-5 py-3 border-b transition-colors relative cursor-pointer ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     if (isCellOpen) setOpenAssignedCell(null);
                                                                     else setOpenAssignedCell(res.id);
                                                                 }}
@@ -3021,7 +4129,10 @@ export default function CRMSpreadsheetPage() {
                                                                             const m = teamMembers.find(t => t.clerkId === uid);
                                                                             const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
-                                                                                <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className="inline-flex h-7 w-7 rounded-full ring-2 ring-white bg-indigo-50 items-center justify-center text-[10px] font-black text-indigo-700 shadow-sm border border-indigo-100 shrink-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
+                                                                                <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className={`inline-flex h-7 w-7 rounded-full ring-2 items-center justify-center text-[10px] font-black shadow-sm border shrink-0 hover:z-10 duration-200 overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                        ? 'ring-slate-900 bg-indigo-950 text-indigo-400 border-indigo-500/30 hover:ring-indigo-500'
+                                                                                        : 'ring-white bg-indigo-50 text-indigo-700 border-indigo-100 hover:ring-indigo-500'
+                                                                                    }`}>
                                                                                     <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                                                 </div>
                                                                             );
@@ -3105,10 +4216,15 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3127,10 +4243,15 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
@@ -3145,15 +4266,23 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-5 py-3 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''}`}
+                                                                className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
                                                                 {nextDate ? (
-                                                                    <span className="text-[10px] font-black uppercase text-amber-700 tracking-widest bg-amber-50 border border-amber-200 px-2 py-1 rounded inline-block shadow-sm">
+                                                                    <span className={`text-[10px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                        }`}>
                                                                         {safeFormat(nextDate.toString(), "MMM dd")}
                                                                     </span>
                                                                 ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
@@ -3161,25 +4290,45 @@ export default function CRMSpreadsheetPage() {
                                                         );
                                                     }
 
-                                                    if (col.id === "__followUpStatus") {
-                                                        const latestStatus = res.remarks?.[0]?.followUpStatus || "";
+                                                    const isStatusCol = ["status", "follow-up status", "follow up status", "lead status", "call status", "interaction", "selec status", "select status", "crm tracking"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus";
+
+                                                    if (isStatusCol) {
+                                                        const latestStatus = col.id === "__followUpStatus" ? (res.remarks?.[0]?.followUpStatus || "") : val;
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-4 py-2 border-b border-[#EAECF0] transition-colors group-hover:bg-[#F9FAFB] cursor-pointer relative text-center ${isSticky ? 'sticky bg-white z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]' : ''}`}
+                                                                className={`px-4 py-2 border-b transition-colors cursor-pointer relative text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 group-hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                    setStatusMatrixModal({
+                                                                        rowId: res.id,
+                                                                        colId: col.id,
+                                                                        label: col.label || "Status",
+                                                                        options: col.options || [],
+                                                                        val: latestStatus,
+                                                                        isInternal: col.isInternal
+                                                                    });
                                                                 }}
                                                             >
                                                                 {latestStatus ? (
-                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm ${
-                                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                                                    }`}>
+                                                                    <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                    ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-950/40 text-amber-400 border-amber-500/30' :
+                                                                                        ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-950/40 text-blue-400 border-blue-500/30' :
+                                                                                            'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                            : (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                                ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                    ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                                        ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200')
+                                                                        }`}>
                                                                         {latestStatus}
                                                                     </span>
                                                                 ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">-</span>}
@@ -3196,10 +4345,15 @@ export default function CRMSpreadsheetPage() {
                                                         return (
                                                             <td
                                                                 key={col.id}
+                                                                id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                                className={`px-3 py-2 border-b border-[#EAECF0] transition-colors hover:bg-slate-50 relative text-center group/paymentcel ${isSticky ? "sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]" : ""}`}
+                                                                className={`px-3 py-2 border-b transition-colors relative text-center group/paymentcel ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'border-white/5 hover:bg-white/5'
+                                                                        : 'border-[#EAECF0] hover:bg-slate-50'
+                                                                    } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ""} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
+                                                                    setFocusedCell({ rowId: res.id, colId: col.id });
                                                                     setOpenPaymentModal({ formId: data?.form?.id || "", responseId: res.id });
                                                                 }}
                                                             >
@@ -3209,13 +4363,15 @@ export default function CRMSpreadsheetPage() {
                                                                             e.stopPropagation();
                                                                             setIsPaymentHubOpen(true);
                                                                         }}
-                                                                        className="absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 bg-white hover:bg-emerald-50 border border-transparent hover:border-emerald-200 text-slate-300 hover:text-emerald-600 rounded transition-all shadow-sm"
+                                                                        className={`absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 border border-transparent rounded transition-all shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                ? 'bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white'
+                                                                                : 'bg-white hover:bg-emerald-50 hover:border-emerald-200 text-slate-300 hover:text-emerald-600'
+                                                                            }`}
                                                                         title="Open Full Payment Hub Dashboard"
                                                                     >
                                                                         <ExternalLink size={10} />
                                                                     </button>
                                                                 )}
-
                                                                 {totalAmount > 0 ? (
                                                                     <div className="flex flex-col items-center gap-0.5 mt-1">
                                                                         <span className="text-[10px] font-black text-blue-700">{fmt(totalAmount)}</span>
@@ -3225,7 +4381,10 @@ export default function CRMSpreadsheetPage() {
                                                                         </div>
                                                                     </div>
                                                                 ) : (
-                                                                    <button className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
+                                                                    <button className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                            ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-emerald-500/50 hover:text-emerald-400'
+                                                                            : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'
+                                                                        }`}>
                                                                         <span>₹</span> Add
                                                                     </button>
                                                                 )}
@@ -3251,128 +4410,169 @@ export default function CRMSpreadsheetPage() {
                                                     return (
                                                         <td
                                                             key={col.id}
+                                                            id={`cell-${res.id}-${col.id}`}
                                                             style={{ width, left: isSticky ? leftOffset : undefined }}
                                                             onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setFocusedCell({ rowId: res.id, colId: col.id });
+
+                                                                if (isStatusCol) {
+                                                                    setStatusMatrixModal({
+                                                                        rowId: res.id,
+                                                                        colId: col.id,
+                                                                        label: col.label || "Status",
+                                                                        options: col.options || [],
+                                                                        val: val,
+                                                                        isInternal: col.isInternal
+                                                                    });
+                                                                    return;
+                                                                }
+
                                                                 if (!isLocked && !isEditing) {
                                                                     setEditingCell({ rowId: res.id, colId: col.id });
                                                                     setEditValue(val);
                                                                 }
                                                             }}
-                                                            className={`px-5 border-b border-[#EAECF0] transition-colors relative select-none group-hover:bg-[#F9FAFB] ${isSticky ? 'sticky bg-white z-30 shadow-[1px_0_0_#EAECF0]' : ''} ${isEditing ? 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : ''} ${isLocked ? 'bg-[#F9FAFB]/50 cursor-not-allowed' : 'cursor-text'} 
+                                                            className={`px-5 border-b transition-colors relative select-none ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
                                                             {isEditing ? (
                                                                 <div className="w-full" onClick={(e) => e.stopPropagation()}>
                                                                     {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
-                                                                        <select 
-                                                                            autoFocus 
-                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black text-indigo-700 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} 
-                                                                            value={editValue} 
-                                                                            onChange={(e) => { 
-                                                                                handleStatusCellUpdate(res.id, col.id, e.target.value, isInternal); 
+                                                                        <select
+                                                                            autoFocus
+                                                                            className={`w-full bg-transparent border-none focus:ring-0 p-0 font-black outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}
+                                                                            value={editValue}
+                                                                            onChange={(e) => {
+                                                                                const newV = e.target.value;
+                                                                                setEditValue(newV);
+                                                                                handleStatusCellUpdate(res.id, col.id, newV, isInternal);
+                                                                                setEditingCell(null);
                                                                             }}
                                                                             onBlur={() => setEditingCell(null)}
                                                                         >
                                                                             <option value="">Status...</option>
-                                                                            {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                                            {CALL_STATUS_OPTIONS.map(opt => <option key={opt} value={opt} className="bg-white text-slate-900">{opt}</option>)}
                                                                         </select>
                                                                     ) : col.type === "dropdown" ? (
-                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => { const newV = e.target.value; setEditValue(newV); handleUpdateValue(res.id, col.id, newV, isInternal); setEditingCell(null); }}>
                                                                             <option value="">Select...</option>
                                                                             {Array.isArray(col.options) && col.options.map((opt: any) => {
                                                                                 const label = typeof opt === 'string' ? opt : opt.label;
-                                                                                return <option key={label} value={label}>{label}</option>;
+                                                                                return <option key={label} value={label} className="bg-white text-slate-900">{label}</option>;
                                                                             })}
                                                                         </select>
                                                                     ) : col.type === "user" ? (
-                                                                            <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => { handleUpdateValue(res.id, col.id, e.target.value, true); setEditingCell(null); }}>
-                                                                                <option value="">Assigned To...</option>
-                                                                                {teamMembers
-                                                                                    .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
-                                                                                    .map(m => {
-                                                                                        const name = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : m.email.split('@')[0];
-                                                                                        return <option key={m.clerkId} value={m.clerkId}>{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
-                                                                                    })}
+                                                                        <select autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => { const newV = e.target.value; setEditValue(newV); handleUpdateValue(res.id, col.id, newV, isInternal); setEditingCell(null); }}>
+                                                                            <option value="">Assigned To...</option>
+                                                                            {teamMembers
+                                                                                .filter(m => col.id === "__assigned" || !col.options || (Array.isArray(col.options) && col.options.length === 0) || (Array.isArray(col.options) && col.options.some((o: any) => o === m.clerkId || o.value === m.clerkId)))
+                                                                                .map(m => {
+                                                                                    const name = m.firstName ? `${m.firstName} ${m.lastName || ''}`.trim() : m.email.split('@')[0];
+                                                                                    return <option key={m.clerkId} value={m.clerkId} className="bg-white text-slate-900">{name.toUpperCase()} ({m.role || 'STAFF'})</option>;
+                                                                                })}
                                                                         </select>
                                                                     ) : col.type === "date" ? (
-                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="date" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "number" || col.type === "currency" ? (
-                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input type="text" inputMode="numeric" autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value.replace(/[^0-9+-.]/g, ''))} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : col.type === "long_text" ? (
-                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none min-h-[60px] resize-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <textarea autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none min-h-[60px] resize-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     ) : (
-                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold text-slate-900 outline-none ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
+                                                                        <input autoFocus className={`w-full bg-transparent border-none focus:ring-0 p-0 font-bold outline-none transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-900'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={() => { handleUpdateValue(res.id, col.id, editValue, isInternal); setEditingCell(null); }} />
                                                                     )}
                                                                 </div>
                                                             ) : (
-                                                                <div className="flex items-center justify-between min-h-[20px] min-w-0">
+                                                                <div className="flex items-center justify-between min-h-[24px] min-w-0">
                                                                     <div className="flex items-center min-w-0 overflow-hidden">
                                                                         {col.type === "dropdown" && val ? (
                                                                             <div className="flex -space-x-1 group/badge shrink-0">
-                                                                                <span className={`px-2 py-0.5 rounded-full font-black uppercase tracking-widest border transition-all ${val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                                    val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-100'}`} style={{ fontSize: density === 'compact' ? '7px' : '9px' }}>
+                                                                                <span className={`px-2.5 py-1 rounded-full font-black uppercase tracking-widest border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                        ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30 shadow-[0_4px_12px_rgba(16,185,129,0.2)]' :
+                                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                                'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                        : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-[0_4px_12px_rgba(16,185,129,0.1)]' :
+                                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                                'bg-indigo-50 text-indigo-700 border-indigo-100')
+                                                                                    }`} style={{ fontSize: density === 'compact' ? '9px' : '11px' }}>
                                                                                     {val}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "user" && val ? (
-                                                                            <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
-                                                                                <div className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[7px] font-black text-white uppercase">
+                                                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border shrink-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                    ? 'bg-white/5 border-white/10'
+                                                                                    : 'bg-slate-50 border-slate-200'
+                                                                                }`}>
+                                                                                <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[9px] font-black text-white uppercase shadow-sm">
                                                                                     {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
                                                                                 </div>
-                                                                                <span className="text-[10px] font-black text-slate-600 truncate max-w-[80px]">
-                                                                                    {teamMembers.find(m => m.clerkId === val)?.email.split('@')[0] || val.split('_').pop()?.slice(0, 5)}
+                                                                                <span className={`text-[11px] font-black truncate max-w-[80px] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300' : 'text-slate-600'
+                                                                                    }`}>
+                                                                                    {teamMembers.find(m => m.clerkId === val)?.firstName || val.split('_').pop()?.slice(0, 5)}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "date" && val ? (
-                                                                            <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5 uppercase tracking-tighter bg-slate-100/50 px-2 py-1 rounded-md shrink-0">
-                                                                                <Calendar size={10} className="text-rose-400" />
+                                                                            <span className={`text-[13px] font-bold flex items-center gap-1.5 uppercase tracking-tighter px-2.5 py-1.5 rounded-md shrink-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                    ? 'bg-white/5 text-slate-300'
+                                                                                    : 'bg-slate-100/50 text-slate-600'
+                                                                                }`}>
+                                                                                <Calendar size={12} className="text-rose-400" />
                                                                                 {safeFormat(val, "MMM dd, yyyy")}
                                                                             </span>
                                                                         ) : col.type === "checkbox" ? (
                                                                             <div
                                                                                 onClick={(e) => { e.stopPropagation(); handleUpdateValue(res.id, col.id, val === "true" ? "false" : "true", true); }}
-                                                                                className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : 'bg-white border-slate-200'}`}
+                                                                                className={`w-6 h-6 rounded-md border-2 transition-all flex items-center justify-center cursor-pointer shrink-0 ${val === "true" ? 'bg-indigo-600 border-indigo-600 shadow-md shadow-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200')}`}
                                                                             >
-                                                                                {val === "true" && <Check size={12} className="text-white" />}
+                                                                                {val === "true" && <Check size={14} className="text-white" />}
                                                                             </div>
                                                                         ) : col.type === "currency" && val ? (
-                                                                            <span className="text-[11px] font-black text-slate-900 flex items-center gap-0.5 shrink-0">
-                                                                                <IndianRupee size={10} className="text-slate-400" />
+                                                                            <span className={`text-[13px] font-black flex items-center gap-0.5 shrink-0 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>
+                                                                                <IndianRupee size={12} className="text-slate-400" />
                                                                                 {parseFloat(val).toLocaleString('en-IN')}
                                                                             </span>
                                                                         ) : col.type === "file" && val ? (
-                                                                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                                                <a href={val} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors shrink-0">
-                                                                                    <ExternalLink size={10} />
-                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">View</span>
+                                                                            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                                                                                <a href={val} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-md border border-indigo-100 hover:bg-indigo-100 transition-colors shrink-0">
+                                                                                    <ExternalLink size={12} />
+                                                                                    <span className="text-[11px] font-black uppercase tracking-tighter">View</span>
                                                                                 </a>
-                                                                                <a href={val.replace('/upload/', '/upload/fl_attachment/')} download className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 hover:bg-emerald-100 transition-colors shrink-0">
-                                                                                    <Download size={10} />
-                                                                                    <span className="text-[10px] font-black uppercase tracking-tighter">Save</span>
+                                                                                <a href={val.replace('/upload/', '/upload/fl_attachment/')} download className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-md border border-emerald-100 hover:bg-emerald-100 transition-colors shrink-0">
+                                                                                    <Download size={12} />
+                                                                                    <span className="text-[11px] font-black uppercase tracking-tighter">Save</span>
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold text-slate-700 truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${density === 'compact' ? 'text-[11px]' : 'text-[13px]'}`}>
+                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}>
                                                                                 {(() => {
-                                                                                    if (!val) return "—";
+                                                                                    if (!val || isStatusCol) return (isStatusCol ? "" : "—");
                                                                                     // Apply premium styles for sync columns by label
                                                                                     if (col.label === "Recent Remark") {
-                                                                                        return <span className="text-indigo-600 font-bold">{val}</span>;
+                                                                                        return <span className={`font-bold transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-600'}`}>{val}</span>;
                                                                                     }
                                                                                     if (col.label === "Next Follow-up Date") {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-black text-[10px] uppercase tracking-widest shadow-sm">
-                                                                                                <Calendar size={10} />
+                                                                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-lg font-black text-[11px] uppercase tracking-widest shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                                    ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                                                }`}>
+                                                                                                <Calendar size={12} />
                                                                                                 {safeFormat(val, "dd MMM")}
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (col.label === "Follow-up Status") {
                                                                                         return (
-                                                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[10px] uppercase tracking-widest border shadow-sm ${val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                                                val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                                                    'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                                                            <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                                                    ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                                        val === 'Missed' ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                                            'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                                    : (val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                                                        val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200')
                                                                                                 }`}>
                                                                                                 {val}
                                                                                             </span>
@@ -3389,7 +4589,7 @@ export default function CRMSpreadsheetPage() {
                                                                             animate={{ opacity: 1, scale: 1 }}
                                                                             className="ml-2 shrink-0"
                                                                         >
-                                                                            <Activity size={10} className="text-indigo-500 animate-pulse" />
+                                                                            <Activity size={12} className="text-indigo-500 animate-pulse" />
                                                                         </motion.div>
                                                                     )}
                                                                 </div>
@@ -3404,31 +4604,44 @@ export default function CRMSpreadsheetPage() {
                             </table>
 
                             {/* Pagination Controls */}
-                            <div className="px-6 py-4 bg-white border-t border-[#EAECF0] flex items-center justify-between sticky left-0 w-full">
+                            <div className={`px-6 py-4 flex items-center justify-between sticky left-0 w-full transition-colors border-t duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                    ? 'bg-slate-900/90 border-white/10 backdrop-blur-md'
+                                    : 'bg-white border-[#EAECF0]'
+                                }`}>
                                 <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 border-r pr-4 border-slate-200">
+                                    <div className={`flex items-center gap-2 border-r pr-4 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'border-white/10' : 'border-slate-200'}`}>
                                         <span className="text-[10px] font-black uppercase text-slate-400">Rows per page:</span>
                                         <select
                                             value={rowsPerPage}
-                                            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                                            className="bg-slate-50 border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0"
+                                            onChange={(e) => {
+                                                const newLimit = Number(e.target.value);
+                                                setRowsPerPage(newLimit);
+                                                setCurrentPage(1);
+                                            }}
+                                            className={`border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                    ? 'bg-white/5 text-white'
+                                                    : 'bg-slate-50 text-slate-900'
+                                                }`}
                                         >
-                                            {[10, 25, 50, 100, 99999].map(v => (
-                                                <option key={v} value={v}>
-                                                    {v === 99999 ? 'Full' : v}
+                                            {[10, 25, 50, 100, 200, 500].map(v => (
+                                                <option key={v} value={v} className="text-slate-900">
+                                                    {v} Rows
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="text-sm text-[#475467]">
-                                        Showing <span className="font-semibold text-[#101828]">{(currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-semibold text-[#101828]">{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className="font-semibold text-[#101828]">{data?.filteredCount || filteredResponses.length}</span> responses
+                                    <div className={`text-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400' : 'text-[#475467]'}`}>
+                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount || filteredResponses.length}</span> responses
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                         disabled={currentPage === 1}
-                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                        className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                                : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                            }`}
                                     >
                                         <ChevronLeft size={16} /> Previous
                                     </button>
@@ -3447,7 +4660,10 @@ export default function CRMSpreadsheetPage() {
                                                 <button
                                                     key={pageNum}
                                                     onClick={() => setCurrentPage(pageNum)}
-                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === pageNum ? 'bg-[#F9F5FF] text-[#7F56D9] border border-[#7F56D9]' : 'text-[#667085] hover:bg-[#F9FAFB]'}`}
+                                                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === pageNum
+                                                            ? 'bg-indigo-600 text-white shadow-lg border-indigo-600'
+                                                            : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:bg-white/10' : 'text-[#667085] hover:bg-[#F9FAFB]')
+                                                        }`}
                                                 >
                                                     {pageNum}
                                                 </button>
@@ -3458,7 +4674,10 @@ export default function CRMSpreadsheetPage() {
                                     <button
                                         onClick={() => setCurrentPage(prev => Math.min(data?.totalPages || 1, prev + 1))}
                                         disabled={currentPage === (data?.totalPages || 1)}
-                                        className="px-4 py-2 text-sm font-semibold text-[#344054] bg-white border border-[#D0D5DD] rounded-lg hover:bg-[#F9FAFB] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                                        className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                                : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                            }`}
                                     >
                                         Next <ChevronRight size={16} />
                                     </button>
@@ -3502,9 +4721,9 @@ export default function CRMSpreadsheetPage() {
                                                                 return <img src={getFallbackAvatar(fallbackId, author?.imageUrl)} title={author?.name || latestRemark?.authorName || item.submittedByName || "User"} className="w-full h-full object-cover" />;
                                                             })()}
                                                         </div>
-                                                        {item.remarks?.length > 0 && (
+                                                        {(item.remarks?.length || 0) > 0 && (
                                                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-indigo-600 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-sm" title="Interactions">
-                                                                {item.remarks.length}
+                                                                {item.remarks?.length}
                                                             </div>
                                                         )}
                                                     </div>
@@ -3557,252 +4776,269 @@ export default function CRMSpreadsheetPage() {
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </main >
+            </main>
 
-            {/* Sidebar Details Drawer */}
-            <AnimatePresence>
-                {
-                    selectedResponse && (
-                        <>
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedResponse(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60]" />
-                            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }} className="fixed top-0 right-0 h-full w-full max-w-[650px] bg-white shadow-[-40px_0_100px_rgba(0,0,0,0.1)] z-[70] overflow-hidden flex flex-col">
-                                <div className="p-8 border-b border-[#EAECF0] flex items-center justify-between shrink-0 bg-white sticky top-0 z-10">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-full bg-[#F9F5FF] text-[#7F56D9] flex items-center justify-center border border-[#E9D7FE]">
-                                            <FileText size={24} />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-xl font-semibold text-[#101828]">Response Details</h2>
-                                            <p className="text-sm text-[#667085] mt-1">Audit trail and full record data</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setSelectedResponse(null)} className="p-2 text-[#667085] hover:text-[#101828] hover:bg-[#F9FAFB] rounded-lg transition-all">
-                                        <X size={24} />
-                                    </button>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-                                    <div className="space-y-16">
-                                        <div className="p-10 bg-slate-900 rounded-[50px] text-white shadow-2xl relative overflow-hidden group">
-                                            <div className="relative z-10">
-                                                <h4 className="text-2xl font-black mb-4 tracking-tight">Active Workflows</h4>
-                                                <div className="grid grid-cols-2 gap-5 mt-12">
-                                                    <button onClick={() => handleConvertToLead(selectedResponse)} className="py-6 bg-white text-slate-900 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center gap-4">
-                                                        <UserPlus size={22} className="text-indigo-600" /> CRM Sync
-                                                    </button>
-                                                    <button className="py-6 bg-white/10 text-white border border-white/20 rounded-[32px] text-[11px] font-black uppercase tracking-widest hover:bg-white/20 transition-all flex items-center justify-center gap-4">
-                                                        <Mail size={22} className="text-indigo-400" /> Notify
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-8">
-                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><History size={20} className="text-indigo-500" /> Modification Archive</h3>
-                                            <div className="space-y-4">
-                                                {data?.activities?.filter(a => a.responseId === selectedResponse.id).length ? (
-                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
-                                                        <div key={act.id} className="p-8 bg-slate-50 rounded-[36px] border border-slate-100 flex items-start gap-6">
-                                                            <div className="w-12 h-12 rounded-[18px] bg-white border border-slate-100 flex items-center justify-center font-black text-xs text-slate-800 shadow-sm">{act.userName[0]}</div>
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center justify-between mb-3"><p className="text-[13px] font-black text-slate-900">{act.userName}</p><span className="text-[10px] font-bold text-slate-400 uppercase">{safeFormat(act.createdAt, "MMM dd, HH:mm")}</span></div>
-                                                                <p className="text-xs text-slate-500 font-bold leading-relaxed">Changed <span className="text-indigo-600 font-black">{act.columnName}</span> to <span className="text-emerald-600 font-black">{act.newValue}</span></p>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-center py-20 p-8 bg-slate-50 rounded-[40px] border border-dashed border-slate-200">
-                                                        <Clock size={40} className="mx-auto text-slate-200 mb-4" />
-                                                        <p className="text-xs font-black text-slate-300 uppercase tracking-widest">No modifications detected</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="space-y-8">
-                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] px-4 flex items-center gap-4"><Database size={20} className="text-indigo-500" /> Attribute Core</h3>
-                                            <div className="grid grid-cols-1 gap-4">
-                                                {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].map((col: any) => (
-                                                    <div key={col.id} className="p-10 bg-white border-2 border-slate-50 rounded-[44px] hover:border-slate-200 transition-all shadow-sm">
-                                                        <div className="flex items-center justify-between mb-4"><p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">{col.label}</p></div>
-                                                        <p className="text-xl font-black text-slate-900 leading-tight">{getCellValue(selectedResponse.id, col.id, !!col.formId === false) || <span className="text-slate-200 italic">No entry</span>}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        </>
-                    )
-                }
-            </AnimatePresence >
-
-            {/* Filter Builder Modal — Phase 2 Upgrade */}
+            {/* Filter Builder Modal             {/* 🛸 MASTER FILTER ARCHITECTURE v2 */}
             <AnimatePresence>
                 {
                     isFilterBuilderOpen && (
-                        <div className="fixed inset-0 flex items-center justify-center z-[100] p-10">
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsFilterBuilderOpen(false)} className="absolute inset-0 bg-slate-900/80" />
-                            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[60px] shadow-2xl w-full max-w-[900px] relative z-10 p-12 overflow-hidden flex flex-col gap-10 border-4 border-indigo-50">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-3xl font-black tracking-tighter mb-2">Matrix Filter Hub</h3>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Architect your data segmentation</p>
+                        <div className="fixed inset-0 flex items-center justify-center z-[999999] p-8 md:p-12">
+                            {/* Backdrop with extreme blur for focus */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                onClick={() => setIsFilterBuilderOpen(false)}
+                                className="absolute inset-0 bg-slate-950/80 backdrop-blur-2xl"
+                            />
+
+                            <motion.div
+                                initial={{ scale: 0.95, opacity: 0, y: 40 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ scale: 0.95, opacity: 0, y: 40 }}
+                                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                                className="bg-slate-50 rounded-[48px] shadow-[0_40px_120px_-20px_rgba(0,0,0,0.7)] w-full max-w-[1100px] max-h-[90vh] relative z-10 overflow-hidden flex flex-col border border-white/20"
+                            >
+                                {/* 💎 MODAL HEADER: COMMAND CENTER STYLE */}
+                                <div className="p-10 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-6">
+                                        <div className="w-16 h-16 rounded-[28px] bg-indigo-600 text-white flex items-center justify-center shadow-2xl shadow-indigo-200">
+                                            <Filter size={28} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-3xl font-black text-slate-900 tracking-tight uppercase">Segment Intelligence</h2>
+                                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.5em] mt-1">Advanced Matrix Conditioning</p>
+                                        </div>
                                     </div>
-                                    <div className="flex bg-slate-100 p-1 rounded-2xl border">
-                                        <button onClick={() => setFilterConjunction("AND")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'AND' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match All (AND)</button>
-                                        <button onClick={() => setFilterConjunction("OR")} className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'OR' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>Match Any (OR)</button>
+                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
+                                        <button
+                                            onClick={() => setFilterConjunction("AND")}
+                                            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'AND' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Logic: ALL (AND)
+                                        </button>
+                                        <button
+                                            onClick={() => setFilterConjunction("OR")}
+                                            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filterConjunction === 'OR' ? 'bg-white text-indigo-600 shadow-xl' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            Logic: ANY (OR)
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <button
+                                            onClick={handleClearFilters}
+                                            className="px-6 py-3 text-[11px] font-black text-slate-400 hover:text-rose-500 uppercase tracking-widest transition-all"
+                                        >
+                                            Purge All
+                                        </button>
+                                        <button
+                                            onClick={() => setIsFilterBuilderOpen(false)}
+                                            className="w-14 h-14 flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-3xl transition-all border border-slate-100"
+                                        >
+                                            <X size={24} />
+                                        </button>
                                     </div>
                                 </div>
 
-                                <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar max-h-[450px] pr-4">
-                                    {conditions.map((c, i) => {
-                                        const col = getColumns.find(col => col.id === c.colId);
-                                        const colType = col?.type || "text";
-                                        const operators = (FILTER_OPERATORS as any)[colType] || FILTER_OPERATORS.text;
+                                <div className="flex-1 overflow-y-auto p-12 space-y-12 custom-scrollbar">
+                                    {/* 🧪 ACTIVE CONDITION PIPELINE */}
+                                    <div className="space-y-8">
+                                        <div className="flex items-center justify-between px-2">
+                                            <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.4em] flex items-center gap-4">Logic Constraints <div className="h-px w-20 bg-slate-200" /></h3>
+                                            <span className="text-[10px] font-black text-slate-500 bg-slate-200/50 px-4 py-1.5 rounded-full">{conditions.length} Rules Active</span>
+                                        </div>
 
-                                        return (
-                                            <div key={i} className="flex gap-4 items-center bg-slate-50 p-6 rounded-[32px] border border-slate-100 group">
-                                                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[10px] font-black text-indigo-300 border mb-auto mt-2">
-                                                    {i + 1}
-                                                </div>
-                                                <div className="flex-1 grid grid-cols-12 gap-3">
-                                                    <div className="col-span-4">
-                                                        <select value={c.colId} onChange={(e) => { const n = [...conditions]; n[i].colId = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
-                                                            <option value="">Select Field...</option>
-                                                            {getColumns.filter(f => f.type !== "static").map(f => (
-                                                                <option key={f.id} value={f.id}>{f.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
-                                                    <div className="col-span-3">
-                                                        <select value={c.op} onChange={(e) => { const n = [...conditions]; n[i].op = e.target.value; setConditions(n); }} className="w-full bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm appearance-none cursor-pointer hover:ring-2 ring-indigo-200 transition-all">
-                                                            {operators.map((op: any) => <option key={op.value} value={op.value}>{op.label}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="col-span-4 flex gap-2">
-                                                        {!["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "is_true", "is_false"].includes(c.op) && (
-                                                            <>
-                                                                {colType === "date" ? (
-                                                                    <input type="date" value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                ) : colType === "dropdown" || colType === "multi_select" || colType === "user" ? (
-                                                                    <div className="flex-1 flex flex-col gap-2">
-                                                                        {c.op === "one_of" ? (
-                                                                            <div className="flex flex-wrap gap-1 bg-white p-2 rounded-2xl min-h-[50px] shadow-sm border border-slate-100">
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
-                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
-                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
-                                                                                    const currentVals = String(c.val || "").split(",").map(v => v.trim()).filter(Boolean);
-                                                                                    const isSelected = currentVals.includes(optLabel);
-                                                                                    return (
-                                                                                        <button
-                                                                                            key={optLabel}
-                                                                                            onClick={() => {
-                                                                                                const n = [...conditions];
-                                                                                                const newVals = isSelected
-                                                                                                    ? currentVals.filter(v => v !== optLabel)
-                                                                                                    : [...currentVals, optLabel];
-                                                                                                n[i].val = newVals.join(",");
-                                                                                                setConditions(n);
-                                                                                            }}
-                                                                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                                                                                        >
-                                                                                            {optLabel}
-                                                                                        </button>
-                                                                                    );
-                                                                                })}
-                                                                                {(!col?.options || col.options.length === 0) && <p className="text-[10px] text-slate-300 m-auto uppercase font-bold">No Options Defined</p>}
-                                                                            </div>
-                                                                        ) : (
-                                                                            <select value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500">
-                                                                                <option value="">Value...</option>
-                                                                                {Array.isArray(col?.options) && col?.options.map((opt: any) => {
-                                                                                    const isInternalUserCol = colType === "user" && typeof opt === "string";
-                                                                                    const optLabel = isInternalUserCol ? (teamMembers.find(t => t.clerkId === opt)?.email || opt) : (opt.label || opt);
-                                                                                    return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {conditions.map((cond, index) => {
+                                                const field = [...(data?.form?.fields || []), ...(data?.internalColumns || [])].find(f => f.id === cond.colId);
+                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
+                                                const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
+
+                                                return (
+                                                    <motion.div
+                                                        layout
+                                                        key={index}
+                                                        initial={{ x: -20, opacity: 0 }}
+                                                        animate={{ x: 0, opacity: 1 }}
+                                                        className="flex items-center gap-4 bg-white p-6 rounded-[36px] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-200 transition-all group"
+                                                    >
+                                                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0 border border-indigo-100">{index + 1}</div>
+
+                                                        <div className="flex-1 grid grid-cols-12 gap-4">
+                                                            {/* Field Select */}
+                                                            <div className="col-span-4 self-center">
+                                                                <select
+                                                                    className="w-full bg-slate-50 border-none rounded-[20px] px-6 py-4 text-[12px] font-extrabold text-slate-900 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer hover:bg-slate-100 transition-colors uppercase tracking-tight"
+                                                                    value={cond.colId}
+                                                                    onChange={(e) => {
+                                                                        const n = [...conditions];
+                                                                        n[index].colId = e.target.value;
+                                                                        setConditions(n);
+                                                                    }}
+                                                                >
+                                                                    <option value="">Select Field Protocol</option>
+                                                                    {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].filter(f => f.type !== "static").map(f => (
+                                                                        <option key={f.id} value={f.id}>{f.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Operator Select */}
+                                                            <div className="col-span-3 self-center border-l border-slate-100 pl-4">
+                                                                <select
+                                                                    className="w-full bg-transparent border-none py-4 text-[12px] font-black text-indigo-600 focus:ring-0 appearance-none cursor-pointer uppercase tracking-widest"
+                                                                    value={cond.op}
+                                                                    onChange={(e) => {
+                                                                        const n = [...conditions];
+                                                                        n[index].op = e.target.value;
+                                                                        setConditions(n);
+                                                                    }}
+                                                                >
+                                                                    {operators.map((op: any) => (
+                                                                        <option key={op.value} value={op.value}>{op.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Value Input */}
+                                                            <div className="col-span-5 self-center border-l border-slate-100 pl-4">
+                                                                {!["is_empty", "is_not_empty", "today", "yesterday", "tomorrow", "this_week", "is_true", "is_false"].includes(cond.op) && (
+                                                                    <div className="flex gap-2">
+                                                                        {isInternalUserCol ? (
+                                                                            <select
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold focus:ring-2 ring-indigo-500/20 appearance-none uppercase tracking-tight"
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            >
+                                                                                <option value="">Assignee Agent</option>
+                                                                                <option value="reassigned">🎯 Reassigned to Me</option>
+                                                                                {teamMembers.map(tm => (
+                                                                                    <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        ) : field?.type === "dropdown" ? (
+                                                                            <select
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold focus:ring-2 ring-indigo-500/20 appearance-none uppercase tracking-tight"
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            >
+                                                                                <option value="">Option Metric</option>
+                                                                                {field?.options?.map((opt: any) => {
+                                                                                    const label = typeof opt === 'string' ? opt : opt.label;
+                                                                                    return <option key={label} value={label}>{label}</option>;
                                                                                 })}
                                                                             </select>
+                                                                        ) : (
+                                                                            <input
+                                                                                type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'}
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold placeholder:text-slate-500 focus:ring-2 ring-indigo-500/20"
+                                                                                placeholder="Filter key..."
+                                                                                value={cond.val}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            />
+                                                                        )}
+                                                                        {cond.op === "between" && (
+                                                                            <input
+                                                                                type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'}
+                                                                                className="w-full bg-slate-900 text-white border-none rounded-[20px] px-6 py-4 text-[12px] font-bold placeholder:text-slate-500 focus:ring-2 ring-indigo-500/20"
+                                                                                placeholder="Upper limit..."
+                                                                                value={cond.val2 || ""}
+                                                                                onChange={(e) => {
+                                                                                    const n = [...conditions];
+                                                                                    n[index].val2 = e.target.value;
+                                                                                    setConditions(n);
+                                                                                }}
+                                                                            />
                                                                         )}
                                                                     </div>
-                                                                ) : (
-                                                                    <input value={c.val} onChange={(e) => { const n = [...conditions]; n[i].val = e.target.value; setConditions(n); }} placeholder="Value..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
                                                                 )}
-                                                                {c.op === "between" && (
-                                                                    <input value={c.val2 || ""} onChange={(e) => { const n = [...conditions]; n[i].val2 = e.target.value; setConditions(n); }} placeholder="To..." className="flex-1 bg-white p-4 rounded-2xl border-none font-black text-xs shadow-sm outline-none focus:ring-2 ring-indigo-500" />
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    <div className="col-span-1 flex flex-col gap-1">
-                                                        <button onClick={() => {
-                                                            const n = [...conditions];
-                                                            if (i > 0) {
-                                                                [n[i], n[i - 1]] = [n[i - 1], n[i]];
-                                                                setConditions(n);
-                                                            }
-                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} className="rotate-180" /></button>
-                                                        <button onClick={() => {
-                                                            const n = [...conditions];
-                                                            if (i < n.length - 1) {
-                                                                [n[i], n[i + 1]] = [n[i + 1], n[i]];
-                                                                setConditions(n);
-                                                            }
-                                                        }} className="flex-1 p-2 bg-slate-50 text-slate-400 rounded-xl hover:text-indigo-600 transition-colors flex items-center justify-center"><ChevronDown size={14} /></button>
-                                                    </div>
-                                                    <div className="col-span-1">
-                                                        <button onClick={() => setConditions(conditions.filter((_, idx) => idx !== i))} className="w-full h-full p-4 bg-rose-50 text-rose-500 rounded-3xl hover:bg-rose-100 transition-colors flex items-center justify-center"><Trash2 size={16} /></button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    <button onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])} className="w-full py-8 border-2 border-dashed border-slate-200 rounded-[40px] text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-all flex items-center justify-center gap-3">
-                                        <Plus size={18} /> Spawn New Rule
-                                    </button>
-                                    <div className="mt-12 pt-12 border-t border-slate-100">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Saved Architectures</h4>
+                                                            </div>
+                                                        </div>
+
+                                                        <button
+                                                            onClick={() => setConditions(conditions.filter((_, idx) => idx !== index))}
+                                                            className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setConditions([...conditions, { colId: "", op: "equals", val: "" }])}
+                                            className="w-full py-10 border-2 border-dashed border-slate-200 rounded-[44px] text-[11px] font-black text-slate-400 uppercase tracking-[0.4em] hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-3"
+                                        >
+                                            <Plus size={16} /> Injection New Condition Rule
+                                        </button>
+                                    </div>
+
+                                    {/* 🔖 SAVED SEGMENTS SECTION */}
+                                    <div className="pt-10 border-t border-slate-100">
+                                        <div className="flex items-center gap-5 mb-8">
+                                            <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Saved Architectures</h4>
+                                            <div className="h-px flex-1 bg-slate-50" />
+                                        </div>
                                         <div className="flex flex-wrap gap-4">
                                             {savedViews.map(view => (
                                                 <div key={view.id} className="relative group/view">
                                                     <button
                                                         onClick={() => applySavedView(view)}
-                                                        className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center gap-2 group pr-12"
+                                                        className="px-8 py-4 bg-white text-slate-900 rounded-[28px] text-[10px] font-black uppercase tracking-widest border border-slate-100 hover:border-indigo-500 hover:shadow-2xl shadow-slate-200 transition-all flex items-center gap-3 group pr-14"
                                                     >
-                                                        <Star size={12} className="group-hover:fill-current" />
+                                                        <Star size={14} className="group-hover:text-indigo-500 transition-colors" />
                                                         {view.name}
                                                     </button>
                                                     <button
                                                         onClick={(e) => handleDeleteView(view.id, e)}
-                                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 hover:bg-rose-500 hover:text-white text-rose-300 rounded-lg transition-all opacity-0 group-hover/view:opacity-100"
+                                                        className="absolute right-4 top-1/2 -translate-y-1/2 p-2 hover:bg-rose-500 hover:text-white text-rose-300 rounded-xl transition-all opacity-0 group-hover/view:opacity-100"
                                                     >
-                                                        <X size={10} />
+                                                        <X size={12} />
                                                     </button>
                                                 </div>
                                             ))}
-                                            {savedViews.length === 0 && (
-                                                <>
-                                                    <button onClick={() => { setConditions([{ colId: "Status", op: "equals", val: "New" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-indigo-50 text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all">New Leads</button>
-                                                    <button onClick={() => { setConditions([{ colId: "Budget", op: "gt", val: "50000" }]); setFilterConjunction("AND"); }} className="px-6 py-4 bg-emerald-50 text-emerald-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-emerald-100 hover:bg-emerald-100 transition-all">High Value</button>
-                                                </>
-                                            )}
-                                            <button onClick={handleSaveView} className="px-6 py-4 bg-slate-50 text-slate-400 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-slate-100 border-dashed hover:border-indigo-300 hover:text-indigo-500 transition-all">+ Save Current View</button>
+                                            <button
+                                                onClick={handleSaveView}
+                                                className="px-8 py-4 border-2 border-dashed border-slate-100 rounded-[28px] text-[10px] font-black text-slate-400 uppercase tracking-widest hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center gap-3"
+                                            >
+                                                <Save size={14} /> Persist Current Flow
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="flex gap-4 pt-6">
-                                    <button onClick={() => setIsFilterBuilderOpen(false)} className="px-10 py-6 bg-slate-50 text-slate-500 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em]">Neutralize</button>
-                                    <div className="flex-1 flex gap-2">
-                                        <button onClick={() => setIsFilterBuilderOpen(false)} className="flex-1 py-6 bg-slate-900 text-white rounded-[35px] text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl transition-all shadow-indigo-100 border-b-4 border-indigo-600">Deploy Segmentation ({filteredResponses.length} Matches)</button>
-
-                                        {!activeViewId && conditions.length > 0 && (
-                                            <button onClick={handleSaveView} className="px-8 py-6 bg-indigo-50 text-indigo-600 rounded-[35px] text-[10px] font-black uppercase tracking-[0.2em] border border-indigo-200 hover:bg-indigo-100 transition-all flex items-center gap-2">
-                                                <Star size={14} className="fill-indigo-600" />
-                                                Archivize Workspace
-                                            </button>
-                                        )}
-
-                                        <button onClick={() => setAutoApply(!autoApply)} className={`px-6 rounded-[35px] border-2 transition-all flex items-center gap-2 ${autoApply ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                                            <Clock size={14} />
-                                            <span className="text-[9px] font-black uppercase tracking-tighter">{autoApply ? "Live" : "Manual"}</span>
+                                {/* 🔋 ACTION BAR */}
+                                <div className="p-10 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
+                                    <div className="flex items-center gap-8">
+                                        <div className="flex items-center gap-3 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" /> Matrix Active
+                                        </div>
+                                        <button
+                                            onClick={() => setAutoApply(!autoApply)}
+                                            className={`flex items-center gap-3 px-6 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${autoApply ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-400'}`}
+                                        >
+                                            <Clock size={14} /> {autoApply ? "Live Stream" : "Manual Trigger"}
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                        <button
+                                            onClick={() => setIsFilterBuilderOpen(false)}
+                                            className="px-16 py-6 bg-slate-950 text-white rounded-[32px] text-[13px] font-black uppercase tracking-[0.4em] hover:bg-indigo-600 shadow-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-4"
+                                        >
+                                            Deploy Segmentation Matrix <ArrowRight size={18} />
                                         </button>
                                     </div>
                                 </div>
@@ -4084,7 +5320,7 @@ export default function CRMSpreadsheetPage() {
 
                             <div className="h-6 w-[1px] bg-slate-800 mx-2" />
 
-                            {isPureMaster && (
+                            {(isMaster || isPureMaster) && (
                                 <button
                                     onClick={handleBulkDelete}
                                     className="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
@@ -4278,7 +5514,7 @@ export default function CRMSpreadsheetPage() {
                                                 <ShieldCheck size={12} /> Role Based Protocol
                                             </h4>
                                             <div className="grid grid-cols-2 gap-3">
-                                                {["MASTER", "ADMIN", "STAFF", "GUEST"].map(role => {
+                                                {["MASTER", "ADMIN", "TL", "STAFF", "GUEST"].map(role => {
                                                     const isActive = permRoles.includes(role);
                                                     return (
                                                         <button
@@ -4370,7 +5606,7 @@ export default function CRMSpreadsheetPage() {
                                             <div>
                                                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-2">Target Role Protocol</p>
                                                 <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                                    {["ADMIN", "MASTER", "STAFF", "GUEST"].map(role => (
+                                                    {["ADMIN", "MASTER", "TL", "STAFF", "GUEST"].map(role => (
                                                         <button
                                                             key={role}
                                                             onClick={() => { setSelectedRoleForGAC(role); setSelectedUserForGAC(null); }}
@@ -4530,145 +5766,145 @@ export default function CRMSpreadsheetPage() {
                             transition={{ type: "spring", bounce: 0, duration: 0.3 }}
                             className="fixed right-0 top-0 bottom-0 w-full md:w-[420px] bg-white shadow-[-10px_0_40px_rgba(0,0,0,0.05)] z-[100] flex flex-col border-l border-slate-100"
                         >
-                        <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
-                                    <Sparkles size={18} />
-                                </div>
-                                <div className="flex flex-col">
-                                    <h3 className="text-sm font-black text-slate-900 tracking-tighter">AI Assistant</h3>
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => setMessages([])}
-                                    className="p-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
-                                >
-                                    Clear
-                                </button>
-                                <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
-                                    <X size={16} />
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
-                            {messages.length === 0 && (
-                                <div className="space-y-8 py-4">
-                                    <div className="flex flex-col items-center justify-center text-center space-y-3 opacity-80">
-                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
-                                            <Bot size={24} className="text-indigo-400" />
-                                        </div>
-                                        <div>
-                                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Intelligence Center</h4>
-                                            <p className="text-[10px] font-bold text-slate-400 mt-1">Select a deep analysis strategy to begin</p>
-                                        </div>
+                            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-white/80">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-gradient-to-tr from-indigo-500 to-purple-500 text-white rounded-[14px] flex items-center justify-center shadow-lg shadow-indigo-200">
+                                        <Sparkles size={18} />
                                     </div>
-
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {reportSuggestions.map((s, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => {
-                                                    handleInputChange({ target: { value: s.query } } as any);
-                                                    setTimeout(() => {
-                                                        const form = document.getElementById("ai-chat-form") as HTMLFormElement;
-                                                        if (form) form.requestSubmit();
-                                                    }, 50);
-                                                }}
-                                                className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">{s.title}</span>
-                                                    <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                                                </div>
-                                                <p className="text-[10px] font-bold text-slate-400 mt-2 line-clamp-1 group-hover:text-slate-500 transition-colors">{s.query}</p>
-                                            </button>
-                                        ))}
+                                    <div className="flex flex-col">
+                                        <h3 className="text-sm font-black text-slate-900 tracking-tighter">AI Assistant</h3>
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Powered by Vercel SDK</p>
                                     </div>
                                 </div>
-                            )}
-                            {messages.map(m => (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    key={m.id}
-                                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-                                >
-                                    <div className={`max-w-[85%] p-4 rounded-[20px] ${m.role === 'user'
-                                        ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
-                                        : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
-                                        }`}>
-                                        <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
-                                            {typeof (m as any).content === 'string' ? (m as any).content : (String((m as any).ui || JSON.stringify((m as any).content || '')))}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setMessages([])}
+                                        className="p-2 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                                    >
+                                        Clear
+                                    </button>
+                                    <button onClick={() => setIsAIFilterOpen(false)} className="p-2.5 bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
+                                {messages.length === 0 && (
+                                    <div className="space-y-8 py-4">
+                                        <div className="flex flex-col items-center justify-center text-center space-y-3 opacity-80">
+                                            <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100">
+                                                <Bot size={24} className="text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest">Intelligence Center</h4>
+                                                <p className="text-[10px] font-bold text-slate-400 mt-1">Select a deep analysis strategy to begin</p>
+                                            </div>
                                         </div>
 
-                                        {/* Render Tool Invocations nicely */}
-                                        {Array.isArray(m.toolInvocations) && m.toolInvocations.map((toolInvocation: any) => {
-                                            if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
-                                                return (
-                                                    <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
-                                                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2 mb-2">
-                                                            <Filter size={12} className="text-indigo-400" /> Filters Applied
-                                                        </p>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {toolInvocation.result?.filtersApplied && Array.isArray(toolInvocation.result.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
-                                                                <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
-                                                                    <span className="text-indigo-400">{String(f.operator || f.op)}</span>
-                                                                    <span>{String(f.value || f.val)}</span>
-                                                                </span>
-                                                            ))}
-                                                        </div>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {reportSuggestions.map((s, i) => (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => {
+                                                        handleInputChange({ target: { value: s.query } } as any);
+                                                        setTimeout(() => {
+                                                            const form = document.getElementById("ai-chat-form") as HTMLFormElement;
+                                                            if (form) form.requestSubmit();
+                                                        }, 50);
+                                                    }}
+                                                    className="group text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all active:scale-[0.98]"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[11px] font-black text-slate-900 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">{s.title}</span>
+                                                        <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                                                     </div>
-                                                );
-                                            }
-                                            return null;
-                                        })}
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-2 line-clamp-1 group-hover:text-slate-500 transition-colors">{s.query}</p>
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
-                                </motion.div>
-                            ))}
-                            {isAIFetching && (
-                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-                                    <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
-                                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
-                                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
-                                        <div className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
-                                    </div>
-                                </motion.div>
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div>
+                                )}
+                                {messages.map((m: any) => (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        key={m.id}
+                                        className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                                    >
+                                        <div className={`max-w-[85%] p-4 rounded-[20px] ${m.role === 'user'
+                                            ? 'bg-slate-900 text-white rounded-tr-sm shadow-xl shadow-slate-200/50'
+                                            : 'bg-white text-slate-700 border border-slate-100 rounded-tl-sm shadow-sm'
+                                            }`}>
+                                            <div className="text-sm font-semibold whitespace-pre-wrap leading-relaxed">
+                                                {typeof (m as any).content === 'string' ? (m as any).content : (String((m as any).ui || JSON.stringify((m as any).content || '')))}
+                                            </div>
 
-                        <div className="p-4 bg-white border-t border-slate-100">
-                            <form id="ai-chat-form" onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
-                                <input
-                                    value={input}
-                                    onChange={handleInputChange}
-                                    placeholder="Message AI..."
-                                    className="w-full pl-5 pr-14 py-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all placeholder:text-slate-400"
-                                    autoFocus
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={!(input || "").trim() || isAIFetching}
-                                    className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
-                                >
-                                    <ArrowUp size={16} />
-                                </button>
-                            </form>
-                            <div className="mt-3 flex justify-between items-center px-2">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1"><Sparkles size={10} /> AI SDK V3</p>
-                                <button
-                                    onClick={(e) => { e.preventDefault(); handleGenerateReport(); }}
-                                    disabled={isGeneratingReport}
-                                    className="text-[9px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                                >
-                                    {isGeneratingReport ? "Analyzing..." : "Generate Full Report"} <ArrowUpRight size={10} />
-                                </button>
+                                            {/* Render Tool Invocations nicely */}
+                                            {Array.isArray(m.toolInvocations) && m.toolInvocations.map((toolInvocation: any) => {
+                                                if (toolInvocation.toolName === 'applyFilter' && toolInvocation.state === 'result') {
+                                                    return (
+                                                        <div key={toolInvocation.toolCallId} className="mt-4 p-3 bg-indigo-50/80 border border-indigo-100/50 rounded-xl">
+                                                            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                                <Filter size={12} className="text-indigo-400" /> Filters Applied
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {toolInvocation.result?.filtersApplied && Array.isArray(toolInvocation.result.filtersApplied) && toolInvocation.result.filtersApplied.map((f: any, i: number) => (
+                                                                    <span key={i} className="inline-flex px-2 py-1 text-[10px] font-bold text-indigo-700 bg-white border border-indigo-100 rounded shadow-sm items-center gap-1.5 truncate max-w-[150px]">
+                                                                        <span className="text-indigo-400">{String(f.operator || f.op)}</span>
+                                                                        <span>{String(f.value || f.val)}</span>
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })}
+                                        </div>
+                                    </motion.div>
+                                ))}
+                                {isAIFetching && (
+                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                                        <div className="bg-white p-4 rounded-[20px] border border-slate-100 rounded-tl-sm min-w-[70px] flex justify-center items-center gap-1.5 shadow-sm">
+                                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" />
+                                            <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: "0.15s" }} />
+                                            <div className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-bounce" style={{ animationDelay: "0.3s" }} />
+                                        </div>
+                                    </motion.div>
+                                )}
+                                <div ref={messagesEndRef} />
                             </div>
-                        </div>
-                    </motion.div>
+
+                            <div className="p-4 bg-white border-t border-slate-100">
+                                <form id="ai-chat-form" onSubmit={handleSubmit} className="relative flex items-center shadow-lg shadow-slate-100/50 rounded-2xl">
+                                    <input
+                                        value={input}
+                                        onChange={handleInputChange}
+                                        placeholder="Message AI..."
+                                        className="w-full pl-5 pr-14 py-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-2xl text-sm font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 focus:bg-white transition-all placeholder:text-slate-400"
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!(input || "").trim() || isAIFetching}
+                                        className="absolute right-2 p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-all active:scale-95"
+                                    >
+                                        <ArrowUp size={16} />
+                                    </button>
+                                </form>
+                                <div className="mt-3 flex justify-between items-center px-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1"><Sparkles size={10} /> AI SDK V3</p>
+                                    <button
+                                        onClick={(e) => { e.preventDefault(); handleGenerateReport(); }}
+                                        disabled={isGeneratingReport}
+                                        className="text-[9px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-600 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                    >
+                                        {isGeneratingReport ? "Analyzing..." : "Generate Full Report"} <ArrowUpRight size={10} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
                     </>
                 )}
             </AnimatePresence>
@@ -4801,6 +6037,73 @@ export default function CRMSpreadsheetPage() {
                 )}
             </AnimatePresence>
 
+            {/* Theme Picker Modal */}
+            <AnimatePresence>
+                {isThemePickerOpen && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsThemePickerOpen(false)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+                        />
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 30 }}
+                            className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden border border-white"
+                        >
+                            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                                        <Palette size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Canvas Design</h3>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Select your preferred matrix aesthetic</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setIsThemePickerOpen(false)} className="p-3 bg-white text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all shadow-sm border border-slate-100">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                                {[
+                                    { id: 'default', name: 'Original Light', desc: 'Professional & Clean', class: 'bg-[#f8fafc] border-slate-200' },
+                                    { id: 'dark', name: 'Deep Slate', desc: 'Focus & Comfort', class: 'bg-[#0f172a] border-slate-800' },
+                                    { id: 'midnight', name: 'Midnight', desc: 'Darker & Stealth', class: 'bg-[#020617] border-slate-900' },
+                                    { id: 'ocean', name: 'Ocean Mist', desc: 'Calming Blue', class: 'bg-gradient-to-br from-blue-600 to-indigo-900 border-blue-400/30' },
+                                    { id: 'sunset', name: 'Sunset Glow', desc: 'Warm & Energy', class: 'bg-gradient-to-br from-rose-600 to-purple-900 border-rose-400/30' },
+                                    { id: 'aurora', name: 'Northern Lights', desc: 'Modern Vibrant', class: 'bg-gradient-to-br from-emerald-600 to-teal-900 border-emerald-400/30' },
+                                    { id: 'mesh', name: 'Matrix Grid', desc: 'Structured feeling', class: 'bg-white bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] border-slate-200' },
+                                    { id: 'glass', name: 'Glass Grit', desc: 'Textured Surface', class: 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] border-slate-300' },
+                                ].map((t) => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => { setCanvasTheme(t.id); setIsThemePickerOpen(false); toast.success(`${t.name} Applied`); }}
+                                        className={`group relative flex flex-col gap-3 p-4 rounded-3xl border-2 transition-all hover:scale-[1.05] active:scale-95 ${canvasTheme === t.id ? 'border-indigo-600 shadow-xl shadow-indigo-100 ring-4 ring-indigo-50' : 'border-slate-100 hover:border-indigo-300'
+                                            }`}
+                                    >
+                                        <div className={`h-24 w-full rounded-2xl border ${t.class} transition-transform group-hover:rotate-1`} />
+                                        <div className="text-left">
+                                            <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{t.name}</p>
+                                            <p className="text-[9px] font-bold text-slate-400 mt-0.5 line-clamp-1">{t.desc}</p>
+                                        </div>
+                                        {canvasTheme === t.id && (
+                                            <div className="absolute top-2 right-2 w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-md">
+                                                <Check size={12} strokeWidth={4} />
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .custom-scrollbar::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -4808,7 +6111,7 @@ export default function CRMSpreadsheetPage() {
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; border: 3px solid #f8fafc; }
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
                 tr[data-highlighted="true"] td {
-                    background-color: #fffbeb !important;
+                    background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(255, 251, 235, 0.1)' : '#fffbeb'} !important;
                     box-shadow: inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
                     z-index: 10;
                 }
@@ -4816,57 +6119,382 @@ export default function CRMSpreadsheetPage() {
                     box-shadow: inset 4px 0 0 0 #fbbf24, inset 0 1px 0 0 #fde68a, inset 0 -1px 0 0 #fde68a !important;
                 }
                 
-                /* Custom Row Colors */
-                tr[data-row-color="#fffbeb"] td { background-color: #fffbeb !important; }
-                tr[data-row-color="#f0fdf4"] td { background-color: #f0fdf4 !important; }
-                tr[data-row-color="#eff6ff"] td { background-color: #eff6ff !important; }
-                tr[data-row-color="#fdf2f8"] td { background-color: #fdf2f8 !important; }
-                tr[data-row-color="#fafaf9"] td { background-color: #fafaf9 !important; }
-                tr[data-row-color="#fff1f2"] td { background-color: #fff1f2 !important; }
-                tr[data-row-color="#f5f3ff"] td { background-color: #f5f3ff !important; }
-                tr[data-row-color="#fff7ed"] td { background-color: #fff7ed !important; }
-                tr[data-row-color="#eef2ff"] td { background-color: #eef2ff !important; }
-                tr[data-row-color="#fefce8"] td { background-color: #fefce8 !important; }
-                tr[data-row-color="#ecfdf5"] td { background-color: #ecfdf5 !important; }
-                tr[data-row-color="#ecfeff"] td { background-color: #ecfeff !important; }
+                /* Custom Row Colors with Dark Support */
+                tr[data-row-color] td { opacity: 0.9; }
+                tr[data-row-color="#fffbeb"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(255, 251, 235, 0.1)' : '#fffbeb'} !important; }
+                tr[data-row-color="#f0fdf4"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(240, 253, 244, 0.1)' : '#f0fdf4'} !important; }
+                tr[data-row-color="#eff6ff"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(239, 246, 255, 0.1)' : '#eff6ff'} !important; }
+                tr[data-row-color="#fdf2f8"] td { background-color: ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'rgba(253, 242, 248, 0.1)' : '#fdf2f8'} !important; }
                 
-                /* Selection state shadow */
-                tr.bg-indigo-50\/50 td {
-                    background-color: rgba(238, 242, 255, 0.5) !important;
-                    box-shadow: inset 4px 0 0 0 #4f46e5;
-                }
+                /* Theme-Aware Table Overrides for Ultimate Matrix Feel */
+                ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? `
+                    .matrix-table { border-collapse: separate; border-spacing: 0; }
+                    .matrix-table td, .matrix-table th { 
+                        color: #f1f5f9 !important; 
+                        border-color: rgba(255, 255, 255, 0.08) !important;
+                        background: transparent;
+                    }
+                    .matrix-table input, .matrix-table select, .matrix-table textarea { 
+                        color: #fff !important; 
+                        background: transparent !important;
+                        border: none !important;
+                    }
+                    .matrix-table span, .matrix-table p { color: inherit !important; }
+                    .matrix-table .sticky { 
+                        background-color: rgba(15, 23, 42, 0.95) !important; 
+                        backdrop-filter: blur(8px);
+                    }
+                    .matrix-table tr:hover td { 
+                        background-color: rgba(255, 255, 255, 0.03) !important; 
+                    }
+                ` : ''}
             ` }} />
-            {
-                openFollowUpModal && (
-                    <FormRemarkModal
-                        formId={openFollowUpModal.formId}
-                        responseId={openFollowUpModal.responseId}
-                        columnId={openFollowUpModal.columnId}
-                        onClose={() => setOpenFollowUpModal(null)}
-                        userRole={userRole || 'GUEST'}
-                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
-                    />
-                )
-            }
-            {
-                openPaymentModal && (
-                    <PaymentHubModal
-                        formId={openPaymentModal.formId}
-                        responseId={openPaymentModal.responseId}
-                        userRole={userRole || 'GUEST'}
-                        onClose={() => setOpenPaymentModal(null)}
-                        onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
-                    />
-                )
-            }
-            {
-                isPaymentHubOpen && (
-                    <PaymentHubDashboard
-                        formId={params.id as string}
-                        onClose={() => setIsPaymentHubOpen(false)}
-                    />
-                )
-            }
+            {/* 🛸 OVERLAY & PORTAL ARCHITECTURE v3.0 */}
+            {typeof document !== 'undefined' && createPortal(
+                <div className="crm-global-overlays fixed inset-0 pointer-events-none z-[10000000]">
+                    <div className="pointer-events-none h-full w-full relative text-slate-900">
+                        {/* 🛸 MASTER COMMAND DRAWER */}
+                        <AnimatePresence>
+                            {selectedResponse && (
+                                <>
+                                    {/* 🌌 GLASS BACKDROP */}
+                                    <motion.div
+                                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                        onClick={() => setSelectedResponse(null)}
+                                        className="fixed inset-0 bg-slate-950/90 backdrop-blur-3xl z-[9999999] pointer-events-auto"
+                                    />
+
+                                    <motion.div
+                                        initial={{ x: "100%", opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: "100%", opacity: 0 }}
+                                        transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                                        className="fixed top-0 right-0 h-full w-full max-w-[800px] bg-white shadow-[-100px_0_200px_rgba(0,0,0,0.6)] z-[9999999] overflow-hidden flex flex-col border-l border-slate-100 pointer-events-auto"
+                                    >
+                                        {/* 🪐 SUPER HEADER: WEBSITE GRADE DESIGN */}
+                                        <div className="relative p-12 overflow-hidden shrink-0 bg-slate-950">
+                                            {/* Dynamic Gradient Background */}
+                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-slate-950 to-emerald-950 opacity-40" />
+                                            <div className="absolute top-0 right-0 p-20 bg-indigo-500/10 blur-[100px] rounded-full" />
+
+                                            <div className="relative z-10 flex flex-col gap-10">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-5">
+                                                        <div className="w-16 h-16 rounded-[28px] bg-white text-slate-950 flex items-center justify-center shadow-2xl animate-pulse">
+                                                            <Activity size={28} />
+                                                        </div>
+                                                        <div>
+                                                            <h2 className="text-3xl font-black text-white tracking-tight uppercase leading-none mb-2">Record Intelligence</h2>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.5em]">Workspace Matrix v4</span>
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setSelectedResponse(null)}
+                                                        className="w-16 h-16 flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/10 rounded-[30px] transition-all border border-white/5 group"
+                                                    >
+                                                        <X size={28} className="group-hover:rotate-90 transition-transform duration-500" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex bg-white/5 p-1.5 rounded-[24px] border border-white/10 shadow-inner">
+                                                        <button onClick={() => setDrawerTab('edit')} className={`px-10 py-3.5 rounded-[20px] text-[11px] font-black uppercase tracking-[0.3em] transition-all ${drawerTab === 'edit' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400 hover:text-white'}`}>Matrix Input</button>
+                                                        <button onClick={() => setDrawerTab('history')} className={`px-10 py-3.5 rounded-[20px] text-[11px] font-black uppercase tracking-[0.3em] transition-all ${drawerTab === 'history' ? 'bg-indigo-600 text-white shadow-2xl' : 'text-slate-400 hover:text-white'}`}>Audit Life</button>
+                                                    </div>
+                                                    <div className="h-10 w-px bg-white/10 mx-4" />
+                                                    <div className="px-6 py-3 bg-white/5 rounded-2xl border border-white/10 flex items-center gap-3">
+                                                        <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                                                        <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-none">ID: {selectedResponse.id.slice(-8)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 🌊 DRAWER CORE */}
+                                        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar space-y-16 bg-white">
+                                            <AnimatePresence mode="wait">
+                                                {drawerTab === 'edit' ? (
+                                                    <motion.div
+                                                        key="edit-matrix" initial={{ opacity: 0, scale: 0.98, x: -15 }} animate={{ opacity: 1, scale: 1, x: 0 }} exit={{ opacity: 0, scale: 0.98, x: -15 }}
+                                                        className="space-y-16"
+                                                    >
+                                                        {/* 🛸 FOLLOW-UP RADAR */}
+                                                        <div className="bg-slate-50 p-10 rounded-[56px] border border-slate-100 shadow-sm relative overflow-hidden group/radar">
+                                                            <div className="absolute top-0 right-0 p-16 bg-indigo-500/5 blur-[80px] rounded-full pointer-events-none" />
+                                                            <div className="flex items-center justify-between mb-10 relative z-10">
+                                                                <div className="flex items-center gap-6">
+                                                                    <div className="w-14 h-14 rounded-2xl bg-slate-950 text-white flex items-center justify-center shadow-xl">
+                                                                        <Target size={22} className="animate-pulse" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <h3 className="text-lg font-black text-slate-900 tracking-tight leading-none mb-1">INTERACTION MATRIX</h3>
+                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Lifecycle & Retention Stage</p>
+                                                                    </div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setOpenFollowUpModal({ formId: data?.form.id || "", responseId: selectedResponse.id })}
+                                                                    className="px-8 py-4 bg-indigo-600 hover:bg-slate-950 text-white rounded-[24px] text-[11px] font-black uppercase tracking-[0.2em] transition-all shadow-xl hover:shadow-[0_20px_40px_rgba(79,70,229,0.3)] hover:scale-[1.05] flex items-center gap-3"
+                                                                >
+                                                                    <Plus size={16} /> Deploy REMARK
+                                                                </button>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 gap-8 relative z-10">
+                                                                <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-inner group hover:bg-slate-950 hover:border-slate-800 transition-all duration-500">
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Next Scheduled Interaction</p>
+                                                                    <div className="flex items-center gap-4 text-xl font-black text-slate-950 group-hover:text-white">
+                                                                        <Calendar className="text-indigo-500" size={18} />
+                                                                        {selectedResponse.remarks?.[0]?.nextFollowUpDate ? safeFormat(selectedResponse.remarks[0].nextFollowUpDate, "dd MMM yyyy") : "UNAWAITED"}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-inner group hover:bg-slate-950 hover:border-slate-800 transition-all duration-500">
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Execution Status</p>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-sm ${(selectedResponse.remarks?.[0]?.followUpStatus || "") === "Drained" || (selectedResponse.remarks?.[0]?.followUpStatus || "") === "Closed"
+                                                                                ? "bg-rose-500 text-white shadow-rose-200"
+                                                                                : "bg-emerald-500 text-white shadow-emerald-200"
+                                                                            }`}>
+                                                                            {selectedResponse.remarks?.[0]?.followUpStatus || "ACTIVE PIPELINE"}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {selectedResponse.remarks?.[0]?.remark && (
+                                                                <div className="mt-8 p-10 bg-white rounded-[32px] border border-slate-100 relative group/remark hover:border-indigo-200 transition-all">
+                                                                    <Quote size={30} className="absolute -top-4 -left-2 text-slate-100 group-hover:text-indigo-500/20 transition-colors" />
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Recent Interaction Node</p>
+                                                                    <p className="text-lg font-bold text-slate-800 leading-relaxed tracking-tight italic">"{selectedResponse.remarks?.[0]?.remark}"</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* 💎 FIELD INTELLIGENCE GRID */}
+                                                        <div className="space-y-12">
+                                                            <div className="flex items-center gap-5 px-4">
+                                                                <h3 className="text-[12px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6 shrink-0">DATA PROTOCOLS <div className="h-[2px] w-24 bg-slate-100" /></h3>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-1 gap-12 px-2">
+                                                                {[...data?.internalColumns?.map(c => ({ ...c, isInternal: true })) || [], ...data.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, isInternal: false })) || []].map((col) => {
+                                                                    const val = getCellValue(selectedResponse.id, col.id, col.isInternal);
+                                                                    const isInternal = col.isInternal;
+
+                                                                    return (
+                                                                        <div key={col.id} className="group/field relative">
+                                                                            <div className="flex flex-col gap-6 p-8 rounded-[48px] bg-white border-2 border-slate-100 group-hover/field:border-indigo-500/30 group-hover/field:shadow-[0_30px_70px_rgba(0,0,0,0.05)] transition-all duration-500 relative z-10">
+                                                                                <div className="flex items-center justify-between relative px-2">
+                                                                                    <div className="flex items-center gap-4">
+                                                                                        <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] group-hover/field:text-indigo-500 transition-colors">{col.label}</label>
+                                                                                        {isInternal && <div className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest">INTERNAL</div>}
+                                                                                    </div>
+                                                                                    {col.type === "dropdown" && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />}
+                                                                                </div>
+
+                                                                                <div className="relative px-2">
+                                                                                    {col.type === "dropdown" ? (
+                                                                                        <select
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                        >
+                                                                                            <option value="">Select Option Protocol...</option>
+                                                                                            {col.options?.map((opt: any) => {
+                                                                                                const optLabel = typeof opt === 'string' ? opt : opt.label;
+                                                                                                return <option key={optLabel} value={optLabel}>{optLabel}</option>;
+                                                                                            })}
+                                                                                        </select>
+                                                                                    ) : col.type === "user" ? (
+                                                                                        <select
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none cursor-pointer transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                        >
+                                                                                            <option value="">Choose Agent Entity...</option>
+                                                                                            {teamMembers.map(tm => (
+                                                                                                <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
+                                                                                            ))}
+                                                                                        </select>
+                                                                                    ) : col.type === "textarea" ? (
+                                                                                        <textarea
+                                                                                            className="w-full bg-white border-2 border-slate-100 rounded-[32px] p-8 text-[18px] font-bold text-slate-800 focus:border-indigo-500 focus:ring-0 min-h-[140px] resize-none leading-relaxed transition-all shadow-inner"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                            placeholder={`Enter detailed ${col.label} metrics...`}
+                                                                                        />
+                                                                                    ) : col.type === "file" ? (
+                                                                                        <div className="flex flex-col gap-6">
+                                                                                            <div className="grid grid-cols-2 gap-4">
+                                                                                                {String(val || "").split(",").filter(Boolean).map((fileUrl, fIdx) => (
+                                                                                                    <div key={fIdx} className="relative group/file">
+                                                                                                        <div className="aspect-square bg-slate-100 rounded-[32px] overflow-hidden border-2 border-slate-200 group-hover/file:border-indigo-400 group-hover/file:shadow-2xl transition-all duration-500">
+                                                                                                            <img src={fileUrl} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://img.icons8.com/color/96/file.png')} />
+                                                                                                            <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/file:opacity-100 transition-opacity flex items-center justify-center gap-4 backdrop-blur-sm">
+                                                                                                                <a href={fileUrl} target="_blank" className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-950 hover:bg-indigo-600 hover:text-white transition-all transform hover:scale-110"><ExternalLink size={20} /></a>
+                                                                                                                <button onClick={() => {
+                                                                                                                    const files = String(val || "").split(",").filter(Boolean);
+                                                                                                                    files.splice(fIdx, 1);
+                                                                                                                    handleUpdateValue(selectedResponse.id, col.id, files.join(","), isInternal);
+                                                                                                                }} className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-rose-600 hover:bg-rose-600 hover:text-white transition-all transform hover:scale-110"><Trash2 size={20} /></button>
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                        <div className="mt-4 px-2">
+                                                                                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{fileUrl.split('/').pop()}</p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                ))}
+
+                                                                                                {/* Multi-Artifact Slot */}
+                                                                                                <div className="relative group/upload h-full">
+                                                                                                    <input
+                                                                                                        type="file"
+                                                                                                        onChange={(e) => {
+                                                                                                            const file = e.target.files?.[0];
+                                                                                                            if (file) {
+                                                                                                                const currentFiles = String(val || "").split(",").filter(Boolean);
+                                                                                                                if (currentFiles.length >= 4) { toast.error("Matrix storage limit reached (4 artifacts max)"); return; }
+                                                                                                                toast.loading("Encrypting Artifact...");
+                                                                                                                setTimeout(() => {
+                                                                                                                    const mockUrl = currentFiles.length === 0 ? "https://images.unsplash.com/photo-1621252179027-94459d278660?auto=format&fit=crop&q=80&w=200" : "https://images.unsplash.com/photo-1574169208507-84376144848b?auto=format&fit=crop&q=80&w=200";
+                                                                                                                    handleUpdateValue(selectedResponse.id, col.id, [...currentFiles, mockUrl].join(","), isInternal);
+                                                                                                                    toast.dismiss();
+                                                                                                                    toast.success("Artifact Synchronized");
+                                                                                                                }, 1500);
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                                                    />
+                                                                                                    <div className="aspect-square border-[3px] border-dashed border-slate-200 rounded-[32px] flex flex-col items-center justify-center gap-4 group-hover/upload:border-indigo-400 group-hover/upload:bg-indigo-50/50 transition-all duration-500 shadow-inner">
+                                                                                                        <div className="w-16 h-16 rounded-[22px] bg-slate-100 text-slate-400 flex items-center justify-center group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:scale-125 group-hover/upload:rotate-12 transition-all duration-700 shadow-2xl shadow-slate-200">
+                                                                                                            <UploadCloud size={28} />
+                                                                                                        </div>
+                                                                                                        <div className="text-center">
+                                                                                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Link</p>
+                                                                                                            <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1">Secondary Artifact</p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <input
+                                                                                            type={col.type === "number" || col.type === "currency" ? "number" : col.type === "date" ? "date" : "text"}
+                                                                                            className="w-full bg-slate-50 border-none rounded-3xl px-8 py-5 text-xl font-black text-slate-950 focus:ring-2 ring-indigo-500/20 appearance-none transition-all shadow-inner tracking-tight"
+                                                                                            value={val}
+                                                                                            onChange={(e) => handleUpdateValue(selectedResponse.id, col.id, e.target.value, isInternal)}
+                                                                                            placeholder={`Inject ${col.label} value...`}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="absolute inset-x-12 bottom-0 h-[8px] bg-slate-100 rounded-full group-hover/field:bg-indigo-500 group-hover/field:h-[12px] group-hover/field:inset-x-0 transition-all duration-700 pointer-events-none" />
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.div
+                                                        key="history-matrix" initial={{ opacity: 0, scale: 0.98, x: 15 }} animate={{ opacity: 1, scale: 1, x: 0 }} exit={{ opacity: 0, scale: 0.98, x: 15 }}
+                                                        className="space-y-12"
+                                                    >
+                                                        <div className="flex flex-col gap-10">
+                                                            <div className="flex items-center justify-between px-6">
+                                                                <h3 className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6">Audit Lifecycle <div className="h-[2px] w-24 bg-slate-100 rounded-full" /></h3>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Total Actions</span>
+                                                            </div>
+
+                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
+                                                                {(data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0) > 0 ? (
+                                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                                        <div key={act.id} className="relative pl-12 pb-12 group/audit">
+                                                                            <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
+                                                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />
+                                                                            </div>
+                                                                            <div className="flex flex-col gap-6">
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <div className="flex items-center gap-5">
+                                                                                        <div className="w-12 h-12 rounded-[18px] bg-slate-950 flex items-center justify-center text-[12px] font-black text-white shadow-xl">{act.userName[0]}</div>
+                                                                                        <div>
+                                                                                            <p className="text-[16px] font-black text-slate-950 mb-1 leading-none">{act.userName}</p>
+                                                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{safeFormat(act.createdAt, "dd MMM yyyy, HH:mm:ss")}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="bg-slate-50/50 p-10 rounded-[56px] border border-slate-100 group-hover/audit:bg-white group-hover/audit:border-indigo-200 group-hover/audit:shadow-[0_25px_80px_rgba(0,0,0,0.06)] transition-all duration-700">
+                                                                                    <div className="flex items-center gap-4 mb-6">
+                                                                                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600"><Database size={14} /></div>
+                                                                                        <p className="text-[12px] text-slate-400 font-black uppercase tracking-widest">Field Updated: <span className="text-slate-950">{act.columnName}</span></p>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-8">
+                                                                                        <div className="flex-1 px-8 py-5 rounded-3xl bg-rose-50/50 text-rose-600 border border-rose-100 line-through opacity-50 truncate font-bold text-[14px]">{act.oldValue || "-"}</div>
+                                                                                        <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 shadow-inner"><ArrowRight size={20} className="text-slate-300 group-hover/audit:text-indigo-400 transition-colors" /></div>
+                                                                                        <div className="flex-1 px-8 py-5 rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-100 font-black truncate text-[14px] shadow-sm shadow-emerald-500/5">{act.newValue}</div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))
+                                                                ) : (
+                                                                    <div className="flex flex-col items-center justify-center py-24 bg-slate-50/50 rounded-[64px] border-2 border-dashed border-slate-200 ml-[-20px]">
+                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100 animate-pulse">
+                                                                            <Clock size={50} className="text-slate-200" />
+                                                                        </div>
+                                                                        <p className="text-[14px] font-black text-slate-300 uppercase tracking-[0.6em]">Timeline Deactivated</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+
+                        {/* 🛸 FOLLOW-UP & REMARK MODAL (ABOVE DRAWER) */}
+                        {openFollowUpModal && (
+                            <div className="fixed inset-0 z-[10000001] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md pointer-events-auto">
+                                <FormRemarkModal
+                                    formId={openFollowUpModal.formId}
+                                    responseId={openFollowUpModal.responseId}
+                                    columnId={openFollowUpModal.columnId}
+                                    onClose={() => setOpenFollowUpModal(null)}
+                                    userRole={userRole || 'GUEST'}
+                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                />
+                            </div>
+                        )}
+
+                        {/* 🛸 OTHER MODALS PORTALED */}
+                        {openPaymentModal && (
+                            <div className="fixed inset-0 z-[10000002] flex items-center justify-center p-6 bg-slate-950/40 backdrop-blur-md pointer-events-auto">
+                                <PaymentHubModal
+                                    formId={openPaymentModal.formId}
+                                    responseId={openPaymentModal.responseId}
+                                    userRole={userRole || 'GUEST'}
+                                    onClose={() => setOpenPaymentModal(null)}
+                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                />
+                            </div>
+                        )}
+
+                        {isPaymentHubOpen && (
+                            <div className="fixed inset-0 z-[10000003] pointer-events-auto">
+                                <PaymentHubDashboard
+                                    formId={params.id as string}
+                                    onClose={() => setIsPaymentHubOpen(false)}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>,
+                document.body
+            )}
             {/* BULK IMPORT MODAL */}
             {isBulkImportOpen && (
                 <BulkImportModal
@@ -4877,9 +6505,12 @@ export default function CRMSpreadsheetPage() {
                         setIsBulkImportOpen(false);
                     }}
                     availableColumns={[
-                        { id: "__assigned", label: "Assigned To", isInternal: false },
-                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false })),
-                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true }))
+                        { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
+                        { id: "__followUpStatus", label: "Follow-up Status", isInternal: false, type: "text" },
+                        { id: "__nextFollowUpDate", label: "Next Follow-up Date", isInternal: false, type: "date" },
+                        { id: "__recentRemark", label: "Recent Remark", isInternal: false, type: "text" },
+                        ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),
+                        ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true, type: c.type }))
                     ]}
                 />
             )}
@@ -4889,22 +6520,168 @@ export default function CRMSpreadsheetPage() {
                     formId={params.id as string}
                     onClose={() => setIsLeadAssignHubOpen(false)}
                     responses={data?.responses || []}
+                    selectedIds={selectedRows}
                     teamMembers={teamMembers}
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
             )}
+            {/* PREMIUM FLOATING BATCH ACTION DOCK */}
+            <AnimatePresence>
+                {selectedRows.length > 0 && (
+                    <motion.div
+                        initial={{ y: 100, x: "-50%", opacity: 0 }}
+                        animate={{ y: 0, x: "-50%", opacity: 1 }}
+                        exit={{ y: 100, x: "-50%", opacity: 0 }}
+                        className="fixed bottom-12 left-1/2 z-[1000] flex items-center gap-8 px-10 py-6 bg-slate-900/90 backdrop-blur-3xl border border-white/20 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.6)] rounded-[40px] min-w-[500px]"
+                    >
+                        <div className="flex items-center gap-4 pr-10 border-r border-white/10 group">
+                            <motion.div
+                                animate={selectedRows.length > 0 ? { scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] } : {}}
+                                transition={{ repeat: Infinity, duration: 4 }}
+                                className="w-14 h-14 rounded-3xl bg-indigo-600 flex items-center justify-center text-white text-xl font-black shadow-[0_12px_24px_rgba(79,70,229,0.4)] border border-indigo-400/30 overflow-hidden relative"
+                            >
+                                <span className="relative z-10">{selectedRows.length}</span>
+                                <motion.div
+                                    className="absolute bottom-0 left-0 right-0 bg-white/20"
+                                    initial={{ height: 0 }}
+                                    animate={{ height: `${(selectedRows.length / (filteredResponses?.length || 1)) * 100}%` }}
+                                />
+                            </motion.div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-1">Matrix Active</p>
+                                <p className="text-lg font-black text-white tracking-tight leading-none">
+                                    {selectedRows.length} <span className="text-slate-500 text-sm font-bold uppercase tracking-widest ml-1">of {filteredResponses?.length} locked</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                            <button
+                                disabled={isBulkDeleting}
+                                onClick={() => {
+                                    if (window.confirm(`Are you sure you want to execute a bulk purge on ${selectedRows.length} records?`)) {
+                                        handleBulkDelete();
+                                        setSelectedRows([]);
+                                    }
+                                }}
+                                className="group px-8 py-3.5 bg-rose-500 hover:bg-rose-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-[0_12px_24px_rgba(244,63,94,0.3)] hover:shadow-[0_20px_40px_rgba(244,63,94,0.4)] active:scale-95 border border-rose-400/20"
+                            >
+                                {isBulkDeleting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 size={16} />}
+                                Execute Purge Cycle
+                            </button>
+
+                            <button
+                                onClick={() => setIsLeadAssignHubOpen(true)}
+                                className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shadow-[0_12px_24px_rgba(79,70,229,0.3)] hover:shadow-[0_20px_40px_rgba(79,70,229,0.4)] active:scale-95 border border-indigo-400/20"
+                            >
+                                <Sparkles size={16} />
+                                Lead Distribute
+                            </button>
+
+                            <button
+                                onClick={() => setSelectedRows([])}
+                                className="px-8 py-3.5 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all flex items-center gap-3 border border-white/10 hover:border-white/20 active:scale-95"
+                            >
+                                <X size={16} />
+                                Release Sector
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
+
+            {/* Final Status Matrix Modal Replacement */}
+            <AnimatePresence>
+                {statusMatrixModal && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setStatusMatrixModal(null)}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden relative z-10 border-4 border-white"
+                        >
+                            <div className="p-8 border-b border-slate-50 bg-[#F9FAFB] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Update Dimension</h3>
+                                    <p className="text-[15px] font-black text-slate-800 tracking-tighter mt-1">{statusMatrixModal.label}</p>
+                                </div>
+                                <button onClick={() => setStatusMatrixModal(null)} className="p-3 hover:bg-white rounded-2xl transition-all border border-transparent hover:border-slate-100">
+                                    <X size={20} className="text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar bg-white">
+                                <div className="grid grid-cols-1 gap-2">
+                                    {(statusMatrixModal.options && statusMatrixModal.options.length > 0
+                                        ? statusMatrixModal.options.map((o: any) => typeof o === 'string' ? o : o.label)
+                                        : CALL_STATUS_OPTIONS
+                                    ).map(opt => {
+                                        const isSelected = statusMatrixModal.val === opt;
+                                        return (
+                                            <button
+                                                key={opt}
+                                                onClick={() => {
+                                                    if (statusMatrixModal.colId === "__followUpStatus") {
+                                                        handleInstantStatusUpdate(statusMatrixModal.rowId, opt);
+                                                    } else {
+                                                        handleStatusCellUpdate(statusMatrixModal.rowId, statusMatrixModal.colId, opt, statusMatrixModal.isInternal);
+                                                    }
+                                                    setStatusMatrixModal(null);
+                                                }}
+                                                className={`w-full text-left px-6 py-4 rounded-[24px] text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between group ${isSelected
+                                                        ? 'bg-indigo-600 text-white shadow-xl scale-[1.02]'
+                                                        : 'bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
+                                                    }`}
+                                            >
+                                                <span>{opt}</span>
+                                                {isSelected ? <CheckCircle2 size={18} /> : <div className="w-4 h-4 rounded-full border-2 border-slate-200 group-hover:border-indigo-300 transition-colors" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: statusMatrixModal.rowId });
+                                        setStatusMatrixModal(null);
+                                    }}
+                                    className="flex-1 py-4 bg-white text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <History size={16} /> Interaction Log
+                                </button>
+                                <button
+                                    onClick={() => setStatusMatrixModal(null)}
+                                    className="flex-1 py-4 bg-slate-200 text-slate-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest hover:bg-slate-300 transition-all"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             <motion.button
                 initial={{ scale: 0, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 whileHover={{ scale: 1.1, y: -5 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsFullScreen(!isFullScreen)}
-                className={`fixed bottom-10 right-10 z-[101] w-16 h-16 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex flex-col items-center justify-center transition-all duration-500 border-2 backdrop-blur-xl group ${
-                    isFullScreen 
-                    ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40' 
-                    : 'bg-indigo-600/90 text-white border-indigo-400/50'
-                }`}
+                className={`fixed bottom-10 right-10 z-[101] w-16 h-16 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex flex-col items-center justify-center transition-all duration-500 border-2 backdrop-blur-xl group ${isFullScreen
+                        ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40'
+                        : 'bg-indigo-600/90 text-white border-indigo-400/50'
+                    }`}
                 title={isFullScreen ? "Exit Full View" : "Enable Full Table View"}
             >
                 <div className="relative">
@@ -4918,7 +6695,7 @@ export default function CRMSpreadsheetPage() {
                 <span className="text-[7px] font-black uppercase tracking-[0.1em] mt-1.5 opacity-60 group-hover:opacity-100 transition-all">
                     {isFullScreen ? "Focus Off" : "Full Table"}
                 </span>
-                
+
                 {/* Glow Effect */}
                 {!isFullScreen && (
                     <div className="absolute inset-0 bg-indigo-500/20 rounded-3xl blur-md -z-10 animate-pulse" />

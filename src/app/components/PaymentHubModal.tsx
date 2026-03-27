@@ -35,7 +35,7 @@ export default function PaymentHubModal({ formId, responseId, userRole, onClose,
         paymentDate: new Date().toISOString().split("T")[0]
     });
 
-    const canDelete = userRole === "MASTER" || userRole === "ADMIN" || userRole === "PURE_MASTER";
+    const canDelete = userRole === "MASTER" || userRole === "ADMIN" || userRole === "PURE_MASTER" || userRole === "TL";
 
     const fetchPayments = async () => {
         setFetching(true);

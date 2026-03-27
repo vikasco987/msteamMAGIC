@@ -11,8 +11,8 @@ export default function TimelinePage() {
 
   useEffect(() => {
     if (isLoaded) {
-      const role = user?.publicMetadata?.role;
-      const allowedRoles = ["seller", "admin", "master"];
+      const role = String(user?.publicMetadata?.role || "user").toLowerCase();
+      const allowedRoles = ["seller", "admin", "master", "tl"];
       if (!allowedRoles.includes(role)) {
         router.push("/unauthorized"); // or use "/" if no custom page
       }

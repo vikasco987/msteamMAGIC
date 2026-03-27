@@ -1,15 +1,16 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Trash2 } from "lucide-react";
+import { X, UploadCloud, CheckCircle2, AlertCircle, RefreshCw, Trash2, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 import * as XLSX from "xlsx";
+import { motion } from "framer-motion";
 
 interface BulkImportModalProps {
     formId: string;
     onClose: () => void;
     onSuccess: () => void;
-    availableColumns: { id: string; label: string; isInternal: boolean }[];
+    availableColumns: { id: string; label: string; isInternal: boolean; type: string }[];
 }
 
 export default function BulkImportModal({ formId, onClose, onSuccess, availableColumns }: BulkImportModalProps) {
@@ -22,7 +23,9 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
     const [loading, setLoading] = useState(false);
     const [importErrors, setImportErrors] = useState<string[]>([]);
     const [successCount, setSuccessCount] = useState<number>(0);
-    const [importMode, setImportMode] = useState<'update' | 'create'>('update');
+    const [importMode, setImportMode] = useState<'update' | 'create' | 'upsert'>('upsert');
+    const [progress, setProgress] = useState<{ total: number; current: number }>({ total: 0, current: 0 });
+    const [disableActivityLogs, setDisableActivityLogs] = useState(false);
 
     // Status tracking per row for preview
     const [previewLimit] = useState(10);
@@ -149,7 +152,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
         const isInternalMatch = matchColDef?.isInternal ?? false;
 
         let matchExcelHeader = "";
-        if (importMode === 'update') {
+        if (importMode === 'update' || importMode === 'upsert') {
             if (!matchColumnId) {
                 return toast.error("Please select a Key Column to match records (e.g., Phone Number)");
             }
@@ -175,38 +178,87 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
 
         setStep(3);
         setLoading(true);
+        setImportErrors([]);
+        setSuccessCount(0);
+        setProgress({ total: parsedData.length, current: 0 });
+
+        const CHUNK_SIZE = 500;
+        let localSuccessCount = 0;
+        let localCreatedCount = 0;
+        let localUpdatedCount = 0;
+        const allErrors: string[] = [];
 
         try {
-            const res = await fetch(`/api/crm/forms/${formId}/responses/bulk-import`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    data: parsedData,
-                    matchColumnId,
-                    matchExcelHeader,
-                    updateColumnMap,
-                    isInternalMatch,
-                    importMode
-                })
-            });
+            for (let i = 0; i < parsedData.length; i += CHUNK_SIZE) {
+                const chunk = parsedData.slice(i, i + CHUNK_SIZE);
+                console.log(`Sending chunk ${Math.floor(i / CHUNK_SIZE) + 1} (${chunk.length} rows)...`);
+                
+                // Normalize dates to prevent timezone shifting
+                const normalizedChunk = chunk.map(row => {
+                    const newRow = { ...row };
+                    for (const excelH in updateColumnMap) {
+                        const mapping = updateColumnMap[excelH];
+                        if (!mapping) continue;
+                        const colDef = availableColumns.find(c => c.id === mapping.id);
+                        if (colDef?.type === 'date' && newRow[excelH]) {
+                            const d = new Date(newRow[excelH]);
+                            if (!isNaN(d.getTime())) {
+                                // If it's a date, normalize it to UTC midnight of the day it represents in the user's local time
+                                // This prevents shifting when sent to the server.
+                                const utcDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                                newRow[excelH] = utcDate.toISOString();
+                            }
+                        }
+                    }
+                    return newRow;
+                });
 
-            const result = await res.json();
-            if (res.ok && result.success) {
-                toast.success(`Updated ${result.successCount} records!`);
-                setSuccessCount(result.successCount);
-                if (result.errorCount > 0) {
-                    setImportErrors(result.errors || []);
-                    setStep(4);
+                const res = await fetch(`/api/crm/forms/${formId}/responses/bulk-import`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        data: normalizedChunk,
+                        matchColumnId,
+                        matchExcelHeader,
+                        updateColumnMap,
+                        isInternalMatch,
+                        importMode,
+                        disableActivityLogs
+                    })
+                });
+
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    localSuccessCount += result.successCount;
+                    localCreatedCount += (result.createdCount || 0);
+                    localUpdatedCount += (result.updatedCount || 0);
+                    if (result.errors) allErrors.push(...result.errors);
+                    
+                    setSuccessCount(localSuccessCount);
+                    setProgress(prev => ({ ...prev, current: Math.min(prev.total, i + CHUNK_SIZE) }));
                 } else {
-                    onSuccess();
-                    onClose();
+                    const errorMsg = result.error || "Failed to process a chunk";
+                    allErrors.push(`Block starting at row ${i + 1}: ${errorMsg}`);
+                    // We continue for other chunks or break? Let's break if it's a critical error
+                    if (res.status === 401 || res.status === 403) {
+                        toast.error(errorMsg);
+                        setStep(2);
+                        return;
+                    }
                 }
+            }
+
+            toast.success(`Completed! Processed ${localSuccessCount} records.`);
+            if (allErrors.length > 0) {
+                setImportErrors(allErrors);
+                setStep(4);
             } else {
-                toast.error(result.error || "Failed to bulk update");
-                setStep(2);
+                onSuccess();
+                onClose();
             }
         } catch (error) {
-            toast.error("Network error during update");
+            console.error("Bulk Import Network Error:", error);
+            toast.error("Network error during update. Check console.");
             setStep(2);
         } finally {
             setLoading(false);
@@ -280,19 +332,35 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             <RefreshCw size={20} />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-black text-slate-800">Smart Update</p>
-                                            <p className="text-[10px] text-slate-500 font-bold">Update existing records by Phone/Email</p>
+                                            <p className="text-sm font-black text-slate-800">Only Update</p>
+                                            <p className="text-[10px] text-slate-500 font-bold">Update existing records only</p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => setImportMode('upsert')}
+                                        className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-3 ${importMode === 'upsert'
+                                            ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-50'
+                                            : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'
+                                            }`}
+                                    >
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'upsert' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                            <Sparkles size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black text-slate-800">Smart Sync</p>
+                                            <p className="text-[10px] text-slate-500 font-bold">Update existing & Create new</p>
                                         </div>
                                     </button>
 
                                     <button
                                         onClick={() => setImportMode('create')}
                                         className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-3 ${importMode === 'create'
-                                            ? 'border-indigo-500 bg-indigo-50 ring-4 ring-indigo-50'
+                                            ? 'border-slate-300 bg-slate-50 ring-4 ring-slate-100'
                                             : 'border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200'
                                             }`}
                                     >
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'create' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${importMode === 'create' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}`}>
                                             <UploadCloud size={20} />
                                         </div>
                                         <div>
@@ -303,7 +371,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                 </div>
                             </div>
 
-                            {importMode === 'update' && (
+                            {(importMode === 'update' || importMode === 'upsert') && (
                                 <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                     <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
                                         <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs">2</span>
@@ -311,7 +379,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                     </h4>
                                     <div className="flex items-center gap-4">
                                         <p className="text-xs text-slate-500 flex-1">
-                                            Which column in the database should we use to match the rows from your Excel file? (Usually Phone or Email)
+                                            Which column in the database should we use to match the rows? (Usually Phone or Email). Records without a match will be {importMode === 'upsert' ? 'created' : 'skipped'}.
                                         </p>
                                         <select
                                             value={matchColumnId}
@@ -329,7 +397,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
 
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm">
                                 <h4 className="text-sm font-black text-slate-800 mb-4 pb-3 border-b border-slate-100 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">{importMode === 'update' ? '3' : '2'}</span>
+                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">{(importMode === 'update' || importMode === 'upsert') ? '3' : '2'}</span>
                                     Map Excel Columns to Database Columns
                                 </h4>
 
@@ -370,6 +438,24 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                 </div>
                             </div>
 
+                            <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                                        <AlertCircle size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-black text-slate-800">Fast Upload Mode</p>
+                                        <p className="text-[10px] text-slate-500 font-bold italic">Bypass activity logging for faster processing of large sets</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setDisableActivityLogs(!disableActivityLogs)}
+                                    className={`w-14 h-8 rounded-full relative transition-all duration-300 ${disableActivityLogs ? 'bg-emerald-600' : 'bg-slate-300'}`}
+                                >
+                                    <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-all ${disableActivityLogs ? 'right-1' : 'left-1'}`} />
+                                </button>
+                            </div>
+
                             <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-sm overflow-hidden">
                                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
                                     <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
@@ -399,7 +485,7 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {parsedData.slice(0, 100).map((row, i) => (
+                                            {parsedData.slice(0, 500).map((row, i) => (
                                                 <tr key={i} className="hover:bg-blue-50/30 transition-colors group">
                                                     <td className="p-3 border-b border-r border-slate-100 text-[10px] font-bold text-slate-400 text-center">
                                                         {i + 1}
@@ -426,10 +512,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                                                     ))}
                                                 </tr>
                                             ))}
-                                            {parsedData.length > 100 && (
+                                            {parsedData.length > 500 && (
                                                 <tr>
                                                     <td colSpan={headers.length + 2} className="p-4 text-center bg-slate-50 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                                        And {parsedData.length - 100} more rows...
+                                                        And {parsedData.length - 500} more rows will be matched and processed...
                                                     </td>
                                                 </tr>
                                             )}
@@ -444,8 +530,20 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                     {step === 3 && (
                         <div className="flex flex-col items-center justify-center py-16">
                             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-6" />
-                            <h4 className="text-lg font-black text-slate-800">Updating Database...</h4>
-                            <p className="text-sm text-slate-500 mt-2">Processing {parsedData.length} rows. Please do not close this window.</p>
+                            <h4 className="text-lg font-black text-slate-800">Processing Chunks...</h4>
+                            <p className="text-sm text-slate-500 mt-2 mb-8">Uploaded {progress.current} of {progress.total} rows. Do not close this browser.</p>
+                            
+                            {/* Progress bar */}
+                            <div className="w-full max-w-sm h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                <motion.div 
+                                    className="h-full bg-indigo-600"
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(progress.current / progress.total) * 100}%` }}
+                                />
+                            </div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase mt-3 tracking-widest">
+                                {Math.round((progress.current / progress.total) * 100)}% Synchronized
+                            </p>
                         </div>
                     )}
 
@@ -486,10 +584,10 @@ export default function BulkImportModal({ formId, onClose, onSuccess, availableC
                         </button>
                         <button
                             onClick={handleConfirm}
-                            disabled={loading || (importMode === 'update' && !matchColumnId) || Object.values(headerMapping).filter(v => v && v !== "SKIP").length === 0}
-                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2"
+                            disabled={loading || ((importMode === 'update' || importMode === 'upsert') && !matchColumnId) || Object.values(headerMapping).filter(v => v && v !== "SKIP").length === 0}
+                            className={`px-6 py-2.5 ${importMode === 'upsert' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-50 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2`}
                         >
-                            <CheckCircle2 size={16} /> {importMode === 'update' ? 'Confirm & Update' : 'Confirm & Upload'} ({parsedData.length} records)
+                            <CheckCircle2 size={16} /> {importMode === 'update' ? 'Confirm & Update' : (importMode === 'upsert' ? 'Confirm & Sync' : 'Confirm & Upload')} ({parsedData.length} records)
                         </button>
                     </div>
                 )}

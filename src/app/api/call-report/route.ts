@@ -1,9 +1,32 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 import { startOfDay, endOfDay, parseISO } from "date-fns";
 
 export async function GET(req: Request) {
     try {
+        const { userId } = await auth();
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        const { clerkClient } = await import("@clerk/nextjs/server");
+        const client = await clerkClient();
+        const clerkUserForRole = await client.users.getUser(userId);
+        const metadataRole = (clerkUserForRole.publicMetadata as any)?.role || (clerkUserForRole.privateMetadata as any)?.role;
+        const userRole = String(metadataRole || dbUser?.role || "USER").toUpperCase();
+        
+        const isTL = (dbUser as any)?.isTeamLeader || userRole === "TL";
+        const isPrivileged = userRole === "ADMIN" || userRole === "MASTER";
+
+        let teamMemberIds: string[] = [];
+        if (isTL) {
+            const members = await prisma.user.findMany({
+                where: { leaderId: userId } as any,
+                select: { clerkId: true }
+            });
+            teamMemberIds = members.map(m => m.clerkId);
+        }
+
         const { searchParams } = new URL(req.url);
         const dateParam = searchParams.get("date");
 
@@ -17,11 +40,17 @@ export async function GET(req: Request) {
             "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Scheduled", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
         ];
 
+        const where: any = {
+            createdAt: { gte: start, lte: end },
+            followUpStatus: { in: targetStatuses }
+        };
+
+        if (!isPrivileged) {
+            where.createdById = { in: [userId, ...teamMemberIds] };
+        }
+
         const remarks = await (prisma as any).formRemark.findMany({
-            where: {
-                createdAt: { gte: start, lte: end },
-                followUpStatus: { in: targetStatuses }
-            }
+            where: where
         });
 
         console.log(`Report API: Found ${remarks.length} remarks for ${targetDate.toISOString()}`);

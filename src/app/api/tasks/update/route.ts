@@ -226,49 +226,107 @@ import { Prisma } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
   try {
-    const { taskId, field, value } = await req.json();
+    const { taskId, field, value, updates } = await req.json();
 
-    if (!taskId || !["amount", "received"].includes(field)) {
-      return NextResponse.json(
-        { error: "Invalid input: Missing task ID or unsupported field." },
-        { status: 400 }
-      );
+    if (!taskId) {
+      return NextResponse.json({ error: "Missing task ID" }, { status: 400 });
     }
 
-    if (typeof value !== 'number' && value !== null) {
-      return NextResponse.json(
-        { error: "Invalid value type. Must be a number or null." },
-        { status: 400 }
-      );
+    const dataToUpdate: Prisma.TaskUpdateInput = {
+      updatedAt: new Date(),
+    };
+
+    const finalUpdates = updates || (field ? { [field]: value } : {});
+
+    for (const [f, v] of Object.entries(finalUpdates)) {
+      if (!["amount", "received", "assigneeIds", "assignerName", "assignerEmail", "assigneeId", "assigneeName", "assigneeEmail", "shopName", "phone", "email"].includes(f)) {
+        return NextResponse.json({ error: `Unsupported field: ${f}` }, { status: 400 });
+      }
+
+      if (f === "amount" || f === "received") {
+        if (typeof v !== 'number' && v !== null) {
+          return NextResponse.json({ error: `Invalid value for ${f}. Must be number/null.` }, { status: 400 });
+        }
+      } else if (f === "assigneeIds") {
+        if (!Array.isArray(v)) {
+          return NextResponse.json({ error: `Invalid value for ${f}. Must be an array.` }, { status: 400 });
+        }
+      } else {
+        if (typeof v !== 'string' && v !== null) {
+          return NextResponse.json({ error: `Invalid value for ${f}. Must be a string.` }, { status: 400 });
+        }
+      }
+      
+      // @ts-ignore
+      dataToUpdate[f] = v;
+    }
+
+    // --- 🌍 SYNC LOGIC ---
+    const existingTask = await prisma.task.findUnique({ where: { id: taskId } });
+    if (!existingTask) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+    // 1. Sync Assignee IDs
+    if (dataToUpdate.assigneeId && !dataToUpdate.assigneeIds) {
+      dataToUpdate.assigneeIds = [dataToUpdate.assigneeId as string];
+    }
+
+    // 2. Sync Assignee Details: If assigneeIds was changed, update lead assignee fields
+    if (dataToUpdate.assigneeIds !== undefined) {
+      const ids = dataToUpdate.assigneeIds as string[];
+      if (ids && ids.length > 0) {
+        try {
+          const { clerkClient } = await import("@clerk/nextjs/server");
+          const client = await clerkClient();
+          const leadUser = await client.users.getUser(ids[0]);
+          dataToUpdate.assigneeId = leadUser.id;
+          dataToUpdate.assigneeName = `${leadUser.firstName || ""} ${leadUser.lastName || ""}`.trim() || leadUser.username || "Unknown";
+          dataToUpdate.assigneeEmail = leadUser.emailAddresses[0]?.emailAddress || "Unknown";
+
+          // Sync into customFields if they exist there
+          const cf = { ...(existingTask.customFields as any || {}) };
+          let cfChanged = false;
+          if (cf.assigneeName !== undefined) { cf.assigneeName = dataToUpdate.assigneeName; cfChanged = true; }
+          if (cf.assigneeEmail !== undefined) { cf.assigneeEmail = dataToUpdate.assigneeEmail; cfChanged = true; }
+          if (cf.assigneeId !== undefined) { cf.assigneeId = dataToUpdate.assigneeId; cfChanged = true; }
+          if (cfChanged) dataToUpdate.customFields = cf;
+        } catch (e) {
+          console.error("Failed to sync lead assignee details:", e);
+        }
+      } else {
+          dataToUpdate.assigneeId = null;
+          dataToUpdate.assigneeName = null;
+          dataToUpdate.assigneeEmail = null;
+      }
+    }
+
+    // 3. Sync Other Redundant Fields (Top-level <-> customFields)
+    const syncableFields = [
+      "phone", "email", "shopName", "location", "accountNumber", "ifscCode", 
+      "restId", "customerName", "packageAmount", "startDate", "endDate", "timeline"
+    ];
+    
+    const existingCF = { ...(existingTask.customFields as any || (dataToUpdate.customFields as any) || {}) };
+    let cfNeedsUpdate = false;
+    
+    for (const f of syncableFields) {
+      if ((dataToUpdate as any)[f] !== undefined && existingCF[f] !== undefined) {
+        existingCF[f] = (dataToUpdate as any)[f];
+        cfNeedsUpdate = true;
+      }
+    }
+    
+    if (cfNeedsUpdate) {
+      dataToUpdate.customFields = existingCF;
     }
 
     // Optional validation: received should not exceed amount
-    if (field === "received") {
-      const existingTask = await prisma.task.findUnique({
-        where: { id: taskId },
-        select: { amount: true }
-      });
-
-      if (!existingTask) {
-        return NextResponse.json({ error: "Task not found." }, { status: 404 });
-      }
-
-      const total = existingTask.amount ?? 0;
-      const received = Number(value);
-
-      if (!isNaN(total) && received > total) {
-        return NextResponse.json(
-          { error: "Received amount cannot exceed total amount." },
-          { status: 400 }
-        );
-      }
+    if (dataToUpdate.received !== undefined) {
+        const total = (dataToUpdate.amount as number) ?? existingTask.amount ?? 0;
+        const received = dataToUpdate.received as number;
+        if (received > total) {
+              return NextResponse.json({ error: "Received amount cannot exceed total" }, { status: 400 });
+        }
     }
-
-    // ✅ Build update object dynamically
-    const dataToUpdate: Prisma.TaskUpdateInput = {
-      updatedAt: new Date(),
-      [field]: value, // ✅ This directly updates `amount` or `received`
-    };
 
     const updatedTask = await prisma.task.update({
       where: { id: taskId },
@@ -282,9 +340,7 @@ export async function POST(req: NextRequest) {
       const user = await currentUser();
       const userName = user?.firstName || user?.emailAddresses[0]?.emailAddress || "Unknown User";
 
-      // 🚀 HYBRID RECIPIENT DISCOVERY: DB + Clerk
       const recipientIds = new Set<string>();
-
       const dbAdmins = await prisma.user.findMany({
         where: { role: { in: ["ADMIN", "MASTER", "admin", "master"] } },
         select: { clerkId: true }
@@ -308,24 +364,25 @@ export async function POST(req: NextRequest) {
       const cf = (updatedTask.customFields as any) || {};
       const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
 
-      for (const recipientId of finalRecipients) {
-        try {
-          await prisma.notification.create({
-            data: {
-              userId: recipientId,
-              type: "PAYMENT_ADDED",
-              title: "📂 Payment Update (Table Edit)",
-              content: `Table Edit: ${field.toUpperCase()} set to ₹${value} for ${taskDetails}. By: ${userName}`,
-              taskId: updatedTask.id
-            } as any
-          });
-          console.log(`DEBUG: Table edit notif sent to ${recipientId}`);
-        } catch (err) {
-          console.error(`Notif failed for ${recipientId}:`, err);
-        }
+      for (const [f, v] of Object.entries(finalUpdates)) {
+          for (const recipientId of finalRecipients) {
+            try {
+              await prisma.notification.create({
+                data: {
+                  userId: recipientId,
+                  type: "PAYMENT_ADDED",
+                  title: `📂 Task Update: ${f}`,
+                  content: `Field ${f} updated to ${v} for ${taskDetails}. By: ${userName}`,
+                  taskId: updatedTask.id
+                } as any
+              });
+            } catch (err) {
+              console.error(`Notif failed for ${recipientId}:`, err);
+            }
+          }
       }
     } catch (e) {
-      console.error("Failed to send notification for inline update:", e);
+      console.error("Failed to send notification for update:", e);
     }
 
     return NextResponse.json({ success: true, task: updatedTask }, { status: 200 });

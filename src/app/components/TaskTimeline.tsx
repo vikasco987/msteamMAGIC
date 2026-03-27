@@ -8,11 +8,13 @@ import Image from "next/image";
 import * as Dialog from "@radix-ui/react-dialog";
 import { uploadToCloudinary } from "@/app/components/TaskForm/utils";
 import { useUser, useAuth } from "@clerk/nextjs";
-import { FaRegCircle, FaCheckCircle, FaPlus, FaFileImage, FaFilePdf, FaImage, FaFileAlt, FaVideo, FaTrashAlt, FaRedoAlt, FaHistory } from "react-icons/fa";
+import { FaRegCircle, FaCheckCircle, FaPlus, FaFileImage, FaFilePdf, FaImage, FaFileAlt, FaVideo, FaTrashAlt, FaRedoAlt, FaHistory, FaUserEdit, FaCrown } from "react-icons/fa";
+import ReassignTaskModal from "./ReassignTaskModal";
 import TaskActivityFeed from "./TaskActivityFeed";
 import PaymentHistory from "./PaymentHistory";
 import PaymentSection from "../components/PaymentSection";
 import { motion, AnimatePresence } from "framer-motion";
+import toast from "react-hot-toast";
 
 interface Subtask {
   id: string;
@@ -44,7 +46,10 @@ interface Task {
   start: string;
   end: string;
   progress: number;
+  assigneeId?: string;
   assigneeIds?: string[];
+  assigneeName?: string;
+  assigneeEmail?: string;
   subtasks?: Subtask[];
   notes?: Note[];
   attachments?: string[];
@@ -240,6 +245,96 @@ export default function TaskTimeline() {
       }
       return part;
     });
+  };
+
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [showOwnerModal, setShowOwnerModal] = useState(false);
+
+  const isAdmin = useMemo(() => {
+    const role = (user?.publicMetadata?.role as string || "").toLowerCase();
+    return role === "master";
+  }, [user]);
+
+  const handleReassignTask = async (taskId: string, assignee: { id: string, name: string, email: string }) => {
+    setShowReassignModal(false);
+    if (!selectedTask) return;
+    
+    // 🚀 Optimistic UI
+    const originalTask = { ...selectedTask };
+    const updatedTask = {
+      ...selectedTask,
+      assigneeId: assignee.id,
+      assigneeIds: [assignee.id],
+      assigneeName: assignee.name,
+      assigneeEmail: assignee.email,
+    };
+
+    setSelectedTask(updatedTask);
+    setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+    toast.success("Assignment updated!");
+
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          assigneeId: assignee.id, 
+          assigneeIds: [assignee.id] 
+        }),
+      });
+      if (!res.ok) throw new Error("Reassign failed");
+    } catch (err) {
+      setSelectedTask(originalTask);
+      setTasks(prev => prev.map(t => t.id === taskId ? originalTask : t));
+      toast.error("Failed to sync assignment.");
+    }
+  };
+
+  const handleTakeOwnership = () => {
+    setShowOwnerModal(true);
+  };
+
+  const handleTransferOwnership = async (taskId: string, member: { id: string, name: string, email: string }) => {
+    setShowOwnerModal(false); // 🚀 Instant closing
+    if (!selectedTask) return;
+    
+    // 🚀 Optimistic Update
+    const originalTask = { ...selectedTask };
+    const updatedTask = {
+      ...selectedTask,
+      assignerId: member.id,
+      assignerName: member.name,
+      assignerEmail: member.email,
+    };
+
+    setSelectedTask(updatedTask);
+    setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          assignerId: member.id,
+          assignerName: member.name,
+          assignerEmail: member.email
+        }),
+      });
+      if (!res.ok) throw new Error("Transfer failed");
+      toast.success(`Ownership transferred to ${member.name}`);
+    } catch (err) {
+      setSelectedTask(originalTask);
+      setTasks(prev => prev.map(t => t.id === taskId ? originalTask : t));
+      toast.error("Failed to transfer ownership.");
+    }
   };
 
   const updateSelectedTaskFromFetched = useCallback(async () => {
@@ -561,20 +656,64 @@ export default function TaskTimeline() {
     e.preventDefault();
     if (!selectedTask) return;
 
+    const newReceive = Number(currentReceivedInput) || 0;
+    const currentTotalReceived = selectedTask.received || 0;
+    const totalAmount = Number(currentAmountInput) || 0;
+
+    // 💰 Validation: Total Received <= Total Amount
+    if (newReceive + currentTotalReceived > totalAmount) {
+      toast.error(`Invalid Amount! Total received (₹${newReceive + currentTotalReceived}) cannot exceed total amount (₹${totalAmount})`);
+      return;
+    }
+
     const formData = new FormData();
     formData.append("amount", currentAmountInput);
     formData.append("received", currentReceivedInput);
 
     const fileInput = (e.target as HTMLFormElement).paymentFile as HTMLInputElement;
-    if (fileInput?.files?.[0]) {
-      formData.append("file", fileInput.files[0]);
+    const hasFile = fileInput?.files?.[0];
+    if (hasFile) {
+      formData.append("file", hasFile);
+      setPaymentUploadStatus("Uploading file...");
     }
 
     const userName = user?.firstName || user?.primaryEmailAddress?.emailAddress || "Unknown User";
     formData.append("updatedBy", String(userName));
     formData.append("updatedAt", new Date().toISOString());
 
-    setPaymentUploadStatus("Processing...");
+    // Skip "Syncing..." for normal updates to make it feel instant
+    if (!hasFile) setPaymentUploadStatus("");
+
+    // 🚀 FULL Optimistic Update (Immediate UI response)
+    const originalSelectedTask = { ...selectedTask };
+    const originalTasks = [...tasks];
+    
+    const amountVal = Number(currentAmountInput) || selectedTask.amount || 0;
+    const addedReceived = Number(currentReceivedInput) || 0;
+    const newTotalReceived = (selectedTask.received || 0) + addedReceived;
+
+    const optimisticHistoryEntry: PaymentEntry = {
+      amount: amountVal,
+      received: newTotalReceived,
+      updatedAt: new Date().toISOString(),
+      updatedBy: user?.firstName || "You",
+      fileUrl: null 
+    };
+
+    const updatedTask = {
+      ...selectedTask,
+      amount: amountVal,
+      received: newTotalReceived,
+      paymentHistory: [optimisticHistoryEntry, ...(selectedTask.paymentHistory || [])]
+    };
+
+    // Update state immediately
+    setSelectedTask(updatedTask);
+    setTasks(prev => prev.map(t => t.id === selectedTask.id ? updatedTask : t));
+    
+    // Clear inputs immediately for "Instant" feel
+    setCurrentReceivedInput(""); 
+    toast.success("Balance updated!");
 
     try {
       const token = await getToken();
@@ -587,17 +726,26 @@ export default function TaskTimeline() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Payment update failed");
 
+      // Replace with real data in background (silent sync)
       setSelectedTask(data.task);
+      setTasks(prev => prev.map(t => t.id === selectedTask.id ? data.task : t));
       setCurrentAmountInput(data.task.amount?.toString() || "");
-      setCurrentReceivedInput("");
-      if (fileInput) fileInput.value = '';
-      setPaymentUploadStatus("✅ Success!");
-      setShowPaymentHistory(false);
+      
+      // ✅ SUCCESS is now silent for a cleaner feel (Toast handles it)
+      setPaymentUploadStatus(""); // Clear it instantly
     } catch (err: any) {
       console.error("Payment failed:", err);
-      setPaymentUploadStatus(`❌ ${err.message}`);
+      setSelectedTask(originalSelectedTask);
+      setTasks(originalTasks);
+      setCurrentReceivedInput(addedReceived.toString()); 
+      
+      setPaymentUploadStatus(`❌ Error: ${err.message}`);
+      toast.error(err.message || "Failed to sync payment.");
     } finally {
-      setTimeout(() => setPaymentUploadStatus(""), 3000);
+      // Small safety timeout for status
+      if (paymentUploadStatus.startsWith("❌")) {
+         setTimeout(() => setPaymentUploadStatus(""), 3000);
+      }
     }
   };
 
@@ -812,10 +960,21 @@ export default function TaskTimeline() {
                     </td>
                     <td
                       onClick={() => handleTaskClick(task)}
-                      className="p-2 border-r cursor-pointer leading-tight max-w-[250px]"
+                      className="p-2 border-r cursor-pointer leading-tight min-w-[150px] max-w-[250px]"
                     >
-                      <div className="font-semibold text-xs text-gray-800 truncate">📁 {task.name}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{task.shop}</div>
+                      <div className="font-semibold text-sm text-gray-800 truncate">📁 {task.name}</div>
+                      <div className="text-[11px] text-gray-500 truncate font-medium">{task.shop}</div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {task.assigneeIds?.map((id) => (
+                          <div key={id} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-md text-[9px] font-bold border border-indigo-100 uppercase tracking-tight">
+                            <Image 
+                              src={assigneeMap[id]?.imageUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${id}`} 
+                              alt="A" width={10} height={10} className="rounded-full" unoptimized 
+                            />
+                            {assigneeMap[id]?.name || "..."}
+                          </div>
+                        ))}
+                      </div>
                     </td>
                     {Array.from({ length: totalDays }).map((_, i) => {
                       const isBar = i >= startOffset && i < startOffset + duration;
@@ -910,7 +1069,27 @@ export default function TaskTimeline() {
                 </div>
 
                 <div className="bg-white p-5 rounded-xl shadow-sm space-y-4">
-                  <h3 className="font-semibold text-gray-800">Assignees</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800">Assignees</h3>
+                    <div className="flex items-center gap-2">
+                       <button 
+                         onClick={() => setShowReassignModal(true)}
+                         className="p-2 hover:bg-purple-50 text-purple-600 rounded-lg transition-colors border border-purple-100"
+                         title="Reassign Task"
+                       >
+                         <FaUserEdit size={14} />
+                       </button>
+                       {isAdmin && (
+                         <button 
+                           onClick={handleTakeOwnership}
+                           className="p-2 hover:bg-amber-50 text-amber-600 rounded-lg transition-colors border border-amber-100"
+                           title="Take Ownership (Become Assigner)"
+                         >
+                           <FaCrown size={14} />
+                         </button>
+                       )}
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {selectedTask.assigneeIds?.map(id => (
                       <Image
@@ -1015,6 +1194,21 @@ export default function TaskTimeline() {
 
                 <TaskActivityFeed taskId={selectedTask.id} />
               </div>
+            )}
+            {showReassignModal && selectedTask && (
+              <ReassignTaskModal 
+                taskId={selectedTask.id}
+                onClose={() => setShowReassignModal(false)}
+                onReassign={handleReassignTask}
+              />
+            )}
+            {showOwnerModal && selectedTask && (
+              <ReassignTaskModal 
+                taskId={selectedTask.id}
+                title="Transfer Ownership"
+                onClose={() => setShowOwnerModal(false)}
+                onReassign={handleTransferOwnership}
+              />
             )}
           </Dialog.Content>
         </Dialog.Portal>

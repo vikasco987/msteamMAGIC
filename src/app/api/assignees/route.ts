@@ -38,7 +38,9 @@ export async function GET() {
       limit: 100,
     });
 
-    const assignees = clerkUsers.map((user: any) => ({
+    const assignees = clerkUsers
+      .filter((user: any) => !user.banned)
+      .map((user: any) => ({
       id: user.id,
       name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Unnamed",
       email: user.emailAddresses[0]?.emailAddress || "",

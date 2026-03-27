@@ -22,6 +22,7 @@ model Task {
   assignerEmail   String?
   assigneeEmail   String?
   assignerName    String?
+  assignerId      String?
   assigneeName    String?
   assigneeId      String?
   assigneeIds     String[] @default([])
@@ -151,6 +152,9 @@ model User {
   email     String   @unique
   name      String?
   role      String   // "ADMIN", "MASTER", "SELLER"
+
+  isTeamLeader Boolean @default(false)
+  leaderId     String? // Clerk ID of the Team Leader
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -415,7 +419,8 @@ model FormRemark {
   createdById       String?   // Clerk userId of creator
 
   nextFollowUpDate  DateTime? 
-  followUpStatus    String?   // "scheduled", "completed", "missed"
+  followUpStatus    String?   
+  leadStatus        String?   // NEW: Track specific lead status in remarks history
 
   responseId        String    @db.ObjectId
   response          FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)

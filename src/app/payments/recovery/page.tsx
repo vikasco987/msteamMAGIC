@@ -10,6 +10,7 @@ import {
     Trophy, Target
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useUser } from "@clerk/nextjs";
 import PaymentRemarkModal from "@/app/components/PaymentRemarkModal";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -44,6 +45,7 @@ type SortKey = "pending" | "total" | "received" | "createdAt";
 type SortDir = "asc" | "desc";
 
 export default function PaymentRecoveryPage() {
+    const { user } = useUser();
     const [tasks, setTasks] = useState<RecoveryTask[]>([]);
     const [summary, setSummary] = useState({ totalPending: 0, taskCount: 0 });
     const [role, setRole] = useState<string>("");
@@ -53,12 +55,16 @@ export default function PaymentRecoveryPage() {
     // --- Filters ---
     const [searchTerm, setSearchTerm] = useState("");
     const [filterAssigner, setFilterAssigner] = useState("all");
+    const [filterMember, setFilterMember] = useState("all");
     const [filterStatus, setFilterStatus] = useState("all");
     const [filterTaskStatus, setFilterTaskStatus] = useState("all");
     const [filterPriority, setFilterPriority] = useState("all");
     const [filterDate, setFilterDate] = useState("all");
     const [filterOutcome, setFilterOutcome] = useState("all");
     const [filterSource, setFilterSource] = useState("all");
+
+    // TL Specific
+    const [teamMembers, setTeamMembers] = useState<{ clerkId: string, name: string }[]>([]);
 
     // Custom Date Filters
     const [startDate, setStartDate] = useState<string>("");
@@ -70,6 +76,9 @@ export default function PaymentRecoveryPage() {
 
     const [showHistoryTask, setShowHistoryTask] = useState<RecoveryTask | null>(null);
     const [showEditModal, setShowEditModal] = useState<string | null>(null);
+
+    const isTL = useMemo(() => role.toLowerCase() === "tl", [role]);
+    const isAdminOrMaster = role.toLowerCase() === "admin" || role.toLowerCase() === "master";
 
     const fetchRecoveryData = useCallback(async (pageOverride?: number, limitOverride?: number) => {
         setLoading(true);
@@ -91,6 +100,7 @@ export default function PaymentRecoveryPage() {
                 limit: limit.toString(),
                 searchTerm,
                 filterAssigner,
+                filterMember,
                 filterTaskStatus,
                 filterPriority,
                 filterSource,
@@ -116,12 +126,24 @@ export default function PaymentRecoveryPage() {
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, pagination.limit]);
+    }, [searchTerm, filterAssigner, filterMember, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, pagination.limit]);
 
     useEffect(() => {
         const timer = setTimeout(() => fetchRecoveryData(1), 500);
         return () => clearTimeout(timer);
-    }, [searchTerm, filterAssigner, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData, pagination.limit]);
+    }, [searchTerm, filterAssigner, filterMember, filterTaskStatus, filterPriority, filterSource, filterOutcome, filterDate, startDate, endDate, selectedMonth, fetchRecoveryData, pagination.limit]);
+
+    // Fetch TL's team
+    useEffect(() => {
+        if (isTL) {
+            fetch("/api/admin/my-team")
+                .then(res => res.json())
+                .then(data => {
+                    if (data.members) setTeamMembers(data.members);
+                })
+                .catch(() => { });
+        }
+    }, [isTL]);
 
     const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= pagination.totalPages && !loading) {
@@ -129,8 +151,6 @@ export default function PaymentRecoveryPage() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
-
-    const isAdminOrMaster = role === "admin" || role === "master";
 
     const assigners = useMemo(() => {
         const unique = [...new Set(tasks.map(t => t.assignerName))].filter(Boolean).sort();
@@ -184,12 +204,12 @@ export default function PaymentRecoveryPage() {
             : <ArrowRight className="inline ml-1 opacity-20 rotate-90" size={14} />;
 
     const clearFilters = () => {
-        setSearchTerm(""); setFilterAssigner("all");
+        setSearchTerm(""); setFilterAssigner("all"); setFilterMember("all");
         setFilterStatus("all"); setFilterTaskStatus("all");
         setFilterPriority("all"); setFilterDate("all"); setFilterOutcome("all");
         setFilterSource("all"); setStartDate(""); setEndDate(""); setSelectedMonth("all");
     };
-    const hasFilters = searchTerm || filterAssigner !== "all" || filterStatus !== "all" ||
+    const hasFilters = searchTerm || filterAssigner !== "all" || filterMember !== "all" || filterStatus !== "all" ||
         filterTaskStatus !== "all" || filterPriority !== "all" || filterDate !== "all" ||
         filterOutcome !== "all" || filterSource !== "all" || startDate || endDate || selectedMonth !== "all";
 
@@ -355,20 +375,40 @@ export default function PaymentRecoveryPage() {
                         />
                     </div>
 
-                    {/* Role-based Visibility: Created By / Assignee Filter */}
+                    {/* Role-based Visibility: Team Member Filter */}
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            {isAdminOrMaster ? "Created By" : "My Assignments"}
+                            {isAdminOrMaster ? "Created By" : isTL ? "Team Member" : "Assignments"}
                         </label>
-                        <select
-                            value={filterAssigner}
-                            disabled={!isAdminOrMaster}
-                            onChange={e => setFilterAssigner(e.target.value)}
-                            className={`w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all ${!isAdminOrMaster ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            <option value="all">{isAdminOrMaster ? "All Assigners" : "Own Tasks Only"}</option>
-                            {isAdminOrMaster && assigners.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
+                        {isAdminOrMaster ? (
+                            <select
+                                value={filterAssigner}
+                                onChange={e => setFilterAssigner(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all"
+                            >
+                                <option value="all">All Assigners</option>
+                                {assigners.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                        ) : isTL ? (
+                            <select
+                                value={filterMember}
+                                onChange={e => setFilterMember(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-400 transition-all"
+                            >
+                                <option value="all">My Entire Team</option>
+                                <option value={user?.id}>My Own Tasks</option>
+                                {teamMembers.map(m => (
+                                    <option key={m.clerkId} value={m.clerkId}>{m.name}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <select
+                                disabled
+                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold text-slate-700 outline-none opacity-50 cursor-not-allowed"
+                            >
+                                <option value="all">Own Tasks Only</option>
+                            </select>
+                        )}
                     </div>
 
                     <div className="space-y-2">

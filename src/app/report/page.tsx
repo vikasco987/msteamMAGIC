@@ -132,7 +132,8 @@ export default function ReportPage() {
 
   // Re-fetch when page, limit, debouncedQuery, or status changes
   useEffect(() => {
-    if (isLoaded && user && (user.publicMetadata?.role === "admin" || user.publicMetadata?.role === "seller" || user.publicMetadata?.role === "master")) {
+    const normalizedRole = String(user?.publicMetadata?.role || "").toLowerCase();
+    if (isLoaded && user && (normalizedRole === "admin" || normalizedRole === "seller" || normalizedRole === "master" || normalizedRole === "tl")) {
       fetchTasks();
     }
   }, [isLoaded, user, currentPage, limit, debouncedQuery, status]);
@@ -183,8 +184,8 @@ export default function ReportPage() {
     return <div className="text-center py-8 text-red-600">Error: {error}</div>;
   }
 
-  const role = user?.publicMetadata?.role;
-  if (!user || (role !== "admin" && role !== "seller" && role !== "master")) {
+  const role = String(user?.publicMetadata?.role || "").toLowerCase();
+  if (!user || (role !== "admin" && role !== "seller" && role !== "master" && role !== "tl")) {
     return <div className="p-6 text-red-500 text-center py-8">
       ⛔ Access Denied: Please sign in with an authorized account.
     </div>;

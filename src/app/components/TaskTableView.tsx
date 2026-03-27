@@ -6705,6 +6705,22 @@ export default function TaskTableView({
   // Use a separate state for filtered tasks to avoid re-filtering on every render
   const [filteredTasks, setFilteredTasks] = useState<Task[]>(tasks || []);
   const [isSaving, setIsSaving] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string; email: string }[]>([]);
+
+  useEffect(() => {
+    const fetchTeamMembers = async () => {
+      try {
+        const res = await fetch("/api/team-members");
+        if (res.ok) {
+          const data = await res.json();
+          setTeamMembers(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch team members:", err);
+      }
+    };
+    fetchTeamMembers();
+  }, []);
 
   // ✅ The `copy` column is now initialized as a visible column
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
@@ -7034,6 +7050,30 @@ export default function TaskTableView({
     }
   };
 
+  const handleDirectUpdate = async (taskId: string, field: string, value: any, updates?: any) => {
+    setIsSaving(`${taskId}-${field}`);
+    try {
+      const res = await fetch("/api/tasks/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, field, value, updates }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        toast.error(errorData.error || "Failed to update field");
+      } else {
+        toast.success(updates ? "Multiple fields updated!" : `${field} updated!`);
+        await refetchTasks();
+      }
+    } catch (err) {
+      console.error("Update error:", err);
+      toast.error("Network error");
+    } finally {
+      setIsSaving(null);
+    }
+  };
+
 
 
 
@@ -7285,19 +7325,74 @@ export default function TaskTableView({
                     )}
                     {visibleColumns.includes("assignerName") && (
                       <td className="border border-gray-200 px-3 py-2 whitespace-nowrap text-left text-gray-500">
-                        <span className="font-semibold text-gray-800">
-                          {task.assignerName || "—"}
-                        </span>{" "}
-                        <span className="text-blue-500">→</span>{" "}
-                        <span className="text-blue-600 font-medium">
-                          {Array.isArray(task.assignees) &&
-                            task.assignees.length > 0
-                            ? task.assignees
-                              .map((a) => a?.name || a?.email || "—")
-                              .filter(Boolean)
-                              .join(", ")
-                            : task.assigneeEmail || "—"}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black uppercase text-gray-400">By</span>
+                            {editMode && (role === "master" || role === "admin" || role === "tl") ? (
+                                <select 
+                                    className="text-xs font-bold text-gray-800 bg-white border border-gray-200 rounded px-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    value={teamMembers.find(m => m.name === task.assignerName)?.id || ""}
+                                    onChange={(e) => {
+                                        const member = teamMembers.find(m => m.id === e.target.value);
+                                        if (member) {
+                                            handleDirectUpdate(task.id, "assigner", null, {
+                                                assignerName: member.name,
+                                                assignerEmail: member.email
+                                            });
+                                        }
+                                    }}
+                                >
+                                    <option value="">Select Assigner</option>
+                                    {teamMembers.map(m => (
+                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <span className="text-xs font-bold text-gray-800 tracking-tight">
+                                  {task.assignerName || "—"}
+                                </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            {editMode && (role === "master" || role === "admin" || role === "tl") ? (
+                                <div className="flex flex-col gap-1 w-full mt-1">
+                                    <select 
+                                        multiple
+                                        className="text-[10px] font-bold text-indigo-900 bg-white border border-indigo-100 rounded-lg p-1 min-h-[80px] w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                        value={task.assigneeIds || []}
+                                        onChange={(e) => {
+                                            const selectedIds = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                                            handleDirectUpdate(task.id, "assigneeIds", selectedIds);
+                                        }}
+                                    >
+                                        {teamMembers.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                    <span className="text-[8px] text-gray-400 font-bold uppercase tracking-tighter">Cmd+Click for Multiple</span>
+                                </div>
+                            ) : (
+                                Array.isArray(task.assignees) && task.assignees.length > 0 ? (
+                                  task.assignees.map((a, idx) => (
+                                    <div key={idx} className="flex items-center gap-1 bg-indigo-50/50 pr-2 rounded-full border border-indigo-100/50 hover:bg-indigo-100 transition-colors">
+                                      {a.imageUrl ? (
+                                        <img src={a.imageUrl} className="w-5 h-5 rounded-full border border-white shadow-sm" alt={a.name || ""} />
+                                      ) : (
+                                        <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[8px] font-black uppercase border border-white">
+                                          {(a.name || "U")[0]}
+                                        </div>
+                                      )}
+                                      <span className="text-[10px] font-bold text-indigo-900">{a.name || a.email || "—"}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <span className="text-blue-600 font-medium text-xs">
+                                    {task.assigneeEmail || "—"}
+                                  </span>
+                                )
+                            )}
+                          </div>
+                        </div>
                       </td>
                     )}
                     {visibleColumns.includes("shopName") && (

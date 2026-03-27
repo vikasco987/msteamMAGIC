@@ -374,6 +374,7 @@
 // src/app/api/attendance/list/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 function calculateHours(checkIn?: Date | null, checkOut?: Date | null) {
@@ -391,11 +392,42 @@ function calculateHours(checkIn?: Date | null, checkOut?: Date | null) {
 
 export async function GET(req: Request) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const metadataRole = (clerkUser.publicMetadata as any)?.role || (clerkUser.privateMetadata as any)?.role;
+    const userRole = String(metadataRole || dbUser?.role || "USER").toUpperCase();
+    
+    const isTeamLeader = (dbUser as any)?.isTeamLeader || userRole === "TL";
+    const isPrivileged = userRole === "ADMIN" || userRole === "MASTER";
+
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");   // ✅ YYYY-MM-DD
     const month = searchParams.get("month"); // ✅ YYYY-MM
+    const all = searchParams.get("all") === "true";
 
     let where: any = {};
+
+    // Permission Filtering
+    if (!isPrivileged) {
+      if (isTeamLeader && all) {
+        const members = await prisma.user.findMany({
+          where: { leaderId: userId } as any,
+          select: { clerkId: true }
+        });
+        const teamMemberIds = members.map(m => m.clerkId);
+        where.userId = { in: [userId, ...teamMemberIds] };
+      } else {
+        where.userId = userId;
+      }
+    }
+    if (isPrivileged && !all) {
+      where.userId = userId;
+    }
 
     // ---------------- Default: Today ----------------
     if (!date && !month) {
@@ -440,7 +472,7 @@ export async function GET(req: Request) {
 
     for (const id of uniqueIds) {
       try {
-        const user = await clerkClient.users.getUser(id);
+        const user = await client.users.getUser(id);
         const fullName =
           `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
           user.username ||

@@ -25,16 +25,6 @@ interface PrismaSelectedTask {
 }
 
 import { auth } from "@clerk/nextjs/server";
-import { users as clerkUsers } from "@clerk/clerk-sdk-node";
-
-async function getUserRole(userId: string): Promise<string | null> {
-  try {
-    const user = await clerkUsers.getUser(userId);
-    return (user.publicMetadata as any)?.role || (user.privateMetadata as any)?.role || null;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(req: Request) {
   try {
@@ -56,21 +46,52 @@ export async function GET(req: Request) {
     // Map frontend sort keys to Prisma sort keys if needed
     const sortKey = (sortKeyParam === "pendingAmount" || sortKeyParam === "daysRemaining") ? "createdAt" : sortKeyParam;
 
-    const role = await getUserRole(userId);
-
     // Build the query where clause
     const where: Prisma.TaskWhereInput = {
       title: "📂 Account Handling",
     };
 
     // Role-based filtering
-    if (role === "seller") {
+    const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+    
+    // Use Clerk metadata for role if possible, fallback to DB role
+    const { clerkClient } = await import("@clerk/nextjs/server");
+    const client = await clerkClient();
+    const clerkUser = await client.users.getUser(userId);
+    const roleFromClerk = (clerkUser.publicMetadata as any)?.role || (clerkUser.privateMetadata as any)?.role;
+    const normalizedRole = String(roleFromClerk || dbUser?.role || 'user').toLowerCase();
+    
+    const isTL = (dbUser as any)?.isTeamLeader || normalizedRole === 'tl';
+    let teamMemberIds: string[] = [];
+    if (isTL) {
+      const members = await prisma.user.findMany({
+        where: { leaderId: userId } as any,
+        select: { clerkId: true }
+      });
+      teamMemberIds = members.map(m => m.clerkId);
+    }
+
+    const isSeller = normalizedRole === "seller";
+    const isPrivileged = normalizedRole === "admin" || normalizedRole === "master";
+
+    console.log(`[KAM API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, isPrivileged: ${isPrivileged}`);
+
+    if (isPrivileged) {
+      // No filter for privileged roles
+      console.log(`[KAM API Debug] Privileged access - fetching all items`);
+    } else if (isSeller || normalizedRole === "tl" || isTL) {
       where.OR = [
         { createdByClerkId: userId },
         { assigneeIds: { has: userId } },
-        { assigneeId: userId }
+        { assigneeId: userId },
+        ...(isTL && teamMemberIds.length > 0 ? [
+          { createdByClerkId: { in: teamMemberIds } },
+          { assigneeIds: { hasSome: teamMemberIds } }
+        ] : [])
       ];
-    } else if (role !== "admin" && role !== "master") {
+      console.log(`[KAM API Debug] Restricted access applied for TL/Seller. TeamMembers found: ${teamMemberIds.length}`);
+    } else {
+      console.warn(`[KAM API Debug] Access Denied for role: ${normalizedRole}`);
       return NextResponse.json({ tasks: [], pagination: { total: 0, page, limit, totalPages: 0 } });
     }
 
@@ -129,29 +150,32 @@ export async function GET(req: Request) {
       }
     });
 
-    const userMap: Record<string, { name: string; email: string }> = {};
+    const userMap: Record<string, { name: string; email: string; imageUrl: string }> = {};
     if (allUserIds.size > 0) {
       try {
-        const userList = await clerkUsers.getUserList({
+        const userList = await client.users.getUserList({
           userId: Array.from(allUserIds),
           limit: 500,
         });
 
-        userList.forEach(u => {
+        userList.data.forEach((u: any) => {
           const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.username || "Unknown";
-          userMap[u.id] = { name, email: u.emailAddresses[0]?.emailAddress || "" };
+          userMap[u.id] = { name, email: u.emailAddresses[0]?.emailAddress || "", imageUrl: u.imageUrl };
         });
       } catch (err) {
         console.error("Clerk user lookup error:", err);
       }
     }
 
+    console.log(`[KAM API Debug] Total Tasks Fetched: ${tasks.length}, Total Global Count: ${totalCount}`);
+
     // Map tasks to enriched format including the 'assignees' array expected by frontend
     const enrichedTasks = tasks.map(task => {
       const assignees = Array.isArray(task.assigneeIds)
         ? task.assigneeIds.map(id => ({
           name: userMap[id]?.name || "—",
-          email: userMap[id]?.email || ""
+          email: userMap[id]?.email || "",
+          imageUrl: userMap[id]?.imageUrl || ""
         }))
         : [];
 

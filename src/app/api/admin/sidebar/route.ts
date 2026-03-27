@@ -21,14 +21,15 @@ export async function GET(req: NextRequest) {
 
         const allItems = [
             'Dashboard', 'Team Board', 'Create Task', 'Assigned Task',
-            'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report',
+            'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'Team Sales', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report',
             'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers',
             'Agreements', 'Timeline', 'DB Backups'
         ];
 
         const DEFAULT_PERMISSIONS: Record<string, string[]> = {
-            master: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline', 'DB Backups'],
-            admin: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline'],
+            master: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Sales Matrix', 'Team Sales', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline', 'DB Backups'],
+            admin: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Team Sales', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline'],
+            tl: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'Team Sales', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Tish Control', 'Activity Log', 'Lifecycle Report', 'Customers', 'Agreements', 'Timeline'],
             seller: ['Dashboard', 'Team Board', 'Create Task', 'Assigned Task', 'Recovery Hub', 'KAM Strategy', 'My Growth', 'CRM Forms', 'Follow-up Board', 'Call Report', 'Attendance', 'Activity Log', 'Customers', 'Agreements', 'Timeline'],
             user: ['Team Board', 'Create Task', 'CRM Forms', 'Activity Log'],
             manager: ['CRM Forms', 'Follow-up Board'],
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
         };
 
         // If a role doesn't have an override in the database, return defaults
-        const roles = ['MASTER', 'ADMIN', 'SELLER', 'USER', 'GUEST', 'MANAGER', 'INTERN'];
+        const roles = ['MASTER', 'ADMIN', 'TL', 'SELLER', 'USER', 'GUEST', 'MANAGER', 'INTERN'];
         const effectivePermissions = roles.map(role => {
             const roleKey = role.toLowerCase();
             const dbPerm = permissions.find(p => p.role === roleKey);
