@@ -124,22 +124,15 @@ export async function GET(
             teamMemberIds = members.map(m => m.clerkId);
         }
 
-        // Construct where clause for filtering based on permissions
-        // NEW: If a form is visible to a role/user, they should also see UNASSIGNED responses 
-        // to catch new leads, unless strictly restricted.
-        const hasFormVisibility = form.visibleToRoles.includes(userRole) || form.visibleToUsers.includes(userId);
-        
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
-                { AND: [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }, { submittedBy: userId }] },
-                // If user has form-level visibility, they can see ALL UNASSIGNED leads too
-                ...(hasFormVisibility ? [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }] : []),
+                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
                 ...(isTL && teamMemberIds.length > 0 ? [
                     { assignedTo: { hasSome: teamMemberIds } },
-                    { AND: [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }, { submittedBy: { in: teamMemberIds } }] }
+                    { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
                 ] : [])
             ]
         };
@@ -251,9 +244,20 @@ export async function GET(
                     }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
-                        columnFilters.push({ OR: [{ AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] }, { values: { some: { fieldId: colId, value: "" } } }, { internalValues: { some: { columnId: colId, value: "" } } }] });
+                        columnFilters.push({ 
+                            OR: [
+                                { AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] }, 
+                                { values: { some: { fieldId: colId, value: { in: ["", "null", "undefined"] } } } }, 
+                                { internalValues: { some: { columnId: colId, value: { in: ["", "null", "undefined"] } } } }
+                            ] 
+                        });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { not: "" } } } }, { internalValues: { some: { columnId: colId, value: { not: "" } } } }] });
+                        columnFilters.push({ 
+                            OR: [
+                                { values: { some: { fieldId: colId, value: { notIn: ["", "null", "undefined"] } } } }, 
+                                { internalValues: { some: { columnId: colId, value: { notIn: ["", "null", "undefined"] } } } }
+                            ] 
+                        });
                     } else if (colType === "date") {
                         // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
                         const toISO = (d: Date) => d.toISOString().split('T')[0];
