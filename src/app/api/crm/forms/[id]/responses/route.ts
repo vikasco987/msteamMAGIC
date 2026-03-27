@@ -125,15 +125,21 @@ export async function GET(
         }
 
         // Construct where clause for filtering based on permissions
+        // NEW: If a form is visible to a role/user, they should also see UNASSIGNED responses 
+        // to catch new leads, unless strictly restricted.
+        const hasFormVisibility = form.visibleToRoles.includes(userRole) || form.visibleToUsers.includes(userId);
+        
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
-                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
+                { AND: [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }, { submittedBy: userId }] },
+                // If user has form-level visibility, they can see ALL UNASSIGNED leads too
+                ...(hasFormVisibility ? [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }] : []),
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
                 ...(isTL && teamMemberIds.length > 0 ? [
                     { assignedTo: { hasSome: teamMemberIds } },
-                    { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
+                    { AND: [{ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] }, { submittedBy: { in: teamMemberIds } }] }
                 ] : [])
             ]
         };
