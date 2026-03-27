@@ -3699,42 +3699,48 @@ export default function CRMSpreadsheetPage() {
                                                         });
                                                 }
 
-                                                                                // Apply search and global deduplication + active filter
-                                                                                const uniqueDisplayMap = new Map<string, { label: string, value: string }>();
-                                                                                
-                                                                                availableValues.forEach(opt => {
-                                                                                    const lowLabel = opt.label.trim().toLowerCase();
-                                                                                    if (!lowLabel) return;
-                                                                                    
-                                                                                    // If it's a user/assigned/contributor field, check against teamMembers
-                                                                                    const isUserCol = col.id === "__assigned" || col.id === "__contributor" || col.type === "user";
-                                                                                    if (isUserCol && opt.value !== "" && opt.value !== "unassigned") {
-                                                                                        // Allow internal operators to pass through
-                                                                                        const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
-                                                                                        
-                                                                                        if (!isInternalOp) {
-                                                                                            // If value looks like an ID, check if active
-                                                                                            const isActive = teamMembers.some(m => m.clerkId === opt.value || m.email === opt.label || m.name === opt.label);
-                                                                                            if (!isActive) return; // Hide blocked/historical users
-                                                                                        }
-                                                                                    }
+                                                // 🛡️ Filter & Deduplicate the display options
+                                                const isUserCol = col.id === "__assigned" || col.id === "__contributor" || col.type === "user";
+                                                
+                                                // 1. First, pass through whitelists and active filters
+                                                const filteredOptions = availableValues.filter(opt => {
+                                                    if (!opt.label || !opt.label.trim()) return false;
+                                                    if (!isUserCol) return true;
+                                                    if (opt.value === "" || opt.value === "unassigned") return true;
+                                                    
+                                                    const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
+                                                    if (isInternalOp) return true;
 
-                                                                                    if (!uniqueDisplayMap.has(lowLabel)) {
-                                                                                         uniqueDisplayMap.set(lowLabel, opt);
-                                                                                    }
-                                                                                });
+                                                    // Only show users who are active in teamMembers
+                                                    return teamMembers.some(m => 
+                                                        m.clerkId === opt.value || 
+                                                        m.email === opt.label || 
+                                                        m.name === opt.label ||
+                                                        (m.firstName && opt.label.includes(m.firstName))
+                                                    );
+                                                });
 
-                                                                                const displayValues = Array.from(uniqueDisplayMap.values())
-                                                                                    .filter(opt =>
-                                                                                        !activeColumnFilterSearch ||
-                                                                                        opt.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase())
-                                                                                    );
+                                                // 2. Deduplicate by label
+                                                const displayValues: typeof availableValues = [];
+                                                const seenLabels = new Set<string>();
 
-if (displayValues.length === 0) {
-                                                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>{activeColumnFilterSearch ? `No match found` : 'No data to filter'}</div>;
-                                                                                }
+                                                filteredOptions.forEach(opt => {
+                                                    const lowLabel = opt.label.trim().toLowerCase();
+                                                    if (!seenLabels.has(lowLabel)) {
+                                                        seenLabels.add(lowLabel);
+                                                        displayValues.push(opt);
+                                                    }
+                                                });
 
-                                                                                return displayValues.map(opt => {
+                                                const finalDisplayOptions = activeColumnFilterSearch 
+                                                    ? displayValues.filter(o => o.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase()))
+                                                    : displayValues;
+
+                                                if (finalDisplayOptions.length === 0) {
+                                                    return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>{activeColumnFilterSearch ? `No match found` : 'No data to filter'}</div>;
+                                                }
+
+                                                return finalDisplayOptions.map(opt => {
                                                                                     const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
                                                                                     return (
                                                                                         <button
