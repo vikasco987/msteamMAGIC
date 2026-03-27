@@ -700,6 +700,7 @@ export default function CRMSpreadsheetPage() {
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
 
+        const syncStartTime = Date.now();
         if (!isSilent) {
             setIsSyncing(true);
         }
@@ -893,6 +894,10 @@ export default function CRMSpreadsheetPage() {
             }
         } finally {
             if (!isSilent && !signal.aborted) {
+                const elapsed = Date.now() - syncStartTime;
+                if (elapsed < 800) {
+                    await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
+                }
                 setIsSyncing(false);
             }
         }
