@@ -227,12 +227,20 @@ export default function CRMFormsList() {
                             />
                         </div>
                         {isMaster && (
-                            <Link
-                                href="/crm/forms/new"
-                                className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
-                            >
-                                <Plus size={18} /> Build New Form
-                            </Link>
+                            <div className="flex items-center gap-4">
+                                <Link
+                                    href="/crm/admin/leads"
+                                    className="px-8 py-4 bg-white text-indigo-600 border-2 border-slate-50 rounded-2xl text-xs font-black uppercase tracking-widest hover:border-indigo-100 shadow-sm transition-all flex items-center gap-2"
+                                >
+                                    <ShieldCheck size={18} /> Lead Terminal
+                                </Link>
+                                <Link
+                                    href="/crm/forms/new"
+                                    className="px-8 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
+                                >
+                                    <Plus size={18} /> Build New Form
+                                </Link>
+                            </div>
                         )}
                     </div>
                 </header>
