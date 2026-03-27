@@ -164,8 +164,8 @@ export async function GET(
                     };
 
                     switch (operator) {
-                        case "equals": return isNum || colType === "dropdown" || colType === "user" ? { equals: castVal(value) } : { equals: value, mode: 'insensitive' as const };
-                        case "not_equals": return { not: castVal(value) };
+                        case "equals": return isNum ? { equals: castVal(value) } : { equals: castVal(value), mode: 'insensitive' as const };
+                        case "not_equals": return isNum ? { not: castVal(value) } : { not: castVal(value), mode: 'insensitive' as const };
                         case "contains": return { contains: value, mode: 'insensitive' as const };
                         case "starts_with": return { startsWith: value, mode: 'insensitive' as const };
                         case "ends_with": return { endsWith: value, mode: 'insensitive' as const };
