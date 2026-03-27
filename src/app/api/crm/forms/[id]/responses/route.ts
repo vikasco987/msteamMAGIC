@@ -307,7 +307,7 @@ export async function GET(
                         { remarks: { some: { followUpStatus: { contains: search, mode: 'insensitive' } } } }
                     ]
                 }] : []),
-                ...(conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }])
+                ...(advancedFilters.length > 0 ? (conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }]) : [])
             ]
         };
 

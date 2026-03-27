@@ -1607,8 +1607,9 @@ export default function CRMSpreadsheetPage() {
                         return result;
                     }
 
-                    const cellVal = getCellValue(r.id, colId, isInternal || false);
-                    const val = (cellVal || "").toString().toLowerCase();
+                    // ⚡ Value Logic: Try internal first, then fields if empty (for custom columns)
+                    const cellVal = getCellValue(r.id, colId, true) || getCellValue(r.id, colId, false);
+                    const val = (cellVal || "").toString().toLowerCase().trim();
 
                     const conditionMatches = (conds as any[]).map(cond => {
                         const targetVal = (cond.val || "").toString().toLowerCase();
