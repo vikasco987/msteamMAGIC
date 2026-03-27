@@ -46,7 +46,9 @@ export async function GET(req: NextRequest) {
     // ✅ Fetch all users from Clerk
     const userList = await users.getUserList({ limit: 200 });
 
-    const formattedUsers = userList.map((u) => ({
+    const formattedUsers = userList
+      .filter((u: any) => !u.banned)
+      .map((u: any) => ({
       id: u.id,
       name:
         `${u.firstName || ""} ${u.lastName || ""}`.trim() ||

@@ -3699,13 +3699,31 @@ export default function CRMSpreadsheetPage() {
                                                         });
                                                 }
 
-                                                                                // Apply search filter
-                                                                                const displayValues = activeColumnFilterSearch
-                                                                                    ? availableValues.filter(opt =>
-                                                                                        opt.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase()) ||
-                                                                                        opt.value.toLowerCase().includes(activeColumnFilterSearch.toLowerCase())
-                                                                                    )
-                                                                                    : availableValues;
+                                                                                // Apply search and global deduplication + active filter
+                                                                                const uniqueDisplayMap = new Map<string, { label: string, value: string }>();
+                                                                                
+                                                                                availableValues.forEach(opt => {
+                                                                                    const lowLabel = opt.label.trim().toLowerCase();
+                                                                                    if (!lowLabel) return;
+                                                                                    
+                                                                                    // If it's a user/assigned/contributor field, check against teamMembers
+                                                                                    const isUserCol = col.id === "__assigned" || col.id === "__contributor" || col.type === "user";
+                                                                                    if (isUserCol && opt.value !== "" && opt.value !== "unassigned") {
+                                                                                        // If value looks like an ID, check if active
+                                                                                        const isActive = teamMembers.some(m => m.clerkId === opt.value || m.email === opt.label || m.name === opt.label);
+                                                                                        if (!isActive) return; // Hide blocked/historical users as requested
+                                                                                    }
+
+                                                                                    if (!uniqueDisplayMap.has(lowLabel)) {
+                                                                                         uniqueDisplayMap.set(lowLabel, opt);
+                                                                                    }
+                                                                                });
+
+                                                                                const displayValues = Array.from(uniqueDisplayMap.values())
+                                                                                    .filter(opt =>
+                                                                                        !activeColumnFilterSearch ||
+                                                                                        opt.label.toLowerCase().includes(activeColumnFilterSearch.toLowerCase())
+                                                                                    );
 
 if (displayValues.length === 0) {
                                                                                     return <div className={`px-4 py-8 text-center text-[10px] font-bold uppercase tracking-widest ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-600' : 'text-slate-400'}`}>{activeColumnFilterSearch ? `No match found` : 'No data to filter'}</div>;

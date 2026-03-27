@@ -80,18 +80,24 @@ export default function LeadDistributionTerminal() {
     const [statusModal, setStatusModal] = useState<{ lead: Lead, val: string } | null>(null);
     const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string } | null>(null);
 
-    const initData = async () => {
-         try {
-             const [fRes, uRes] = await Promise.all([
-                 fetch("/api/crm/forms"),
-                 fetch("/api/crm/users?limit=200")
-             ]);
-             const fd = await fRes.json();
-             const ud = await uRes.json();
-             setForms(fd.forms || []);
-             setTeamMembers(ud.users || []);
-         } catch (e) {}
-    };
+        const initData = async () => {
+             try {
+                 const [fRes, uRes] = await Promise.all([
+                     fetch("/api/crm/forms"),
+                     fetch("/api/crm/users?limit=500")
+                 ]);
+                 const fd = await fRes.json();
+                 const ud = await uRes.json();
+                 
+                 setForms(fd.forms || []);
+                 
+                 const userList = Array.isArray(ud) ? ud : (ud.users || []);
+                 // Secondary filter here just in case API cache mismatch
+                 setTeamMembers(userList.filter((u: any) => !u.banned));
+             } catch (e) {
+                 console.error("Init Error:", e);
+             }
+        };
 
     useEffect(() => { initData(); }, []);
 
@@ -242,7 +248,9 @@ export default function LeadDistributionTerminal() {
                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={12} /> Origin Submitter</label>
                                     <select className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-[11px] font-black outline-none focus:border-indigo-600 uppercase" value={selectedSubmitter} onChange={(e) => setSelectedSubmitter(e.target.value)}>
                                         <option value="">All Submitters</option>
-                                        {availableSubmitters.map(s => (
+                                        {availableSubmitters
+                                            .filter(s => teamMembers.some(m => m.clerkId === s.submittedBy))
+                                            .map(s => (
                                             <option key={s.submittedBy} value={s.submittedBy}>{s.submittedByName || "Unknown User"}</option>
                                         ))}
                                     </select>

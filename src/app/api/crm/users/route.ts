@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         });
 
         // clerkClient returns { data: User[], totalCount: number }
-        const userList = response.data || [];
+        const userList = (response.data || []).filter((u: any) => !u.banned);
 
         const dbUsers = await prisma.user.findMany({
             where: { clerkId: { in: userList.map(u => u.id) } },
