@@ -892,7 +892,7 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix");
             }
         } finally {
-            if (!isSilent) {
+            if (!isSilent && !signal.aborted) {
                 setIsSyncing(false);
             }
         }
