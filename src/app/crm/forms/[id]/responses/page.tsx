@@ -3469,18 +3469,21 @@ export default function CRMSpreadsheetPage() {
                                                         }`}
                                                     style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
                                                 >
-                                                    <div className="flex flex-col items-center justify-center h-full pt-1 relative z-10">
+                                                    <div className="flex flex-col items-center justify-center h-full pt-1 relative z-10 px-1">
                                                         {isGroupStart && (
                                                             <motion.div
                                                                 initial={{ opacity: 0, scale: 0.8 }}
                                                                 animate={{ opacity: 1, scale: 1 }}
                                                                 className={`absolute top-2 left-2 right-2 h-7 rounded-full flex items-center justify-center ${style.bg} border-2 ${style.border} shadow-lg shadow-black/5 gap-2 px-3 overflow-hidden transition-all group-hover/label:scale-105 group-hover/label:shadow-indigo-500/10`}
+                                                                style={{ 
+                                                                    display: (columnWidths[col.id] || 180) < 100 ? 'none' : 'flex' 
+                                                                }}
                                                             >
                                                                 <div className={`w-1.5 h-1.5 rounded-full ${style.accent} animate-pulse shadow-[0_0_8px_rgba(79,70,229,0.5)]`} />
-                                                                <span className={`${style.text} text-[8px] font-black tracking-[0.2em] uppercase`}>{style.label}</span>
+                                                                <span className={`${style.text} text-[8px] font-black tracking-[0.2em] uppercase truncate`}>{style.label}</span>
                                                             </motion.div>
                                                         )}
-                                                        <div className={`flex flex-col items-center gap-0.5 transition-all duration-500 ${isGroupStart ? 'mt-8' : ''}`}>
+                                                        <div className={`flex flex-col items-center gap-0.5 transition-all duration-500 ${isGroupStart && (columnWidths[col.id] || 180) >= 100 ? 'mt-8' : ''}`}>
                                                             <span className="opacity-60 font-black text-[10px] tracking-widest">{getExcelLabel(idx)}</span>
                                                         </div>
                                                     </div>
@@ -3583,18 +3586,29 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-6 py-6 border-b text-[12px] font-black uppercase tracking-[0.25em] text-left relative group/h transition-all duration-500 z-50 ${isSticky ? 'sticky shadow-[10px_0_30px_-15px_rgba(0,0,0,0.15)] bg-white ml-2 rounded-l-3xl' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-indigo-500/50 scale-[1.03] rounded-3xl shadow-2xl') : ''}`}
+                                                    className={`px-3 py-6 border-b text-[12px] font-black uppercase tracking-[0.25em] text-left relative group/h transition-all duration-500 z-50 ${isSticky ? 'sticky shadow-[10px_0_30px_-15px_rgba(0,0,0,0.15)] bg-white ml-2 rounded-l-3xl' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-indigo-500/50 scale-[1.03] rounded-3xl shadow-2xl') : ''}`}
                                                 >
                                                     <div className="flex items-center justify-between gap-1 w-full h-full pb-1">
-                                                        <div className="flex items-center gap-4 truncate shrink">
-                                                            <div className={`w-11 h-11 rounded-full shrink-0 ${style.bg} border-[3px] ${style.border} shadow-xl flex items-center justify-center group-hover/h:scale-110 transition-all duration-500 group-hover/h:rotate-6 group-hover/h:shadow-indigo-500/20 active:scale-95`}>
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className={`rounded-full shrink-0 ${style.bg} border-[2.5px] ${style.border} shadow-lg flex items-center justify-center group-hover/h:scale-110 transition-all duration-500 group-hover/h:rotate-3 group-hover/h:shadow-indigo-500/20 active:scale-95 overflow-hidden
+                                                                ${width < 100 ? 'w-6 h-6 border-[1.5px]' : 'w-8 h-8'}
+                                                            `}>
                                                                 {col.id === "__profile" ? (
-                                                                    <Maximize2 size={16} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                    <Maximize2 size={width < 100 ? 10 : 14} className={`${style.text} shrink-0`} strokeWidth={3} />
                                                                 ) : (
-                                                                    <TypeIcon size={18} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                    <TypeIcon size={width < 100 ? 12 : 16} className={`${style.text} shrink-0`} strokeWidth={3} />
                                                                 )}
                                                             </div>
-                                                            <span className="truncate border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight">{col.id === "__profile" ? "V" : col.label}</span>
+                                                            <span className={`border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight leading-[1.1]
+                                                                ${width < 150 ? 'text-[9px] tracking-tighter' : 'text-[11px]'}
+                                                            `} style={{
+                                                                display: '-webkit-box',
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: 'vertical',
+                                                                overflow: 'hidden',
+                                                                whiteSpace: 'normal',
+                                                                wordBreak: 'break-word'
+                                                            }}>{col.id === "__profile" ? "V" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
@@ -4102,9 +4116,9 @@ export default function CRMSpreadsheetPage() {
                                                                             return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
-                                                                    <div className="min-w-0">
-                                                                        <p className={`text-[13px] font-black truncate uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
-                                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className={`text-[12px] font-black uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
+                                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -4274,7 +4288,23 @@ export default function CRMSpreadsheetPage() {
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
-                                                                {latestRemark ? <span className="text-xs font-bold text-indigo-600 truncate block max-w-full">{latestRemark}</span> : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>}
+                                                                {latestRemark ? (
+                                                                    <span 
+                                                                        className="text-[11px] font-bold text-indigo-600 block max-w-full leading-relaxed"
+                                                                        style={{
+                                                                            display: '-webkit-box',
+                                                                            WebkitLineClamp: 3,
+                                                                            WebkitBoxOrient: 'vertical',
+                                                                            overflow: 'hidden',
+                                                                            whiteSpace: 'normal',
+                                                                            wordBreak: 'break-word'
+                                                                        }}
+                                                                    >
+                                                                        {latestRemark}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>
+                                                                )}
                                                             </td>
                                                         );
                                                     }
@@ -4298,13 +4328,13 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {nextDate ? (
-                                                                    <span className={`text-[10px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                    <span className={`text-[9px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                         ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
                                                                         : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                         }`}>
                                                                         {safeFormat(nextDate.toString(), "MMM dd")}
                                                                     </span>
-                                                                ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
+                                                                ) : <span className="text-[9px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
                                                             </td>
                                                         );
                                                     }
@@ -4565,7 +4595,16 @@ export default function CRMSpreadsheetPage() {
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}>
+                                                                            <span 
+                                                                                className={`font-semibold transition-colors break-words overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[12px]' : 'text-[14px]'}`}
+                                                                                style={{
+                                                                                    display: '-webkit-box',
+                                                                                    WebkitLineClamp: 3,
+                                                                                    WebkitBoxOrient: 'vertical',
+                                                                                    whiteSpace: 'normal',
+                                                                                    lineHeight: '1.4'
+                                                                                }}
+                                                                            >
                                                                                 {(() => {
                                                                                     if (!val || isStatusCol) return (isStatusCol ? "" : "—");
                                                                                     // Apply premium styles for sync columns by label
