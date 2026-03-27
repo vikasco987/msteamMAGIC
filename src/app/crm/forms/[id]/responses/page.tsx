@@ -4496,7 +4496,7 @@ if (displayValues.length === 0) {
                                                                         ) : (
                                                                             <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}>
                                                                                 {(() => {
-                                                                                    if (!val) return "—";
+                                                                                    if (!val || isStatusCol) return (isStatusCol ? "" : "—");
                                                                                     // Apply premium styles for sync columns by label
                                                                                     if (col.label === "Recent Remark") {
                                                                                         return <span className={`font-bold transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-indigo-400' : 'text-indigo-600'}`}>{val}</span>;
