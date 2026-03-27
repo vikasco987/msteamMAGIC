@@ -70,7 +70,11 @@ import {
     Wifi,
     Pin,
     PinOff,
-    Target
+    Target,
+    Quote,
+    TrendingUp,
+    AlertCircle,
+    Settings2
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import { createPortal } from "react-dom";
@@ -4808,7 +4812,7 @@ export default function CRMSpreadsheetPage() {
 
                                         <div className="grid grid-cols-1 gap-4">
                                             {conditions.map((cond, index) => {
-                                                const field = [...(data?.form?.fields || []), ...internalColumns].find(f => f.id === cond.colId);
+                                                const field = [...(data?.form?.fields || []), ...(data?.internalColumns || [])].find(f => f.id === cond.colId);
                                                 const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
                                                 const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
                                                 
@@ -4835,7 +4839,7 @@ export default function CRMSpreadsheetPage() {
                                                                     }}
                                                                 >
                                                                     <option value="">Select Field Protocol</option>
-                                                                    {[...(data?.form?.fields || []), ...internalColumns].filter(f => f.type !== "static").map(f => (
+                                                                    {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].filter(f => f.type !== "static").map(f => (
                                                                         <option key={f.id} value={f.id}>{f.label}</option>
                                                                     ))}
                                                                 </select>
@@ -6204,28 +6208,28 @@ export default function CRMSpreadsheetPage() {
                                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Next Scheduled Interaction</p>
                                                                     <div className="flex items-center gap-4 text-xl font-black text-slate-950 group-hover:text-white">
                                                                         <Calendar className="text-indigo-500" size={18} />
-                                                                        {selectedResponse.nextFollowUpDate ? safeFormat(selectedResponse.nextFollowUpDate, "dd MMM yyyy") : "UNAWAITED"}
+                                                                        {selectedResponse.remarks?.[0]?.nextFollowUpDate ? safeFormat(selectedResponse.remarks[0].nextFollowUpDate, "dd MMM yyyy") : "UNAWAITED"}
                                                                     </div>
                                                                 </div>
                                                                 <div className="p-8 bg-white rounded-[32px] border border-slate-100 shadow-inner group hover:bg-slate-950 hover:border-slate-800 transition-all duration-500">
                                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Execution Status</p>
                                                                     <div className="flex items-center gap-4">
                                                                         <div className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-sm ${
-                                                                            selectedResponse.followUpStatus === "Drained" || selectedResponse.followUpStatus === "Closed"
-                                                                            ? "bg-rose-500 text-white shadow-rose-200"
-                                                                            : "bg-emerald-500 text-white shadow-emerald-200"
-                                                                        }`}>
-                                                                            {selectedResponse.followUpStatus || "ACTIVE PIPELINE"}
-                                                                        </div>
+                                                                             (selectedResponse.remarks?.[0]?.followUpStatus || "") === "Drained" || (selectedResponse.remarks?.[0]?.followUpStatus || "") === "Closed"
+                                                                             ? "bg-rose-500 text-white shadow-rose-200"
+                                                                             : "bg-emerald-500 text-white shadow-emerald-200"
+                                                                         }`}>
+                                                                             {selectedResponse.remarks?.[0]?.followUpStatus || "ACTIVE PIPELINE"}
+                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
                                                             
-                                                            {selectedResponse.recentRemark && (
+                                                            {selectedResponse.remarks?.[0]?.remark && (
                                                                 <div className="mt-8 p-10 bg-white rounded-[32px] border border-slate-100 relative group/remark hover:border-indigo-200 transition-all">
                                                                     <Quote size={30} className="absolute -top-4 -left-2 text-slate-100 group-hover:text-indigo-500/20 transition-colors" />
                                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Recent Interaction Node</p>
-                                                                    <p className="text-lg font-bold text-slate-800 leading-relaxed tracking-tight italic">"{selectedResponse.recentRemark}"</p>
+                                                                    <p className="text-lg font-bold text-slate-800 leading-relaxed tracking-tight italic">"{selectedResponse.remarks?.[0]?.remark}"</p>
                                                                 </div>
                                                             )}
                                                         </div>
