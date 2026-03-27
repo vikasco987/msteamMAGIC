@@ -104,24 +104,27 @@ export async function POST(req: NextRequest) {
     try {
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        const { title, fields, internalColumns, visibleToRoles, visibleToUsers } = await req.json();
-
+        const body = await req.json();
+        const { title, description, fields, internalColumns, visibleToRoles, visibleToUsers, isPublished } = body;
+        
         const form = await prisma.dynamicForm.create({
             data: {
                 title,
+                description,
+                isPublished: !!isPublished,
                 createdBy: userId,
                 visibleToRoles: visibleToRoles || [],
                 visibleToUsers: visibleToUsers || [],
                 fields: { 
-                    create: (fields || []).map((f: any) => {
-                        const { id, ...rest } = f; // Strip client-side ID
-                        return rest;
+                    create: (fields || []).map((f: any, idx: number) => {
+                        const { id, ...rest } = f; 
+                        return { ...rest, order: idx };
                     }) 
                 },
                 internalColumns: { 
-                    create: (internalColumns || []).map((c: any) => {
-                        const { id, ...rest } = c; // Strip client-side ID
-                        return rest;
+                    create: (internalColumns || []).map((c: any, idx: number) => {
+                        const { id, ...rest } = c; 
+                        return { ...rest, order: idx };
                     }) 
                 }
             }

@@ -42,13 +42,15 @@ export async function PATCH(
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const body = await req.json();
-        const { title, description, isPublished, fields } = body;
+        const { title, description, isPublished, fields, visibleToRoles, visibleToUsers } = body;
 
         // Simple update for metadata
         const updateData: any = {};
         if (title !== undefined) updateData.title = title;
         if (description !== undefined) updateData.description = description;
         if (isPublished !== undefined) updateData.isPublished = isPublished;
+        if (visibleToRoles !== undefined) updateData.visibleToRoles = visibleToRoles;
+        if (visibleToUsers !== undefined) updateData.visibleToUsers = visibleToUsers;
 
         const form = await prisma.dynamicForm.update({
             where: { id },
