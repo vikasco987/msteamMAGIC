@@ -388,6 +388,7 @@ export default function CRMSpreadsheetPage() {
     const [isSelectAllMenuOpen, setIsSelectAllMenuOpen] = useState(false);
     const [customSelectCount, setCustomSelectCount] = useState("50");
     const [activeStatusDropdown, setActiveStatusDropdown] = useState<string | null>(null);
+    const [statusMatrixModal, setStatusMatrixModal] = useState<{ rowId: string, colId: string, label: string, options: any[], val: string, isInternal: boolean } | null>(null);
     const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
 
     // Offline Syncing States
@@ -4183,49 +4184,16 @@ if (displayValues.length === 0) {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setActiveStatusDropdown(activeStatusDropdown === `${res.id}-${col.id}` ? null : `${res.id}-${col.id}`);
+                                                                    setStatusMatrixModal({
+                                                                        rowId: res.id,
+                                                                        colId: col.id,
+                                                                        label: col.label || "Status",
+                                                                        options: col.options || [],
+                                                                        val: latestStatus,
+                                                                        isInternal: col.isInternal
+                                                                    });
                                                                 }}
                                                             >
-                                                                {activeStatusDropdown === `${res.id}-${col.id}` && (
-                                                                    <motion.div 
-                                                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                        className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 rounded-2xl shadow-2xl border z-[9999] overflow-hidden p-2 backdrop-blur-3xl ${
-                                                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
-                                                                            ? 'bg-slate-900/95 border-white/10' 
-                                                                            : 'bg-white border-slate-200'
-                                                                        }`}
-                                                                    >
-                                                                        <div className="px-3 py-2 border-b border-slate-100/50 mb-1 flex justify-between items-center">
-                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status Matrix</p>
-                                                                            <button onClick={(e) => { e.stopPropagation(); setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id }); setActiveStatusDropdown(null); }} className="text-[9px] font-black text-indigo-500 hover:underline">Full Log</button>
-                                                                        </div>
-                                                                        <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                                                                            {CALL_STATUS_OPTIONS.map(opt => (
-                                                                                <button
-                                                                                    key={opt}
-                                                                                    onClick={(e) => { 
-                                                                                        e.stopPropagation(); 
-                                                                                        if (col.id === "__followUpStatus") {
-                                                                                            handleInstantStatusUpdate(res.id, opt);
-                                                                                        } else {
-                                                                                            handleStatusCellUpdate(res.id, col.id, opt, col.isInternal);
-                                                                                            setActiveStatusDropdown(null);
-                                                                                        }
-                                                                                    }}
-                                                                                    className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold group/row transition-all flex items-center justify-between ${
-                                                                                        latestStatus === opt 
-                                                                                        ? 'bg-indigo-600 text-white shadow-lg' 
-                                                                                        : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
-                                                                                    }`}
-                                                                                >
-                                                                                    <span>{opt}</span>
-                                                                                    {latestStatus === opt && <CheckCircle2 size={12} />}
-                                                                                </button>
-                                                                            ))}
-                                                                        </div>
-                                                                    </motion.div>
-                                                                )}
                                                                 {latestStatus ? (
                                                                     <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm transition-all ${
                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
@@ -4331,7 +4299,14 @@ if (displayValues.length === 0) {
                                                                 setFocusedCell({ rowId: res.id, colId: col.id });
                                                                 
                                                                 if (isStatusCol) {
-                                                                    setActiveStatusDropdown(activeStatusDropdown === `${res.id}-${col.id}` ? null : `${res.id}-${col.id}`);
+                                                                    setStatusMatrixModal({
+                                                                        rowId: res.id,
+                                                                        colId: col.id,
+                                                                        label: col.label || "Status",
+                                                                        options: col.options || [],
+                                                                        val: val,
+                                                                        isInternal: col.isInternal
+                                                                    });
                                                                     return;
                                                                 }
 
@@ -4347,42 +4322,6 @@ if (displayValues.length === 0) {
                                                             } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
-                                                            {activeStatusDropdown === `${res.id}-${col.id}` && (
-                                                                <motion.div 
-                                                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                                    className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 rounded-2xl shadow-2xl border z-[9999] overflow-hidden p-2 backdrop-blur-3xl ${
-                                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
-                                                                        ? 'bg-slate-900/95 border-white/10' 
-                                                                        : 'bg-white border-slate-200'
-                                                                    }`}
-                                                                >
-                                                                    <div className="px-3 py-2 border-b border-slate-100/50 mb-1 flex justify-between items-center">
-                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status Matrix</p>
-                                                                        <button onClick={(e) => { e.stopPropagation(); setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id }); setActiveStatusDropdown(null); }} className="text-[9px] font-black text-indigo-500 hover:underline">Full Log</button>
-                                                                    </div>
-                                                                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                                                                        {CALL_STATUS_OPTIONS.map(opt => (
-                                                                            <button
-                                                                                key={opt}
-                                                                                onClick={(e) => { 
-                                                                                    e.stopPropagation(); 
-                                                                                    handleStatusCellUpdate(res.id, col.id, opt, col.isInternal); 
-                                                                                    setActiveStatusDropdown(null);
-                                                                                }}
-                                                                                className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold group/row transition-all flex items-center justify-between ${
-                                                                                    val === opt 
-                                                                                    ? 'bg-indigo-600 text-white shadow-lg' 
-                                                                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
-                                                                                }`}
-                                                                            >
-                                                                                <span>{opt}</span>
-                                                                                {val === opt && <CheckCircle2 size={12} />}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                </motion.div>
-                                                            )}
                                                             {isEditing ? (
                                                                 <div className="w-full" onClick={(e) => e.stopPropagation()}>
                                                                     {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
@@ -6353,6 +6292,89 @@ if (displayValues.length === 0) {
                             </button>
                         </div>
                     </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* PREMIUN FLOATING MAXIMIZE TOGGLE */}
+
+            {/* Final Status Matrix Modal Replacement */}
+            <AnimatePresence>
+                {statusMatrixModal && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }} 
+                            animate={{ opacity: 1 }} 
+                            exit={{ opacity: 0 }} 
+                            onClick={() => setStatusMatrixModal(null)} 
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" 
+                        />
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+                            animate={{ scale: 1, opacity: 1, y: 0 }} 
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+                            className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden relative z-10 border-4 border-white"
+                        >
+                            <div className="p-8 border-b border-slate-50 bg-[#F9FAFB] flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Update Dimension</h3>
+                                    <p className="text-[15px] font-black text-slate-800 tracking-tighter mt-1">{statusMatrixModal.label}</p>
+                                </div>
+                                <button onClick={() => setStatusMatrixModal(null)} className="p-3 hover:bg-white rounded-2xl transition-all border border-transparent hover:border-slate-100">
+                                    <X size={20} className="text-slate-400" />
+                                </button>
+                            </div>
+                            
+                            <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar bg-white">
+                                <div className="grid grid-cols-1 gap-2">
+                                    {(statusMatrixModal.options && statusMatrixModal.options.length > 0 
+                                        ? statusMatrixModal.options.map((o: any) => typeof o === 'string' ? o : o.label) 
+                                        : CALL_STATUS_OPTIONS
+                                    ).map(opt => {
+                                        const isSelected = statusMatrixModal.val === opt;
+                                        return (
+                                            <button
+                                                key={opt}
+                                                onClick={() => {
+                                                    if (statusMatrixModal.colId === "__followUpStatus") {
+                                                        handleInstantStatusUpdate(statusMatrixModal.rowId, opt);
+                                                    } else {
+                                                        handleStatusCellUpdate(statusMatrixModal.rowId, statusMatrixModal.colId, opt, statusMatrixModal.isInternal);
+                                                    }
+                                                    setStatusMatrixModal(null);
+                                                }}
+                                                className={`w-full text-left px-6 py-4 rounded-[24px] text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between group ${
+                                                    isSelected 
+                                                    ? 'bg-indigo-600 text-white shadow-xl scale-[1.02]' 
+                                                    : 'bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
+                                                }`}
+                                            >
+                                                <span>{opt}</span>
+                                                {isSelected ? <CheckCircle2 size={18} /> : <div className="w-4 h-4 rounded-full border-2 border-slate-200 group-hover:border-indigo-300 transition-colors" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+                                <button 
+                                    onClick={() => {
+                                        setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: statusMatrixModal.rowId });
+                                        setStatusMatrixModal(null);
+                                    }}
+                                    className="flex-1 py-4 bg-white text-indigo-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest border border-indigo-100 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <History size={16} /> Interaction Log
+                                </button>
+                                <button 
+                                    onClick={() => setStatusMatrixModal(null)}
+                                    className="flex-1 py-4 bg-slate-200 text-slate-600 rounded-[20px] text-[10px] font-black uppercase tracking-widest hover:bg-slate-300 transition-all"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
 
