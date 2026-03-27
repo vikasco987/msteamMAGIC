@@ -17,33 +17,38 @@ interface LeadAssignHubProps {
     formId: string;
     onClose: () => void;
     responses: any[];
+    selectedIds?: string[];
     teamMembers: TeamMember[];
     onSuccess: () => void;
 }
 
-export default function LeadAssignHub({ formId, onClose, responses, teamMembers, onSuccess }: LeadAssignHubProps) {
+export default function LeadAssignHub({ formId, onClose, responses, selectedIds = [], teamMembers, onSuccess }: LeadAssignHubProps) {
     const [searchTerm, setSearchTerm] = useState("");
     const [assigneeSearch, setAssigneeSearch] = useState("");
     const [unassignedOnly, setUnassignedOnly] = useState(false);
     const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
 
-    // Filter leads
+    // Filter leads based on selection from main table
     const filteredLeads = useMemo(() => {
-        return responses.filter(res => {
+        let leads = responses;
+        if (selectedIds.length > 0) {
+            leads = leads.filter(r => selectedIds.includes(r.id));
+        }
+
+        return leads.filter(res => {
             const assigned = res.assignedTo || [];
             if (unassignedOnly && assigned.length > 0) return false;
 
             if (!searchTerm) return true;
 
             const searchVal = searchTerm.toLowerCase();
-            // Search in values
             const hasMatch = res.values?.some((v: any) => v.value?.toLowerCase().includes(searchVal));
             const hasInternalMatch = res.internalValues?.some((v: any) => v.value?.toLowerCase().includes(searchVal));
             const nameMatch = res.submittedByName?.toLowerCase().includes(searchVal);
 
             return hasMatch || hasInternalMatch || nameMatch;
         });
-    }, [responses, searchTerm, unassignedOnly]);
+    }, [responses, searchTerm, unassignedOnly, selectedIds]);
 
     // Filter team members for quick picker
     const filteredTeam = useMemo(() => {
@@ -94,14 +99,14 @@ export default function LeadAssignHub({ formId, onClose, responses, teamMembers,
         }
     };
 
-    // Helper to get lead "name" or primary info
+    // 🛡️ ENHANCED IDENTITY EXTRACTOR
     const getLeadInfo = (res: any) => {
-        // Find a value that looks like a name or use first textual value
         const val = res.values?.[0]?.value || res.values?.[1]?.value || "Lead Record";
         const email = res.values?.find((v: any) => v.value?.includes("@"))?.value;
         const phone = res.values?.find((v: any) => /^\d{10}$/.test(v.value?.replace(/[^0-9]/g, "")))?.value;
+        const submitter = res.submittedByName || "Anonymous";
 
-        return { name: val, email, phone };
+        return { name: val, email, phone, submitter };
     };
 
     return (
@@ -202,20 +207,22 @@ export default function LeadAssignHub({ formId, onClose, responses, teamMembers,
                                                 </div>
                                             </div>
 
-                                            {/* Content */}
+                                            {/* Submitter Info and Core Identity */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-3 mb-2">
                                                     <h4 className="text-[15px] font-black text-slate-900 tracking-tight leading-none group-hover/item:text-indigo-600 transition-colors">
                                                         {info.name}
                                                     </h4>
                                                     {currentAssigned.length === 0 && (
-                                                        <span className="px-3 py-1 bg-rose-600 text-white rounded-full text-[8px] font-black uppercase tracking-[0.2em] shadow-lg shadow-rose-200">Fresh</span>
+                                                        <span className="px-3 py-1 bg-amber-500 text-white rounded-full text-[8px] font-black uppercase tracking-[0.2em] shadow-lg shadow-amber-200">Pending</span>
                                                     )}
                                                 </div>
                                                 <div className="flex flex-wrap items-center gap-y-2 gap-x-6">
-                                                    {info.phone && <span className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-tighter"><Phone size={12} className="text-indigo-400" /> {info.phone}</span>}
-                                                    {info.email && <span className="flex items-center gap-2 text-[11px] font-black text-slate-500 lowercase tracking-tight"><Mail size={12} className="text-indigo-400" /> {info.email}</span>}
-                                                    <span className="flex items-center gap-2 text-[11px] font-bold text-slate-300 uppercase tracking-widest"><Clock size={12} /> {res.submittedAt ? new Date(res.submittedAt).toLocaleDateString() : 'Syncing...'}</span>
+                                                    <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100 flex items-center gap-2">
+                                                        <Sparkles size={10} /> {info.submitter}
+                                                    </span>
+                                                    <span className="text-[11px] font-bold text-slate-500 tracking-tight">{info.phone || info.email || 'No contact info'}</span>
+                                                    <span className="text-[11px] font-bold text-slate-300 uppercase tracking-widest">{res.submittedAt ? new Date(res.submittedAt).toLocaleDateString() : 'Syncing...'}</span>
                                                 </div>
                                             </div>
 
@@ -270,16 +277,16 @@ export default function LeadAssignHub({ formId, onClose, responses, teamMembers,
                         </div>
                     </div>
 
-                    {/* 👤 RIGHT: AGENT PICKER (STICKY) */}
-                    <div className="w-[380px] bg-white border-l border-slate-200/60 flex flex-col z-10 shadow-[-10px_0_30px_rgba(0,0,0,0.02)]">
-                        <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
-                            <h5 className="text-[11px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-4">Select Target Agent</h5>
+                            {/* 🕵️ RIGHT: TARGET AGENT MATRIX */}
+                    <div className="w-[320px] bg-white border-l border-slate-200/60 flex flex-col z-10 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.05)]">
+                        <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Elite Team Pool</h3>
                             <div className="relative group">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="Operator search..."
-                                    className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-[18px] outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 font-bold text-slate-900 shadow-sm text-xs transition-all"
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Find agent..."
+                                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-[11px] font-black outline-none focus:border-indigo-500 transition-all placeholder:text-slate-300"
                                     value={assigneeSearch}
                                     onChange={(e) => setAssigneeSearch(e.target.value)}
                                 />

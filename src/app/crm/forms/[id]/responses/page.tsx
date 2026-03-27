@@ -385,6 +385,9 @@ export default function CRMSpreadsheetPage() {
     const [deleteProgress, setDeleteProgress] = useState<{ current: number; total: number } | null>(null);
     const [isAddingRow, setIsAddingRow] = useState(false);
     const [drawerTab, setDrawerTab] = useState<'edit' | 'history'>('edit');
+    const [isSelectAllMenuOpen, setIsSelectAllMenuOpen] = useState(false);
+    const [customSelectCount, setCustomSelectCount] = useState("50");
+    const [activeStatusDropdown, setActiveStatusDropdown] = useState<string | null>(null);
     const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
 
     // Offline Syncing States
@@ -1453,9 +1456,13 @@ export default function CRMSpreadsheetPage() {
 
 
         if (isInternal) {
-            return data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value || "";
+            const internalVal = data.internalValues?.find(v => v.responseId === responseId && v.columnId === colId)?.value;
+            // High priority check for status consistency from response object properties
+            return internalVal || (resp as any)[colId] || "";
         }
-        return resp.values?.find(v => v.fieldId === colId)?.value || "";
+        
+        const fieldVal = resp.values?.find(v => v.fieldId === colId)?.value;
+        return fieldVal || (resp as any)[colId] || "";
     };
 
     const [isReportCached, setIsReportCached] = useState(false);
@@ -2100,22 +2107,46 @@ export default function CRMSpreadsheetPage() {
         // 1. Optimistic Update (Immediate Feedback)
         setData(prev => {
             if (!prev) return prev;
+            
+            // 1. Update Responses for Remarks and Direct Properties
+            const updatedResponses = prev.responses.map(r => {
+                if (r.id === responseId) {
+                    const updatedRow = { ...r };
+                    
+                    // Update property directly for instant visibility in table
+                    (updatedRow as any)[columnId] = value;
+                    
+                    // Update remarks for audit trail
+                    updatedRow.remarks = [{ 
+                        id: 'temp-' + Date.now(),
+                        remark: `Status action: ${value}`,
+                        followUpStatus: value,
+                        createdAt: new Date().toISOString()
+                    } as any, ...(r.remarks || [])];
+                    
+                    return updatedRow;
+                }
+                return r;
+            });
+
+            // 2. Also update internalValues array to ensure getCellValue picks it up
+            const updatedInternalValues = isInternal 
+                ? prev.internalValues.map(iv => 
+                    (iv.responseId === responseId && iv.columnId === columnId) 
+                    ? { ...iv, value } 
+                    : iv
+                  )
+                : prev.internalValues;
+
+            // If it was internal but didn't exist yet, we might need to push it
+            if (isInternal && !prev.internalValues.find(iv => iv.responseId === responseId && iv.columnId === columnId)) {
+                updatedInternalValues.push({ responseId, columnId, value });
+            }
+
             return {
                 ...prev,
-                responses: prev.responses.map(r => {
-                    if (r.id === responseId) {
-                        return { 
-                            ...r, 
-                            remarks: [{ 
-                                id: 'temp-' + Date.now(),
-                                remark: `Status action: ${value}`,
-                                followUpStatus: value,
-                                createdAt: new Date().toISOString()
-                            } as any, ...(r.remarks || [])]
-                        };
-                    }
-                    return r;
-                })
+                responses: updatedResponses,
+                internalValues: updatedInternalValues
             };
         });
         
@@ -2145,7 +2176,7 @@ export default function CRMSpreadsheetPage() {
                 duration: 2000
             });
             
-            // Re-fetch removed to prevent UI flicker. Relying on optimistic setData and pendingUpdates.
+            // DO NOT re-fetch. Rely on optimistic state.
         } catch (e: any) {
             console.error(e);
             
@@ -2464,6 +2495,58 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
+    const handleInstantStatusUpdate = async (responseId: string, newStatus: string) => {
+        // 🚀 OPTIMISTIC UI UPDATE
+        const timestamp = new Date().toISOString();
+        setData(prev => {
+            if (!prev) return prev;
+            const updatedResponses = prev.responses.map(r => {
+                if (r.id === responseId) {
+                    const existingRemarks = r.remarks || [];
+                    const updatedRemarks = [{ 
+                        id: `temp-${Date.now()}`, 
+                        followUpStatus: newStatus, 
+                        remark: `Status update: ${newStatus}`, 
+                        createdAt: timestamp,
+                        authorName: user?.firstName || "You"
+                    }, ...existingRemarks];
+                    
+                    // Update both remarks AND the shadow property if it exists
+                    return { 
+                        ...r, 
+                        remarks: updatedRemarks,
+                        __followUpStatus: newStatus // Ensure system status also updates property
+                    };
+                }
+                return r;
+            });
+            return { ...prev, responses: updatedResponses };
+        });
+
+        setActiveStatusDropdown(null);
+        toast.success(`Matrix Transition: ${newStatus}`, { 
+            icon: '⚡',
+            style: { borderRadius: '15px', background: '#333', color: '#fff', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' } 
+        });
+
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}/responses/${responseId}/remarks`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    remark: `Instant status transition to ${newStatus}`,
+                    followUpStatus: newStatus 
+                })
+            });
+            if (!res.ok) throw new Error("Sync failed");
+            // DO NOT re-fetch immediately on success to prevent flicker. 
+            // The optimistic data is already correct.
+        } catch (err) {
+            toast.error("Status Matrix Sync Failed");
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true); // Only rollback on error
+        }
+    };
+
     const toggleRowSelection = (id: string) => {
         setSelectedRows(prev => prev.includes(id) ? prev.filter(rid => rid !== id) : [...prev, id]);
     };
@@ -2505,9 +2588,18 @@ export default function CRMSpreadsheetPage() {
         toast.success("Filters Neutralized");
     };
 
-    const toggleAllRows = () => {
-        if (selectedRows.length === filteredResponses.length) setSelectedRows([]);
-        else setSelectedRows(filteredResponses.map(r => r.id));
+    const toggleAllRows = (count?: number) => {
+        if (count) {
+            setSelectedRows(filteredResponses.slice(0, count).map(r => r.id));
+            toast.success(`Matrix locked: First ${count} records selected`);
+        } else {
+            if (selectedRows.length === filteredResponses.length) {
+                setSelectedRows([]);
+            } else {
+                setSelectedRows(filteredResponses.map(r => r.id));
+            }
+        }
+        setIsSelectAllMenuOpen(false);
     };
 
 
@@ -3273,12 +3365,79 @@ export default function CRMSpreadsheetPage() {
                                             ? 'bg-slate-900 border-b border-white/10 shadow-[1px_0_0_rgba(255,255,255,0.1)]'
                                             : 'bg-[#F9FAFB] border-b border-[#EAECF0] shadow-[1px_0_0_#EAECF0]'
                                         }`}>
-                                            <div className="flex items-center justify-center gap-1.5">
-                                                <div
-                                                    onClick={toggleAllRows}
-                                                    className={`w-3.5 h-3.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? 'bg-indigo-600 border-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')}`}
-                                                >
-                                                    {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 && <Check size={8} className="text-white" />}
+                                            <div className="flex items-center justify-center gap-1.5 relative">
+                                                <div className="relative flex items-center gap-1">
+                                                    <div
+                                                        onClick={() => toggleAllRows()}
+                                                        className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${
+                                                            selectedRows.length > 0 
+                                                            ? (selectedRows.length === (filteredResponses?.length || 0) ? 'bg-indigo-600 border-indigo-600' : 'bg-indigo-100 border-indigo-400') 
+                                                            : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')
+                                                        }`}
+                                                    >
+                                                        {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? (
+                                                            <Check size={10} className="text-white" />
+                                                        ) : selectedRows.length > 0 ? (
+                                                            <div className="w-2 h-0.5 bg-indigo-600 rounded" />
+                                                        ) : null}
+                                                    </div>
+                                                    
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); setIsSelectAllMenuOpen(!isSelectAllMenuOpen); }}
+                                                        className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${isSelectAllMenuOpen ? 'bg-slate-200 text-indigo-600' : 'text-slate-400'}`}
+                                                    >
+                                                        <ChevronDown size={10} />
+                                                    </button>
+
+                                                    <AnimatePresence>
+                                                        {isSelectAllMenuOpen && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                className={`absolute top-full left-0 mt-2 w-48 rounded-2xl shadow-2xl border z-[300] overflow-hidden p-1.5 backdrop-blur-3xl ${
+                                                                    ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
+                                                                    ? 'bg-slate-900/95 border-white/10' 
+                                                                    : 'bg-white border-slate-200'
+                                                                }`}
+                                                            >
+                                                                <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Batch Control</p>
+                                                                </div>
+                                                                {[50, 100, 200, 500].map(num => (
+                                                                    <button
+                                                                        key={num}
+                                                                        onClick={() => toggleAllRows(num)}
+                                                                        className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold flex items-center justify-between group/row transition-all ${
+                                                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
+                                                                            ? 'text-slate-300 hover:bg-white/10 hover:text-white' 
+                                                                            : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                                                                        }`}
+                                                                    >
+                                                                        <span>Select First {num}</span>
+                                                                        <span className="text-[10px] opacity-0 group-hover/row:opacity-100 transition-opacity">Rows</span>
+                                                                    </button>
+                                                                ))}
+                                                                <div className="p-2 mt-1 border-t border-slate-100">
+                                                                    <div className="flex gap-1.5">
+                                                                        <input 
+                                                                            type="number" 
+                                                                            placeholder="Custom"
+                                                                            value={customSelectCount}
+                                                                            onChange={(e) => setCustomSelectCount(e.target.value)}
+                                                                            className="w-full px-2 py-1.5 rounded-lg border text-[10px] font-bold bg-slate-50 outline-none focus:border-indigo-400 focus:bg-white transition-all"
+                                                                        />
+                                                                        <button 
+                                                                            onClick={() => toggleAllRows(parseInt(customSelectCount))}
+                                                                            className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase"
+                                                                        >
+                                                                            Go
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
                                                 </div>
                                                 <span className={`text-[9px] font-black ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500' : 'text-slate-400'}`}>ID</span>
                                             </div>
@@ -3967,8 +4126,10 @@ if (displayValues.length === 0) {
                                                         );
                                                     }
 
-                                                    if (col.id === "__followUpStatus") {
-                                                        const latestStatus = res.remarks?.[0]?.followUpStatus || "";
+                                                    const isStatusCol = ["status", "follow-up status", "follow up status", "lead status", "call status", "interaction", "selec status", "select status", "crm tracking"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus";
+
+                                                    if (isStatusCol) {
+                                                        const latestStatus = col.id === "__followUpStatus" ? (res.remarks?.[0]?.followUpStatus || "") : val;
                                                         return (
                                                             <td
                                                                 key={col.id}
@@ -3982,9 +4143,49 @@ if (displayValues.length === 0) {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setActiveStatusDropdown(activeStatusDropdown === `${res.id}-${col.id}` ? null : `${res.id}-${col.id}`);
                                                                 }}
                                                             >
+                                                                {activeStatusDropdown === `${res.id}-${col.id}` && (
+                                                                    <motion.div 
+                                                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                        className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 rounded-2xl shadow-2xl border z-[9999] overflow-hidden p-2 backdrop-blur-3xl ${
+                                                                            ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
+                                                                            ? 'bg-slate-900/95 border-white/10' 
+                                                                            : 'bg-white border-slate-200'
+                                                                        }`}
+                                                                    >
+                                                                        <div className="px-3 py-2 border-b border-slate-100/50 mb-1 flex justify-between items-center">
+                                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status Matrix</p>
+                                                                            <button onClick={(e) => { e.stopPropagation(); setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id }); setActiveStatusDropdown(null); }} className="text-[9px] font-black text-indigo-500 hover:underline">Full Log</button>
+                                                                        </div>
+                                                                        <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                                                                            {CALL_STATUS_OPTIONS.map(opt => (
+                                                                                <button
+                                                                                    key={opt}
+                                                                                    onClick={(e) => { 
+                                                                                        e.stopPropagation(); 
+                                                                                        if (col.id === "__followUpStatus") {
+                                                                                            handleInstantStatusUpdate(res.id, opt);
+                                                                                        } else {
+                                                                                            handleStatusCellUpdate(res.id, col.id, opt, col.isInternal);
+                                                                                            setActiveStatusDropdown(null);
+                                                                                        }
+                                                                                    }}
+                                                                                    className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold group/row transition-all flex items-center justify-between ${
+                                                                                        latestStatus === opt 
+                                                                                        ? 'bg-indigo-600 text-white shadow-lg' 
+                                                                                        : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
+                                                                                    }`}
+                                                                                >
+                                                                                    <span>{opt}</span>
+                                                                                    {latestStatus === opt && <CheckCircle2 size={12} />}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    </motion.div>
+                                                                )}
                                                                 {latestStatus ? (
                                                                     <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm transition-all ${
                                                                         ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
@@ -4044,7 +4245,6 @@ if (displayValues.length === 0) {
                                                                         <ExternalLink size={10} />
                                                                     </button>
                                                                 )}
-
                                                                 {totalAmount > 0 ? (
                                                                     <div className="flex flex-col items-center gap-0.5 mt-1">
                                                                         <span className="text-[10px] font-black text-blue-700">{fmt(totalAmount)}</span>
@@ -4089,6 +4289,12 @@ if (displayValues.length === 0) {
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setFocusedCell({ rowId: res.id, colId: col.id });
+                                                                
+                                                                if (isStatusCol) {
+                                                                    setActiveStatusDropdown(activeStatusDropdown === `${res.id}-${col.id}` ? null : `${res.id}-${col.id}`);
+                                                                    return;
+                                                                }
+
                                                                 if (!isLocked && !isEditing) {
                                                                     setEditingCell({ rowId: res.id, colId: col.id });
                                                                     setEditValue(val);
@@ -4101,6 +4307,42 @@ if (displayValues.length === 0) {
                                                             } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
+                                                            {activeStatusDropdown === `${res.id}-${col.id}` && (
+                                                                <motion.div 
+                                                                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                    className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 rounded-2xl shadow-2xl border z-[9999] overflow-hidden p-2 backdrop-blur-3xl ${
+                                                                        ['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) 
+                                                                        ? 'bg-slate-900/95 border-white/10' 
+                                                                        : 'bg-white border-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    <div className="px-3 py-2 border-b border-slate-100/50 mb-1 flex justify-between items-center">
+                                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status Matrix</p>
+                                                                        <button onClick={(e) => { e.stopPropagation(); setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id }); setActiveStatusDropdown(null); }} className="text-[9px] font-black text-indigo-500 hover:underline">Full Log</button>
+                                                                    </div>
+                                                                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                                                                        {CALL_STATUS_OPTIONS.map(opt => (
+                                                                            <button
+                                                                                key={opt}
+                                                                                onClick={(e) => { 
+                                                                                    e.stopPropagation(); 
+                                                                                    handleStatusCellUpdate(res.id, col.id, opt, col.isInternal); 
+                                                                                    setActiveStatusDropdown(null);
+                                                                                }}
+                                                                                className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold group/row transition-all flex items-center justify-between ${
+                                                                                    val === opt 
+                                                                                    ? 'bg-indigo-600 text-white shadow-lg' 
+                                                                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
+                                                                                }`}
+                                                                            >
+                                                                                <span>{opt}</span>
+                                                                                {val === opt && <CheckCircle2 size={12} />}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </motion.div>
+                                                            )}
                                                             {isEditing ? (
                                                                 <div className="w-full" onClick={(e) => e.stopPropagation()}>
                                                                     {["status", "follow-up status", "follow up status", "lead status", "call status", "interaction"].some(s => col.label?.toLowerCase().includes(s)) || col.id === "__followUpStatus" ? (
@@ -6004,6 +6246,7 @@ if (displayValues.length === 0) {
                     formId={params.id as string}
                     onClose={() => setIsLeadAssignHubOpen(false)}
                     responses={data?.responses || []}
+                    selectedIds={selectedRows}
                     teamMembers={teamMembers}
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
                 />
@@ -6019,15 +6262,22 @@ if (displayValues.length === 0) {
                     >
                         <div className="flex items-center gap-4 pr-10 border-r border-white/10 group">
                             <motion.div 
-                                animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }}
+                                animate={selectedRows.length > 0 ? { scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] } : {}}
                                 transition={{ repeat: Infinity, duration: 4 }}
-                                className="w-14 h-14 rounded-3xl bg-indigo-600 flex items-center justify-center text-white text-xl font-black shadow-[0_12px_24px_rgba(79,70,229,0.4)] border border-indigo-400/30"
+                                className="w-14 h-14 rounded-3xl bg-indigo-600 flex items-center justify-center text-white text-xl font-black shadow-[0_12px_24px_rgba(79,70,229,0.4)] border border-indigo-400/30 overflow-hidden relative"
                             >
-                                {selectedRows.length}
+                                <span className="relative z-10">{selectedRows.length}</span>
+                                <motion.div 
+                                    className="absolute bottom-0 left-0 right-0 bg-white/20"
+                                    initial={{ height: 0 }}
+                                    animate={{ height: `${(selectedRows.length / (filteredResponses?.length || 1)) * 100}%` }}
+                                />
                             </motion.div>
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-1">Matrix Active</p>
-                                <p className="text-lg font-black text-white tracking-tight leading-none">Sector Selection Locked</p>
+                                <p className="text-lg font-black text-white tracking-tight leading-none">
+                                    {selectedRows.length} <span className="text-slate-500 text-sm font-bold uppercase tracking-widest ml-1">of {filteredResponses?.length} locked</span>
+                                </p>
                             </div>
                         </div>
 
