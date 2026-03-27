@@ -159,7 +159,8 @@ export async function GET(
                     const isDate = colType === "date";
                     
                     const castVal = (v: any) => {
-                        if (isNum && !isNaN(Number(v))) return String(v); // Keep as string for DB match but logic-aware
+                        if (isNum && !isNaN(Number(v))) return String(v); 
+                        if (typeof v === "string") return v.trim();
                         return v;
                     };
 
