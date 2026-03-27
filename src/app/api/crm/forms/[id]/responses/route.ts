@@ -78,15 +78,8 @@ export async function GET(
         ]);
 
         const colMap: Record<string, string> = {};
-        const colLabelMap: Record<string, string> = {};
-        fields.forEach(f => {
-            colMap[f.id] = f.type;
-            colLabelMap[f.id] = f.label.toLowerCase();
-        });
-        internalColumns.forEach(c => {
-            colMap[c.id] = c.type;
-            colLabelMap[c.id] = c.label.toLowerCase();
-        });
+        fields.forEach(f => colMap[f.id] = f.type);
+        internalColumns.forEach(c => colMap[c.id] = c.type);
 
         const form = {
             ...rawForm,
@@ -146,11 +139,6 @@ export async function GET(
 
         // Group conditions by colId for OR logic within columns
         const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {
-            const label = colLabelMap[cond.colId] || "";
-            // 🔥 Map custom "Status" columns to the system remarks logic automatically
-            if (label.includes("status")) {
-                cond.isStatusAlias = true;
-            }
             if (!acc[cond.colId]) acc[cond.colId] = [];
             acc[cond.colId].push(cond);
             return acc;
@@ -168,9 +156,9 @@ export async function GET(
                 const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
                     const isNum = colType === "number" || colType === "currency";
                     const isDate = colType === "date";
-                    
+
                     const castVal = (v: any) => {
-                        if (isNum && !isNaN(Number(v))) return String(v); 
+                        if (isNum && !isNaN(Number(v))) return String(v);
                         // 🔥 Important: Do NOT trim strings globally here, 
                         // as some legacy statuses or internal values may rely on exact match including spaces
                         return v;
@@ -233,9 +221,8 @@ export async function GET(
                     } else {
                         columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
                     }
-                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark" || cond.isStatusAlias) {
+                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark") {
                     // Remarks logic
-                    const isStatus = colId === "__followUpStatus" || cond.isStatusAlias;
                     if (colId === "__nextFollowUpDate") {
                         if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
                         else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
@@ -252,7 +239,7 @@ export async function GET(
                         } else if (op === "after" && val) {
                             columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
                         }
-                    } else if (isStatus) {
+                    } else if (colId === "__followUpStatus") {
                         if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
                         else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
                     } else if (colId === "__recentRemark" || colId === "__followup") {
@@ -261,19 +248,19 @@ export async function GET(
                     }
                 } else if (!colId.startsWith("__")) {
                     if (op === "is_empty") {
-                        columnFilters.push({ 
+                        columnFilters.push({
                             OR: [
-                                { AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] }, 
-                                { values: { some: { fieldId: colId, value: { in: ["", "null", "undefined"] } } } }, 
+                                { AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] },
+                                { values: { some: { fieldId: colId, value: { in: ["", "null", "undefined"] } } } },
                                 { internalValues: { some: { columnId: colId, value: { in: ["", "null", "undefined"] } } } }
-                            ] 
+                            ]
                         });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ 
+                        columnFilters.push({
                             OR: [
-                                { values: { some: { fieldId: colId, value: { notIn: ["", "null", "undefined"] } } } }, 
+                                { values: { some: { fieldId: colId, value: { notIn: ["", "null", "undefined"] } } } },
                                 { internalValues: { some: { columnId: colId, value: { notIn: ["", "null", "undefined"] } } } }
-                            ] 
+                            ]
                         });
                     } else if (colType === "date") {
                         // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
@@ -431,12 +418,12 @@ export async function GET(
                 usersList.data
                     .filter((u: any) => !u.banned)
                     .forEach(u => {
-                    usersMap[u.id] = {
-                        email: u.emailAddresses[0]?.emailAddress || "Unknown",
-                        name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
-                        imageUrl: u.imageUrl || ""
-                    };
-                });
+                        usersMap[u.id] = {
+                            email: u.emailAddresses[0]?.emailAddress || "Unknown",
+                            name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
+                            imageUrl: u.imageUrl || ""
+                        };
+                    });
             } catch (err) {
                 console.error("Clerk fetch users mapping error:", err);
             }
@@ -447,9 +434,9 @@ export async function GET(
             visibleToUsersData: allUserIds
                 .filter((uid: string) => usersMap[uid])
                 .map((uid: string) => ({
-                id: uid,
-                ...usersMap[uid]
-            }))
+                    id: uid,
+                    ...usersMap[uid]
+                }))
         };
 
         return NextResponse.json({
