@@ -274,7 +274,10 @@ export async function GET(
                             columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
                         }
                     } else {
+                        // Standard type-aware logic
                         const c = getPrismaOp(op, val, val2);
+                        // Case insensitivity is already handled inside getPrismaOp for 'equals', 
+                        // but we ensure it's applied correctly to OR conditions for flexible matching.
                         columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: c } } }, { internalValues: { some: { columnId: colId, value: c } } }] });
                     }
                 }
