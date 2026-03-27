@@ -521,7 +521,7 @@ export default function CRMSpreadsheetPage() {
     const [currentView, setCurrentView] = useState<"table" | "kanban">("table");
     const [isFilterBuilderOpen, setIsFilterBuilderOpen] = useState(false);
     const [conditions, setConditions] = useState<SavedView['conditions']>([]);
-    const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("OR");
+    const [filterConjunction, setFilterConjunction] = useState<SavedView['conjunction']>("AND");
     const [savedViews, setSavedViews] = useState<SavedView[]>([]);
     const [autoApply, setAutoApply] = useState(true);
     const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -3319,7 +3319,7 @@ export default function CRMSpreadsheetPage() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/20 backdrop-blur-[2px] cursor-wait transition-all duration-500"
+                                        className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/5 backdrop-blur-[1px] pointer-events-none transition-all duration-500"
                                     >
                                         <div className="flex flex-col items-center gap-6 p-10 rounded-[48px] bg-white/90 shadow-[0_32px_100px_rgba(0,0,0,0.12)] border border-white/50 animate-pulse">
                                             <div className="relative w-20 h-20">
