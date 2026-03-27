@@ -247,13 +247,62 @@ export async function POST(
                     if (colIdToUpdate === "__assigned") {
                         const foundUserId = findUser(valueToMap);
                         if (foundUserId) {
-                            individualOpsMap.set(`assigned_${item.responseId}`, prisma.formResponse.update({
-                                where: { id: item.responseId },
-                                data: { assignedTo: { set: [foundUserId] } }
+                             // We use set in standard field updates or special logic
+                             individualOpsMap.set(`assigned_${item.responseId}`, prisma.formResponse.update({
+                                 where: { id: item.responseId },
+                                 data: { assignedTo: { set: [foundUserId] } }
+                             }));
+                        }
+                        continue;
+                    }
+
+                    // 🎯 SPECIAL HANDLING FOR FOLLOW-UP SYSTEM COLUMNS
+                    const followUpCols = ["__followUpStatus", "__nextFollowUpDate", "__recentRemark", "__followup"];
+                    if (followUpCols.includes(colIdToUpdate)) {
+                        const existingRemarks = await prisma.formRemark.findMany({
+                            where: { responseId: item.responseId },
+                            orderBy: { updatedAt: 'desc' },
+                            take: 1
+                        });
+                        const latestRemark = existingRemarks[0];
+
+                        const remarkData: any = {
+                            updatedBy: user.id,
+                            updatedByName: userName,
+                            updatedAt: new Date(),
+                        };
+
+                        if (colIdToUpdate === "__followUpStatus") remarkData.followUpStatus = valueToMap;
+                        if (colIdToUpdate === "__nextFollowUpDate") {
+                            let dateVal = valueToMap;
+                            if (valueToMap && !isNaN(Number(valueToMap))) {
+                                const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                                const parsedDate = new Date(excelEpoch.getTime() + Math.round(Number(valueToMap) * 86400000));
+                                if (!isNaN(parsedDate.getTime())) dateVal = parsedDate.toISOString();
+                            }
+                            remarkData.nextFollowUpDate = dateVal ? new Date(dateVal) : null;
+                        }
+                        if (colIdToUpdate === "__recentRemark" || colIdToUpdate === "__followup") remarkData.remark = valueToMap;
+
+                        if (latestRemark) {
+                            individualOpsMap.set(`remark_upd_${item.responseId}_${colIdToUpdate}`, prisma.formRemark.update({
+                                where: { id: latestRemark.id },
+                                data: remarkData
+                            }));
+                        } else {
+                            // If no remark exists, create a fresh one
+                            individualOpsMap.set(`remark_new_${item.responseId}_${colIdToUpdate}`, prisma.formRemark.create({
+                                data: {
+                                    ...remarkData,
+                                    responseId: item.responseId,
+                                    remark: remarkData.remark || "Uploaded via Smart Update",
+                                    followUpStatus: remarkData.followUpStatus || "New"
+                                }
                             }));
                         }
                         continue;
                     }
+
 
                     if (isColInternal) {
                         const internalCol = intColMap.get(colIdToUpdate);

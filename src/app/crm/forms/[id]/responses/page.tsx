@@ -345,9 +345,20 @@ export default function CRMSpreadsheetPage() {
     const [loading, setLoading] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
     const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
     const [openColorPicker, setOpenColorPicker] = useState<string | null>(null);
+
+    // ⚡ Performance Fix: Debounce Search to prevent re-filtering on every keystroke
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
@@ -583,15 +594,16 @@ export default function CRMSpreadsheetPage() {
     const [teamMemberSearch, setTeamMemberSearch] = useState("");
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
-    // Reset to page 1 when filters change
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, conditions, filterConjunction]);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
+    // Reset to page 1 and trigger FETCH instantly for drop-down filters
     useEffect(() => {
-        if (isAddingRow) return;
-        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-    }, [currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, params.id, isAddingRow]);
+        if (!isAddingRow) {
+            fetchData(1, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
+    }, [conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
+
+
 
 
     const tableRef = useRef<HTMLDivElement>(null);
@@ -653,9 +665,17 @@ export default function CRMSpreadsheetPage() {
     }, [data, isMaster, isPureMaster, userRole]);
 
     const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
         if (!isSilent) {
             setIsSyncing(true);
         }
+
         // 1. FAST CACHE LOAD (Run before API Call)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
         if (cachedDataStr) {
@@ -701,10 +721,11 @@ export default function CRMSpreadsheetPage() {
             const effectiveLimit = limit;
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store' }),
-                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store' }),
-                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store' })
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
+
 
             const json = await dataRes.json();
 
@@ -799,7 +820,12 @@ export default function CRMSpreadsheetPage() {
                 const firstDropdown = json.internalColumns?.find((c: any) => c.type === "dropdown");
                 if (firstDropdown) setGroupByColId(firstDropdown.id);
             }
-        } catch (err) {
+        } catch (err: any) {
+            if (err.name === 'AbortError') {
+                console.log("[FetchData] Request aborted -> Race condition prevented.");
+                return;
+            }
+            console.error("Fetch error:", err);
             if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch')) {
                 const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
                 if (cachedDataStr) {
@@ -1492,8 +1518,8 @@ export default function CRMSpreadsheetPage() {
 
         const isServerFiltering = data.totalPages !== undefined;
 
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
+        if (debouncedSearchTerm) {
+            const term = debouncedSearchTerm.toLowerCase();
             results = results.filter(r =>
                 (r.submittedByName || "").toLowerCase().includes(term) ||
                 (r.submittedBy || "").toLowerCase().includes(term) ||
@@ -1615,7 +1641,7 @@ export default function CRMSpreadsheetPage() {
             }
         }
         return results;
-    }, [data, searchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns]);
 
     const columnMetrics = useMemo(() => {
         const columns = getColumns;
@@ -1649,7 +1675,7 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => {
         setCurrentPage(1);
         // searchTerm change pe bhi page 1 pe jaao
-    }, [searchTerm]);
+    }, [debouncedSearchTerm]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -5964,6 +5990,9 @@ if (displayValues.length === 0) {
                     }}
                     availableColumns={[
                         { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
+                        { id: "__followUpStatus", label: "Follow-up Status", isInternal: false, type: "text" },
+                        { id: "__nextFollowUpDate", label: "Next Follow-up Date", isInternal: false, type: "date" },
+                        { id: "__recentRemark", label: "Recent Remark", isInternal: false, type: "text" },
                         ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),
                         ...(data?.internalColumns || []).map(c => ({ id: c.id, label: c.label, isInternal: true, type: c.type }))
                     ]}
