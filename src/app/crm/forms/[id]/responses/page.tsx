@@ -1629,11 +1629,11 @@ export default function CRMSpreadsheetPage() {
 
                     // ⚡ Value Logic: Try internal first, then fields if empty (for custom columns)
                     const cellVal = getCellValue(r.id, colId, true) || getCellValue(r.id, colId, false);
-                    const val = (cellVal || "").toString().toLowerCase().trim();
+                    const val = (cellVal || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
 
                     const conditionMatches = (conds as any[]).map(cond => {
-                        const targetVal = (cond.val || "").toString().toLowerCase();
-                        const targetVal2 = (cond.val2 || "").toString().toLowerCase();
+                        const targetVal = (cond.val || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
+                        const targetVal2 = (cond.val2 || "").toString().toLowerCase().replace(/\s+/g, ' ').trim();
 
                         switch (cond.op) {
                             case "equals": return val === targetVal;
@@ -3328,7 +3328,7 @@ export default function CRMSpreadsheetPage() {
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
-                                        className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/5 backdrop-blur-[1px] pointer-events-none transition-all duration-500"
+                                        className="absolute inset-0 z-[100000] flex flex-col items-center justify-center bg-white/5 backdrop-blur-[1px] pointer-events-none transition-all duration-500"
                                     >
                                         <div className="flex flex-col items-center gap-6 p-10 rounded-[48px] bg-white/90 shadow-[0_32px_100px_rgba(0,0,0,0.12)] border border-white/50 animate-pulse">
                                             <div className="relative w-20 h-20">
