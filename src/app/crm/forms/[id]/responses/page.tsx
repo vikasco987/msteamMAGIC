@@ -3644,6 +3644,19 @@ export default function CRMSpreadsheetPage() {
                                                             value: m.clerkId
                                                         };
                                                     }).sort((a, b) => a.label.localeCompare(b.label));
+
+                                                    if (isMaster || isPureMaster) {
+                                                        const strictOptions = teamMembers.map(m => {
+                                                            const name = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email.split('@')[0];
+                                                            return {
+                                                                label: `[Reassigned] ${name}`,
+                                                                value: `__STRICT_ASSIGNED__${m.clerkId}`
+                                                            };
+                                                        }).sort((a, b) => a.label.localeCompare(b.label));
+                                                        availableValues = [...availableValues, ...strictOptions];
+                                                    }
+
+                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
                                                     availableValues.unshift({ label: "Unassigned", value: "" });
                                                 } else if (col.id === "__contributor") {
                                                     const bestNames = new Map<string, string>(); // lowercase -> display

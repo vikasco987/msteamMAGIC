@@ -210,6 +210,11 @@ export async function GET(
                         columnFilters.push({ AND: [{ OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] }, { submittedBy: null }] });
                     } else if (op === "is_not_empty") {
                         columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { assignedTo: null } }, { NOT: { submittedBy: null } }] });
+                    } else if (val === "__REASSIGNED_TO_ME__") {
+                        columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
+                    } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
+                        const targetId = val.replace("__STRICT_ASSIGNED__", "");
+                        columnFilters.push({ AND: [{ assignedTo: { has: targetId } }, { NOT: { submittedBy: targetId } }] });
                     } else {
                         columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
                     }
