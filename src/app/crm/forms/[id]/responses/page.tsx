@@ -3786,6 +3786,7 @@ export default function CRMSpreadsheetPage() {
                                                                                         <button
                                                                                             key={opt.value}
                                                                                             onClick={() => {
+                                                                                                if (autoApply) setIsSyncing(true); // 🔥 Immediate feedback for Status and other filters
                                                                                                 setCurrentPage(1); // Reset to first page on filter change
                                                                                                 if (isSelected) {
                                                                                                     setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
