@@ -16,28 +16,37 @@ interface TeamMember {
 interface LeadAssignHubProps {
     formId: string;
     onClose: () => void;
-    responses: any[];
     selectedIds?: string[];
     teamMembers: TeamMember[];
+    totalCount?: number;
     onSuccess: () => void;
+    onFetchAll?: () => Promise<any[]>;
+    responses: any[];
 }
 
-export default function LeadAssignHub({ formId, onClose, responses, selectedIds = [], teamMembers, onSuccess }: LeadAssignHubProps) {
+export default function LeadAssignHub({ formId, onClose, responses, selectedIds = [], teamMembers, totalCount = 0, onSuccess, onFetchAll }: LeadAssignHubProps) {
     const [searchTerm, setSearchTerm] = useState("");
     const [assigneeSearch, setAssigneeSearch] = useState("");
     const [unassignedOnly, setUnassignedOnly] = useState(false);
     const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
+    const [selectedBulkIds, setSelectedBulkIds] = useState<Set<string>>(new Set());
+    const [isBulkAssigning, setIsBulkAssigning] = useState<boolean>(false);
+    const [allHubLeads, setAllHubLeads] = useState<any[] | null>(null);
+    const [isLoadingFull, setIsLoadingFull] = useState(false);
 
     // Filter leads based on selection from main table
     const filteredLeads = useMemo(() => {
-        let leads = responses;
-        if (selectedIds.length > 0) {
-            leads = leads.filter(r => selectedIds.includes(r.id));
+        let leads = allHubLeads || responses;
+        if (selectedIds.length > 0 && !allHubLeads) { // Only restrict to selection if we haven't loaded all
+            leads = leads.filter((r: any) => selectedIds.includes(r.id));
         }
 
-        return leads.filter(res => {
+        return leads.filter((res: any) => {
             const assigned = res.assignedTo || [];
-            if (unassignedOnly && assigned.length > 0) return false;
+            // Enhanced Unassigned Logic: Empty OR only contains the original submitter (not yet reassigned)
+            const isTrulyUnassigned = assigned.length === 0 || (assigned.length === 1 && (assigned[0] === res.submittedBy || !res.submittedBy));
+            
+            if (unassignedOnly && !isTrulyUnassigned) return false;
 
             if (!searchTerm) return true;
 
@@ -48,7 +57,21 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
 
             return hasMatch || hasInternalMatch || nameMatch;
         });
-    }, [responses, searchTerm, unassignedOnly, selectedIds]);
+    }, [responses, allHubLeads, searchTerm, unassignedOnly, selectedIds]);
+
+    const handleLoadAll = async () => {
+        if (!onFetchAll) return;
+        setIsLoadingFull(true);
+        try {
+            const all = await onFetchAll();
+            setAllHubLeads(all);
+            toast.success(`Matrix Fully Loaded (${all.length} leads)`);
+        } catch (err) {
+            toast.error("Failed to load full sector");
+        } finally {
+            setIsLoadingFull(false);
+        }
+    };
 
     // Filter team members for quick picker
     const filteredTeam = useMemo(() => {
@@ -99,6 +122,59 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
         }
     };
 
+    const handleBulkAssign = async (targetUserId: string) => {
+        if (selectedBulkIds.size === 0) return;
+        setIsBulkAssigning(true);
+        const tid = toast.loading(`Reassigning ${selectedBulkIds.size} leads...`);
+        const targetMember = teamMembers.find(t => t.clerkId === targetUserId);
+
+        try {
+            const idsArray = Array.from(selectedBulkIds);
+            const results = await Promise.all(idsArray.map(async (id) => {
+                const sourceList = allHubLeads || responses;
+                const resObj = sourceList.find(r => r.id === id);
+                if (!resObj) return null;
+                const currentAssigned = resObj.assignedTo || [];
+                // Add the user if not already assigned
+                if (currentAssigned.includes(targetUserId)) return "skip";
+
+                const newAssigned = [...currentAssigned, targetUserId];
+                const res = await fetch(`/api/crm/forms/${formId}/responses`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ responseId: id, assignedTo: newAssigned })
+                });
+                return res.ok;
+            }));
+
+            const successCount = results.filter(r => r === true).length;
+            const skippedCount = results.filter(r => r === "skip").length;
+
+            toast.success(`${successCount} Leads Matrix Enforced. ${skippedCount > 0 ? skippedCount + ' Skipped (Already Assigned)' : ''}`, { id: tid });
+            if (successCount > 0) onSuccess();
+            setSelectedBulkIds(new Set());
+        } catch (error) {
+            toast.error("Sector Reassignment Failure", { id: tid });
+        } finally {
+            setIsBulkAssigning(false);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedBulkIds.size === filteredLeads.length) setSelectedBulkIds(new Set());
+        else setSelectedBulkIds(new Set(filteredLeads.map(l => l.id)));
+    };
+
+    const toggleRowSelection = (id: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setSelectedBulkIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     // 🛡️ ENHANCED IDENTITY EXTRACTOR
     const getLeadInfo = (res: any) => {
         const val = res.values?.[0]?.value || res.values?.[1]?.value || "Lead Record";
@@ -123,7 +199,19 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                         </div>
                         <div>
                             <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-none mb-1">Lead Matrix</h2>
-                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.4em]">Rapid Distribution Hub v3.0</p>
+                            <p className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.4em]">Rapid Distribution Hub v3.0</span>
+                                {totalCount > filteredLeads.length && !allHubLeads && (
+                                    <button
+                                        onClick={handleLoadAll}
+                                        disabled={isLoadingFull}
+                                        className="px-2 py-0.5 bg-amber-500 text-white rounded text-[8px] font-black uppercase tracking-widest animate-pulse hover:animate-none flex items-center gap-1"
+                                    >
+                                        {isLoadingFull ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                                        Load All {totalCount} Sector Leads
+                                    </button>
+                                )}
+                            </p>
                         </div>
                     </div>
 
@@ -152,7 +240,7 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
 
                 {/* 🧱 MASTER GRID LAYOUT */}
                 <div className="flex flex-1 overflow-hidden">
-                    
+
                     {/* 👤 LEFT: ACTIVE LEADS CHANNEL */}
                     <div className="flex-1 flex flex-col bg-slate-50 border-r border-slate-200/60">
                         {/* Search Bar */}
@@ -166,6 +254,47 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/50 mr-2 group/inputbox">
+                                        <div className="flex gap-0.5 border-r border-slate-200/50 pr-1.5 mr-1.5">
+                                            {[10, 50, 100].map(n => (
+                                                <button
+                                                    key={n}
+                                                    onClick={() => setSelectedBulkIds(new Set(filteredLeads.slice(0, n).map(l => l.id)))}
+                                                    className="px-2 py-1 hover:bg-white hover:text-indigo-600 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all text-slate-400"
+                                                >
+                                                    {n}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg shadow-sm border border-slate-200">
+                                            <span className="text-[7px] font-black text-slate-300 uppercase">Custom</span>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={filteredLeads.length}
+                                                placeholder="Qty"
+                                                className="w-10 bg-transparent border-none p-0 text-[10px] font-black text-slate-900 focus:ring-0 text-center"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        const val = parseInt((e.target as HTMLInputElement).value);
+                                                        if (!isNaN(val)) setSelectedBulkIds(new Set(filteredLeads.slice(0, val).map(l => l.id)));
+                                                    }
+                                                }}
+                                                onBlur={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    if (!isNaN(val)) setSelectedBulkIds(new Set(filteredLeads.slice(0, val).map(l => l.id)));
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${selectedBulkIds.size > 0 ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:text-slate-600'}`}
+                                    >
+                                        {selectedBulkIds.size === filteredLeads.length && filteredLeads.length > 0 ? "Deselect Master" : `All Sector (${selectedBulkIds.size})`}
+                                    </button>
+                                </div>
                                 {filteredLeads.length > 0 && (
                                     <div className="absolute right-5 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
                                         {filteredLeads.length} Matches
@@ -188,21 +317,28 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                 filteredLeads.map((res: any) => {
                                     const info = getLeadInfo(res);
                                     const currentAssigned = res.assignedTo || [];
-                                    const isSelected = updatingIds.size > 0; // Simple highlight if needed
+                                    const isRowSelected = selectedBulkIds.has(res.id);
 
                                     return (
-                                        <div key={res.id} 
-                                            className={`p-6 bg-white rounded-3xl border transition-all duration-300 flex items-center gap-8 group/item ${
-                                                currentAssigned.length > 0 
-                                                ? 'border-slate-100 shadow-sm hover:shadow-xl' 
-                                                : 'border-amber-100 bg-amber-50/20 shadow-lg shadow-amber-50/30'
-                                            }`}
+                                        <div key={res.id}
+                                            onClick={() => toggleRowSelection(res.id)}
+                                            className={`p-6 bg-white rounded-3xl border transition-all duration-300 flex items-center gap-8 group/item cursor-pointer ${isRowSelected
+                                                    ? 'border-indigo-500 ring-2 ring-indigo-500/10 shadow-xl z-10 translate-x-2'
+                                                    : currentAssigned.length > 0
+                                                        ? 'border-slate-100 shadow-sm hover:shadow-xl'
+                                                        : 'border-amber-100 bg-amber-50/20 shadow-lg shadow-amber-50/30'
+                                                }`}
                                         >
+                                            <div className="shrink-0">
+                                                <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${isRowSelected ? 'bg-indigo-600 border-indigo-600 text-white scale-110' : 'border-slate-200 bg-white group-hover/item:border-indigo-300'}`}>
+                                                    {isRowSelected && <CheckCircle2 size={12} />}
+                                                </div>
+                                            </div>
+
                                             {/* Status Badge */}
                                             <div className="shrink-0 flex flex-col items-center gap-2">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${
-                                                    currentAssigned.length > 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-amber-100 text-amber-600 animate-pulse'
-                                                }`}>
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner ${currentAssigned.length > 0 ? 'bg-indigo-50 text-indigo-500' : 'bg-amber-100 text-amber-600 animate-pulse'
+                                                    }`}>
                                                     {currentAssigned.length > 0 ? <CheckCircle2 size={24} /> : <Sparkles size={24} />}
                                                 </div>
                                             </div>
@@ -228,21 +364,27 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
 
                                             {/* 🎯 TARGET ASSIGNMENT PICKER */}
                                             <div className="shrink-0 flex items-center gap-2 border-l border-slate-100 pl-8">
-                                                {filteredTeam.map((member) => {
+                                                {/* Logic: Show filtered members OR members already assigned to this specific lead */}
+                                                {Array.from(new Set([
+                                                    ...filteredTeam.map(m => m.clerkId),
+                                                    ...currentAssigned
+                                                ])).map((clerkId) => {
+                                                    const member = teamMembers.find(t => t.clerkId === clerkId);
+                                                    if (!member) return null;
+
                                                     const isAssigned = currentAssigned.includes(member.clerkId);
                                                     const isUpdating = updatingIds.has(`${res.id}-${member.clerkId}`);
-                                                    
+
                                                     return (
                                                         <button
                                                             key={member.clerkId}
                                                             onClick={() => handleToggleAssignment(res.id, currentAssigned, member.clerkId)}
                                                             disabled={isUpdating}
                                                             title={`${isAssigned ? 'Remove' : 'Assign to'} ${member.firstName || 'Agent'}`}
-                                                            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all border relative group/btn ${
-                                                                isAssigned 
-                                                                ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-100 scale-110 z-10' 
-                                                                : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'
-                                                            }`}
+                                                            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all border relative group/btn ${isAssigned
+                                                                    ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-100 scale-110 z-10'
+                                                                    : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-400 hover:text-indigo-600'
+                                                                }`}
                                                         >
                                                             {isUpdating ? (
                                                                 <Loader2 size={16} className="animate-spin" />
@@ -277,14 +419,14 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                         </div>
                     </div>
 
-                            {/* 🕵️ RIGHT: TARGET AGENT MATRIX */}
+                    {/* 🕵️ RIGHT: TARGET AGENT MATRIX */}
                     <div className="w-[320px] bg-white border-l border-slate-200/60 flex flex-col z-10 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.05)]">
                         <div className="p-8 border-b border-slate-100 bg-slate-50/50">
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Elite Team Pool</h3>
                             <div className="relative group">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     placeholder="Find agent..."
                                     className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-[11px] font-black outline-none focus:border-indigo-500 transition-all placeholder:text-slate-300"
                                     value={assigneeSearch}
@@ -299,7 +441,7 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                 const memberLeads = responses.filter(r => (r.assignedTo || []).includes(member.clerkId)).length;
 
                                 return (
-                                    <div key={member.clerkId} 
+                                    <div key={member.clerkId}
                                         className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-lg hover:border-indigo-200/50 transition-all flex items-center gap-4 group/box"
                                     >
                                         <div className="relative">
@@ -308,7 +450,7 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                             </div>
                                             <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-4 border-white rounded-full" />
                                         </div>
-                                        
+
                                         <div className="flex-1 min-w-0">
                                             <h6 className="text-[13px] font-black text-slate-900 leading-none mb-1 truncate">
                                                 {member.firstName ? `${member.firstName} ${member.lastName || ''}` : member.email.split('@')[0]}
@@ -317,14 +459,19 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                         </div>
 
                                         <div className="shrink-0 space-y-2">
-                                            {/* Action applies to ALL selected leads in parent? 
-                                                Actually, the current design is per-lead button. 
-                                                If we want batch assign, we need a different trigger. 
-                                                For now, let's keep the per-lead toggle but make it look like a global operator.
-                                            */}
-                                            <div className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
-                                                Ready
-                                            </div>
+                                            {selectedBulkIds.size > 0 ? (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleBulkAssign(member.clerkId); }}
+                                                    disabled={isBulkAssigning}
+                                                    className="px-3 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-100 hover:scale-105 transition-all"
+                                                >
+                                                    {isBulkAssigning ? <Loader2 size={10} className="animate-spin" /> : `Assign All (${selectedBulkIds.size})`}
+                                                </button>
+                                            ) : (
+                                                <div className="text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                                                    Ready
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -341,7 +488,7 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
 
                         {/* Footer Info */}
                         <div className="px-8 py-5 border-t border-slate-100 text-center">
-                             <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Operator Terminal Secure</p>
+                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em]">Operator Terminal Secure</p>
                         </div>
                     </div>
                 </div>
