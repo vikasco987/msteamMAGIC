@@ -80,6 +80,12 @@ export async function GET(req: Request) {
         AND: [
             {
                 OR: [
+                    { isHidden: false },
+                    { isHidden: null }
+                ]
+            },
+            {
+                OR: [
                     { createdByClerkId: { in: teamUserIds } },
                     { assigneeId: { in: teamUserIds } },
                     { assigneeIds: { hasSome: teamUserIds } }

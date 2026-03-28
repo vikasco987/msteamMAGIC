@@ -37,10 +37,13 @@ export async function GET(req: Request) {
     };
 
     if (!isPrivileged) {
+      where.AND = [
+        { OR: [{ isHidden: false }, { isHidden: null }] }
+      ];
       if (isTL) {
-        where.createdByClerkId = { in: [userId, ...teamMemberIds] };
+        where.AND.push({ createdByClerkId: { in: [userId, ...teamMemberIds] } });
       } else {
-        where.createdByClerkId = userId;
+        where.AND.push({ createdByClerkId: userId });
       }
     }
 

@@ -405,15 +405,13 @@ export default function FollowUpBoard() {
                                                         >
                                                             <ExternalLink size={16} />
                                                         </a>
-                                                        {(userRole === "ADMIN" || userRole === "MASTER") && (
-                                                            <button
-                                                                onClick={() => handleRemoveFollowUp(res.id)}
-                                                                className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
-                                                                title="Exclude from Board"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        )}
+                                                        <button
+                                                            onClick={() => handleRemoveFollowUp(res.id)}
+                                                            className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
+                                                            title="Exclude from Board"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>

@@ -34,11 +34,21 @@ export async function GET(req: NextRequest) {
       }
       
       filter = {
-          OR: [
+        AND: [
+          {
+            OR: [
+              { isHidden: false },
+              { isHidden: null }
+            ]
+          },
+          {
+            OR: [
               { createdByClerkId: { in: userIds } },
               { assigneeId: { in: userIds } },
               { assigneeIds: { hasSome: userIds } }
-          ]
+            ]
+          }
+        ]
       };
     }
 

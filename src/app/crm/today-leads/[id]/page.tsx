@@ -84,6 +84,7 @@ import PaymentHubModal from "@/app/components/PaymentHubModal";
 import PaymentHubDashboard from "@/app/components/PaymentHubDashboard";
 import BulkImportModal from "@/app/components/BulkImportModal";
 import LeadAssignHub from "@/app/components/LeadAssignHub";
+import ChangelogModal from "@/app/components/ChangelogModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
@@ -389,6 +390,7 @@ export default function CRMSpreadsheetPage() {
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
+    const [isChangelogOpen, setIsChangelogOpen] = useState(false);
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
@@ -3249,6 +3251,17 @@ export default function CRMSpreadsheetPage() {
                             </div>
                         </div>
 
+                        <div className="flex items-center gap-3 pr-6 border-r border-slate-100 group cursor-pointer" onClick={() => setIsChangelogOpen(true)}>
+                            <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-xl shadow-indigo-100 group-hover:scale-110 transition-transform relative">
+                                <Sparkles size={20} />
+                                <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white animate-pulse" />
+                            </div>
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-500 group-hover:text-amber-500 transition-colors">Dev Updates</h4>
+                                <p className="text-xs font-black text-slate-900">v4.8 Pulse active</p>
+                            </div>
+                        </div>
+
                         <div className="flex items-center gap-8">
                             <div className="flex flex-col">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Core</p>
@@ -3283,7 +3296,7 @@ export default function CRMSpreadsheetPage() {
                                         <Users size={10} className="text-white" />
                                         <span className="text-[8px] font-black text-white uppercase tracking-widest">{dynamicStats?.targetUserName || "Myself"}</span>
                                     </div>
-                                    <select 
+                                    <select
                                         className="bg-white border border-slate-200 rounded-md px-2 py-0.5 text-[8px] font-black text-slate-600 focus:ring-1 ring-indigo-500/20 appearance-none cursor-pointer uppercase tracking-widest hover:border-indigo-400 transition-all shadow-sm"
                                         value={selectedReportUserId || ""}
                                         onChange={(e) => setSelectedReportUserId(e.target.value || null)}
@@ -3296,8 +3309,8 @@ export default function CRMSpreadsheetPage() {
                                     </select>
                                     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5 shadow-sm">
                                         <Calendar size={10} className="text-slate-400" />
-                                        <input 
-                                            type="date" 
+                                        <input
+                                            type="date"
                                             className="border-none bg-transparent p-0 text-[8px] font-black text-slate-600 focus:ring-0 cursor-pointer uppercase tracking-widest"
                                             value={selectedReportDate}
                                             onChange={(e) => setSelectedReportDate(e.target.value)}
@@ -3713,13 +3726,13 @@ export default function CRMSpreadsheetPage() {
                                                             <span className={`border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight leading-[1.1]
                                                                 ${width < 150 ? 'text-[9px] tracking-tighter' : 'text-[11px]'}
                                                             `} style={{
-                                                                display: '-webkit-box',
-                                                                WebkitLineClamp: 2,
-                                                                WebkitBoxOrient: 'vertical',
-                                                                overflow: 'hidden',
-                                                                whiteSpace: 'normal',
-                                                                wordBreak: 'break-word'
-                                                            }}>{col.id === "__profile" ? "V" : col.label}</span>
+                                                                    display: '-webkit-box',
+                                                                    WebkitLineClamp: 2,
+                                                                    WebkitBoxOrient: 'vertical',
+                                                                    overflow: 'hidden',
+                                                                    whiteSpace: 'normal',
+                                                                    wordBreak: 'break-word'
+                                                                }}>{col.id === "__profile" ? "V" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
@@ -4046,8 +4059,8 @@ export default function CRMSpreadsheetPage() {
                                 <tbody>
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }}
                                                 colSpan={getColumns.length + 1}
                                                 className="border-none p-0"
                                             />
@@ -4401,7 +4414,7 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {latestRemark ? (
-                                                                    <span 
+                                                                    <span
                                                                         className="text-[11px] font-bold text-indigo-600 block max-w-full leading-relaxed"
                                                                         style={{
                                                                             display: '-webkit-box',
@@ -4763,8 +4776,8 @@ export default function CRMSpreadsheetPage() {
                                     })}
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }}
                                                 colSpan={getColumns.length + 1}
                                                 className="border-none p-0"
                                             />
@@ -5017,10 +5030,10 @@ export default function CRMSpreadsheetPage() {
                                                     { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
                                                     { id: "__assigned", label: "Assigned Users", type: "user" },
                                                     { id: "__followUpStatus", label: "Lead Tracking Status (Portal Protocol)", type: "dropdown" },
-                                                    ...(data?.form?.fields || []), 
+                                                    ...(data?.form?.fields || []),
                                                     ...(data?.internalColumns || [])
                                                 ].find(f => f.id === cond.colId);
-                                                
+
                                                 const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : FILTER_OPERATORS.text;
                                                 const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
                                                 const isLockedField = cond.colId === "__submittedAt" || cond.colId === "__followUpStatus";
@@ -5053,7 +5066,7 @@ export default function CRMSpreadsheetPage() {
                                                                         { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
                                                                         { id: "__assigned", label: "Assigned Users", type: "user" },
                                                                         { id: "__followUpStatus", label: "Lead Tracking Status", type: "dropdown", options: CALL_STATUS_OPTIONS },
-                                                                        ...(data?.form?.fields || []), 
+                                                                        ...(data?.form?.fields || []),
                                                                         ...(data?.internalColumns || [])
                                                                     ].filter(f => f.type !== "static").map(f => (
                                                                         <option key={f.id} value={f.id}>{f.label}</option>
@@ -6717,6 +6730,9 @@ export default function CRMSpreadsheetPage() {
                     }}
                 />
             )}
+
+            <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
+
             {/* PREMIUM FLOATING BATCH ACTION DOCK */}
             <AnimatePresence>
                 {selectedRows.length > 0 && (

@@ -127,7 +127,8 @@ export async function GET(
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
-                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
+                { assignedTo: { isEmpty: true } }, // 🛡️ POOL ACCESS: Allow viewing all unassigned leads
+                { assignedTo: { equals: [] } },    // 🛡️ Safety for uninitialized assignment fields
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
                 ...(isTL && teamMemberIds.length > 0 ? [
@@ -143,6 +144,9 @@ export async function GET(
             acc[cond.colId].push(cond);
             return acc;
         }, {});
+
+        console.log("📥 [PRO-LOG] [STEP 4 BACKEND] Received Conditions Map:", JSON.stringify(groupedConditions));
+        console.log("📥 [PRO-LOG] [STEP 4 BACKEND] Conjunction:", conjunction);
 
         // Localized Date Reference to handle timezone shifts
         const todayRef = searchParams.get("today") || new Date().toISOString().split('T')[0];
@@ -210,10 +214,22 @@ export async function GET(
                 } else if (colId === "__contributor") {
                     columnFilters.push({ submittedByName: getPrismaOp(op, val, val2) });
                 } else if (colId === "__assigned") {
-                    if (op === "is_empty" || (op === "equals" && !val)) {
-                        columnFilters.push({ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] });
+                    // 🛡️ UNASSIGNED: Match if specifically requested or if value is empty/falsy
+                    const isUnassignedQuery = val === "__UNASSIGNED__" || !val || op === "is_empty";
+                    if (isUnassignedQuery) {
+                        columnFilters.push({ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: { equals: [] } }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ AND: [{ NOT: { assignedTo: { isEmpty: true } } }, { NOT: { assignedTo: null } }] });
+                        columnFilters.push({ AND: [{ NOT: { assignedTo: { isEmpty: true } } }, { NOT: { assignedTo: { equals: [] } } }] });
+                    } else if (val === "__ONLY_ME__") {
+                        // ✨ ONLY ME POOL: Assigned to Me OR Submitted By Me OR Unassigned
+                        columnFilters.push({
+                            OR: [
+                                { assignedTo: { has: userId } },
+                                { submittedBy: userId },
+                                { assignedTo: { isEmpty: true } },
+                                { assignedTo: { equals: [] } }
+                            ]
+                        });
                     } else if (val === "__REASSIGNED_TO_ME__") {
                         columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
                     } else if (typeof val === 'string' && val.startsWith("__GLOBAL_OWNER__")) {
@@ -222,7 +238,7 @@ export async function GET(
                         columnFilters.push({ 
                             AND: [
                                 { submittedBy: targetId }, 
-                                { OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] } 
+                                { OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: { equals: [] } }] } 
                             ] 
                         });
                     } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
@@ -264,10 +280,12 @@ export async function GET(
                             columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
                         }
                     } else if (colId === "__followUpStatus") {
-                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
+                        if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
+                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: {} } });
                         else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
                     } else if (colId === "__recentRemark" || colId === "__followup") {
                         if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
+                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: {} } });
                         else columnFilters.push({ remarks: { some: { remark: getPrismaOp(op, val, val2) } } });
                     }
                 } else if (!colId.startsWith("__")) {
@@ -331,21 +349,38 @@ export async function GET(
             }
         });
 
+        // 🛡️ Construct a lean, highly serialized filter to prevent MongoDB aggregation crashes
+        const finalAndFilters: any[] = [];
+        
+        // 1. Permission Filters
+        if (!isMaster) {
+            finalAndFilters.push(permissionWhere);
+        }
+
+        // 2. Global Search
+        if (search) {
+            finalAndFilters.push({
+                OR: [
+                    { submittedByName: { contains: search, mode: 'insensitive' } },
+                    { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                    { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } },
+                    { remarks: { some: { remark: { contains: search, mode: 'insensitive' } } } }
+                ]
+            });
+        }
+
+        // 3. Column Filters (Segment logic)
+        if (advancedFilters.length > 0) {
+            if (conjunction === "AND") {
+                finalAndFilters.push(...advancedFilters);
+            } else {
+                finalAndFilters.push({ OR: advancedFilters });
+            }
+        }
+
         const whereFilter: any = {
             formId,
-            ...permissionWhere,
-            AND: [
-                ...(search ? [{
-                    OR: [
-                        { submittedByName: { contains: search, mode: 'insensitive' } },
-                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
-                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } },
-                        { remarks: { some: { remark: { contains: search, mode: 'insensitive' } } } },
-                        { remarks: { some: { followUpStatus: { contains: search, mode: 'insensitive' } } } }
-                    ]
-                }] : []),
-                ...(advancedFilters.length > 0 ? (conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }]) : [])
-            ]
+            AND: finalAndFilters
         };
 
         // Resolve OrderBy
@@ -357,6 +392,11 @@ export async function GET(
             // We'll keep default for now
             orderBy = { submittedAt: sortOrder };
         }
+
+        console.log("🧾 [PRO-LOG] [STEP 5 BACKEND] Final Where Query (Detailed):", JSON.stringify(whereFilter, (key, value) => {
+            if (value instanceof Date) return value.toISOString();
+            return value;
+        }, 2));
 
         const [totalResponses, responses, filteredTotalCount] = await Promise.all([
             prisma.formResponse.count({ where: { formId, ...permissionWhere } }),

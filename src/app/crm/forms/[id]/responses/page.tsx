@@ -702,7 +702,10 @@ export default function CRMSpreadsheetPage() {
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
 
-        console.log(`[FetchData] Syncing matrix with conditions:`, JSON.stringify(conds));
+        // 🛡️ [DEBUG] Trace Filter Pipeline
+        console.log("➡️ [PRO-LOG] UI Filter Selection:", JSON.stringify(conds));
+        console.log("➡️ [PRO-LOG] Fetching URL Params:", { page, limit, search, sBy, sOrder, conjunction });
+        
         const syncStartTime = Date.now();
         if (!isSilent) {
             setIsSyncing(true);
@@ -1613,6 +1616,22 @@ export default function CRMSpreadsheetPage() {
                     if (colId === "__assigned") {
                         const result = (conds as any[]).some((cond: any) => {
                             const fullVal = (cond.val || "").toString();
+                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
+                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
+
+                            const currentUserId = data?.clerkId || "";
+
+                            // ✨ HANDLE SPECIAL POOL KEYWORDS
+                            if (fullVal === "__UNASSIGNED__" || (!fullVal && (cond.op === "equals" || cond.op === "contains"))) {
+                                return rawAssigned.length === 0;
+                            }
+                            if (fullVal === "__ONLY_ME__") {
+                                return rawAssigned.includes(currentUserId) || r.submittedBy === currentUserId || rawAssigned.length === 0;
+                            }
+                            if (fullVal === "__REASSIGNED_TO_ME__") {
+                                return rawAssigned.includes(currentUserId) && r.submittedBy !== currentUserId;
+                            }
+
                             let targetId = fullVal;
                             let isStrict = fullVal.startsWith("__STRICT_ASSIGNED__");
                             let isGlobal = fullVal.startsWith("__GLOBAL_OWNER__");
@@ -1620,32 +1639,23 @@ export default function CRMSpreadsheetPage() {
                             if (isStrict) targetId = fullVal.replace("__STRICT_ASSIGNED__", "");
                             if (isGlobal) targetId = fullVal.replace("__GLOBAL_OWNER__", "");
 
-                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
-                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
-
                             const isUserAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                             const isSubmitter = r.submittedBy === targetId;
 
                             let match = false;
                             if (cond.op === "equals" || cond.op === "contains") {
-                                if (isStrict) {
-                                    match = isUserAssigned && !isSubmitter;
-                                } else if (isGlobal) {
-                                    match = isUserAssigned || isSubmitter;
-                                } else {
-                                    // Default behavior for standard IDs or names
-                                    match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
-                                }
+                                if (isStrict) match = isUserAssigned && !isSubmitter;
+                                else if (isGlobal) match = isUserAssigned || isSubmitter;
+                                else match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
                             } else if (cond.op === "is_empty") {
-                                match = rawAssigned.length === 0 && !r.submittedBy;
+                                match = rawAssigned.length === 0;
                             } else if (cond.op === "is_not_empty") {
-                                match = rawAssigned.length > 0 || !!r.submittedBy;
+                                match = rawAssigned.length > 0;
                             } else if (cond.op === "not_equals") {
                                 if (isStrict) match = !isUserAssigned || isSubmitter;
                                 else if (isGlobal) match = !isUserAssigned && !isSubmitter;
                                 else match = !isUserAssigned && !(rawAssigned.length === 0 && isSubmitter);
                             }
-
                             return match;
                         });
                         return result;
@@ -3782,8 +3792,11 @@ export default function CRMSpreadsheetPage() {
                                                                                         availableValues = [...availableValues, ...ownerOptions, ...strictOptions];
                                                                                     }
 
-                                                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
-                                                                                    availableValues.unshift({ label: "Unassigned", value: "" });
+                                                                                    availableValues.unshift(
+                                                                                        { label: "Unassigned Leads Only ⭕", value: "__UNASSIGNED__" },
+                                                                                        { label: "Only Me (My Leads + Pool) 👤", value: "__ONLY_ME__" },
+                                                                                        { label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" }
+                                                                                    );
 
                                                                                 } else if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
@@ -3843,7 +3856,8 @@ export default function CRMSpreadsheetPage() {
                                                                                     if (!isUserCol) return true;
                                                                                     if (opt.value === "" || opt.value === "unassigned") return true;
 
-                                                                                    const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
+                                                                                    const valStr = String(opt.value || "");
+                                                                                    const isInternalOp = valStr.startsWith("__REASSIGNED") || valStr.startsWith("__STRICT_ASSIGNED") || valStr.startsWith("__ONLY_ME") || valStr.startsWith("__UNASSIGNED") || valStr.startsWith("__GLOBAL_OWNER");
                                                                                     if (isInternalOp) return true;
 
                                                                                     // Only show users who are active in teamMembers
@@ -4979,7 +4993,9 @@ export default function CRMSpreadsheetPage() {
                                                                                 }}
                                                                             >
                                                                                 <option value="">Assignee Agent</option>
-                                                                                <option value="reassigned">🎯 Reassigned to Me</option>
+                                                                                 <option value="__ONLY_ME__">👤 Only Me (My Leads + Pool)</option>
+                                                                                 <option value="__UNASSIGNED__">⭕ Unassigned Only</option>
+                                                                                 <option value="__REASSIGNED_TO_ME__">🎯 Reassigned to Me</option>
                                                                                 {teamMembers.map(tm => (
                                                                                     <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
                                                                                 ))}

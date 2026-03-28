@@ -18,6 +18,7 @@ model Task {
   dueDate         DateTime?
   priority        String?
   projectId       String?
+  isHidden        Boolean  @default(false)
 
   assignerEmail   String?
   assigneeEmail   String?

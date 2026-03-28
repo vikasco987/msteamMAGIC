@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
             const assignees = (res as any).assignedTo || [];
             const isAssignedToMe = assignees.includes(userId);
             const isSubmittedByMe = res.submittedBy === userId;
-            
+
             const isAssignedToTeam = isTL && teamMemberIds.some(id => assignees.includes(id));
             const isSubmittedByTeam = isTL && teamMemberIds.includes(res.submittedBy || "");
 

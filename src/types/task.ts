@@ -292,6 +292,7 @@ export interface Task {
   description?: string;
   status: string;
   highlightColor?: string;
+  isHidden?: boolean;
   tags: string[];
   dueDate?: string | Date;
   priority?: string;
