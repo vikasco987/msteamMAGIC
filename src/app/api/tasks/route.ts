@@ -1074,12 +1074,7 @@ export async function GET(req: NextRequest) {
 
       // 🛡️ UNIVERSAL HIDE PROTOCOL: Only Master/Admin see hidden tasks
       if (!userIsPrivilegedFixed) {
-        where.AND.push({
-          OR: [
-            { isHidden: false },
-            { isHidden: null }
-          ]
-        });
+        where.AND.push({ isHidden: false });
       }
 
       if (query) {

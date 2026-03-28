@@ -35,12 +35,7 @@ export async function GET(req: NextRequest) {
       
       filter = {
         AND: [
-          {
-            OR: [
-              { isHidden: false },
-              { isHidden: null }
-            ]
-          },
+          { isHidden: false },
           {
             OR: [
               { createdByClerkId: { in: userIds } },

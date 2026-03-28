@@ -81,7 +81,7 @@ export async function GET(req: Request) {
             {
                 OR: [
                     { isHidden: false },
-                    { isHidden: null }
+                    { isHidden: false }
                 ]
             },
             {

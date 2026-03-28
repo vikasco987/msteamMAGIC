@@ -7,7 +7,7 @@ export async function GET() {
       where: {
         OR: [
           { isHidden: false },
-          { isHidden: null }
+          { isHidden: false }
         ]
       },
       select: {

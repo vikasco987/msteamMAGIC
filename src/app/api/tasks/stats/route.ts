@@ -25,7 +25,7 @@ export async function GET() {
     // 1️⃣ Fetch all tasks with assigneeIds
     const tasks = await prisma.task.findMany({
       where: {
-        OR: [{ isHidden: false }, { isHidden: null }]
+        isHidden: false
       },
       select: {
         status: true,

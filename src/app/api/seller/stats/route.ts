@@ -132,9 +132,7 @@ export async function GET(req: Request) {
     const tasks = await prisma.task.findMany({
       where: {
         createdByClerkId: { in: userIds },
-        AND: [
-          { OR: [{ isHidden: false }, { isHidden: null }] }
-        ],
+        isHidden: false,
         createdAt: {
           gte: startDate,
           lt: endDate,
