@@ -89,6 +89,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const CALL_STATUS_OPTIONS = [
     "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
@@ -752,9 +753,10 @@ export default function CRMSpreadsheetPage() {
             // 🔑 Performance Fix: Removed 99999 limit hack. 
             // The backend already handles filtering, so we should always paginate.
             const effectiveLimit = limit;
+            const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
@@ -1742,6 +1744,14 @@ export default function CRMSpreadsheetPage() {
         const start = (currentPage - 1) * rowsPerPage;
         return filteredResponses.slice(start, start + rowsPerPage);
     }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
+
+    const tbodyScrollRef = useRef<HTMLDivElement>(null);
+    const rowVirtualizer = useVirtualizer({
+        count: paginatedResponses.length,
+        getScrollElement: () => tbodyScrollRef.current,
+        estimateSize: () => (density === 'compact' ? 32 : density === 'comfortable' ? 80 : 50),
+        overscan: 10,
+    });
 
     useEffect(() => {
         setCurrentPage(1);
@@ -3405,6 +3415,7 @@ export default function CRMSpreadsheetPage() {
                     {currentView === "table" ? (
                         <motion.div
                             key="table"
+                            ref={tbodyScrollRef}
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
@@ -3914,24 +3925,23 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <AnimatePresence initial={false}>
-                                        {paginatedResponses.map((res, rIdx) => (
-                                            <motion.tr
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr>
+                                            <td 
+                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} 
+                                                colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
+                                                className="border-none p-0"
+                                            />
+                                        </tr>
+                                    )}
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                        const res = paginatedResponses[virtualRow.index];
+                                        if (!res) return null;
+                                        const rIdx = virtualRow.index;
+                                        return (
+                                            <tr
                                                 key={res.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{
-                                                    opacity: (isSyncing || isBulkDeleting) ? 0.3 : 1,
-                                                    y: 0,
-                                                    scale: (isSyncing || isBulkDeleting) ? 0.995 : 1,
-                                                    filter: (isSyncing || isBulkDeleting) ? 'blur(2px)' : 'blur(0px)'
-                                                }}
-                                                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                                                transition={{
-                                                    duration: 0.3,
-                                                    ease: [0.23, 1, 0.32, 1], // Custom cubic-bezier for smooth feel
-                                                    delay: isSyncing ? 0 : rIdx * 0.01 // Stagger effect
-                                                }}
-                                                layout
+
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
                                                 className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
@@ -4611,9 +4621,18 @@ export default function CRMSpreadsheetPage() {
                                                         </td>
                                                     );
                                                 })}
-                                            </motion.tr>
-                                        ))}
-                                    </AnimatePresence>
+                                            </tr>
+                                        );
+                                    })}
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr>
+                                            <td 
+                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
+                                                colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
+                                                className="border-none p-0"
+                                            />
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
 

@@ -74,7 +74,9 @@ import {
     TrendingUp,
     AlertCircle,
     Settings2,
-    Globe
+    Globe,
+    Filter,
+    PhoneIncoming
 } from "lucide-react";
 import FormRemarkModal from "@/app/components/FormRemarkModal";
 import { createPortal } from "react-dom";
@@ -88,6 +90,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const CALL_STATUS_OPTIONS = [
     "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
@@ -602,6 +605,8 @@ export default function CRMSpreadsheetPage() {
     const [newColSettings, setNewColSettings] = useState({ isRequired: false, isLocked: false, showInPublic: false });
     const [newColPermissions, setNewColPermissions] = useState<{ roles: string[], users: string[] }>({ roles: [], users: [] });
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+    const [selectedReportUserId, setSelectedReportUserId] = useState<string | null>(null);
+    const [selectedReportDate, setSelectedReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     // Visibility & User Search
     const [userSearchQuery, setUserSearchQuery] = useState("");
@@ -631,9 +636,15 @@ export default function CRMSpreadsheetPage() {
 
         if (!isAddingRow) {
             const pageToFetch = filtersChanged ? 1 : currentPage;
-            // 🔥 CRITICAL: Forced "AND" logic for this portal to ensure Today+Empty Status 
-            // is ALWAYS applied even if user adds personal filters.
-            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, "AND");
+            // 🛡️ SECURITY & IDENTITY LOCK: Force Today + Empty Status globally for this portal.
+            // MERGE core portal logic with user's optional filters.
+            const lockedConds = [
+                { colId: "__submittedAt", op: "today", val: "" },
+                { colId: "__followUpStatus", op: "is_empty", val: "" },
+                ...conditions.filter(c => c.colId !== "__submittedAt" && c.colId !== "__followUpStatus")
+            ];
+
+            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, lockedConds, "AND");
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
@@ -756,9 +767,10 @@ export default function CRMSpreadsheetPage() {
             // 🔑 Performance Fix: Removed 99999 limit hack. 
             // The backend already handles filtering, so we should always paginate.
             const effectiveLimit = limit;
+            const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
@@ -1760,6 +1772,14 @@ export default function CRMSpreadsheetPage() {
         const start = (currentPage - 1) * rowsPerPage;
         return filteredResponses.slice(start, start + rowsPerPage);
     }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
+
+    const tbodyScrollRef = useRef<HTMLDivElement>(null);
+    const rowVirtualizer = useVirtualizer({
+        count: paginatedResponses.length,
+        getScrollElement: () => tbodyScrollRef.current,
+        estimateSize: () => (density === 'compact' ? 32 : density === 'comfortable' ? 80 : 50),
+        overscan: 10,
+    });
 
     useEffect(() => {
         setCurrentPage(1);
@@ -2779,11 +2799,29 @@ export default function CRMSpreadsheetPage() {
             });
         }
 
+        const targetUserId = selectedReportUserId || data.clerkId || "";
+        const referenceDate = new Date(selectedReportDate);
+        referenceDate.setHours(0, 0, 0, 0);
+
+        const myTodayCalls = statsSource.filter(r => {
+            const isAssigned = (r.assignedTo || []).includes(targetUserId);
+            const latestRem = (r.remarks || [])[0];
+            if (!latestRem?.nextFollowUpDate || !isAssigned) return false;
+            const fDate = new Date(latestRem.nextFollowUpDate);
+            fDate.setHours(0, 0, 0, 0);
+            return fDate.getTime() === referenceDate.getTime();
+        }).length;
+
+        const myTotalAssigned = statsSource.filter(r => (r.assignedTo || []).includes(targetUserId)).length;
+
         return {
             totalEntries,
             newToday,
             newThisMonth,
             statusCounts,
+            myTodayCalls,
+            myTotalAssigned,
+            targetUserName: teamMembers.find(t => t.clerkId === targetUserId)?.firstName || "Myself",
             statusColName: statusCol?.label || "Status"
         };
     }, [data]);
@@ -3238,6 +3276,59 @@ export default function CRMSpreadsheetPage() {
                                 </div>
                             </div>
 
+                            {/* 📈 INDIVIDUAL CALLING REPORT CART (USER REQUEST) */}
+                            <div className="flex items-center gap-10 pr-8 border-r border-slate-100 bg-slate-50/50 px-6 py-2 rounded-2xl border border-dashed border-slate-200 shadow-inner relative group/report">
+                                <div className="absolute -top-3 left-6 flex items-center gap-2">
+                                    <div className="px-2 py-0.5 bg-slate-900 rounded-md shadow-lg flex items-center gap-2">
+                                        <Users size={10} className="text-white" />
+                                        <span className="text-[8px] font-black text-white uppercase tracking-widest">{dynamicStats?.targetUserName || "Myself"}</span>
+                                    </div>
+                                    <select 
+                                        className="bg-white border border-slate-200 rounded-md px-2 py-0.5 text-[8px] font-black text-slate-600 focus:ring-1 ring-indigo-500/20 appearance-none cursor-pointer uppercase tracking-widest hover:border-indigo-400 transition-all shadow-sm"
+                                        value={selectedReportUserId || ""}
+                                        onChange={(e) => setSelectedReportUserId(e.target.value || null)}
+                                    >
+                                        <option value="">Switch Identity</option>
+                                        <option value={data?.clerkId}>Myself</option>
+                                        {teamMembers.map(tm => (
+                                            <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName || tm.email.split('@')[0]}</option>
+                                        ))}
+                                    </select>
+                                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-md px-2 py-0.5 shadow-sm">
+                                        <Calendar size={10} className="text-slate-400" />
+                                        <input 
+                                            type="date" 
+                                            className="border-none bg-transparent p-0 text-[8px] font-black text-slate-600 focus:ring-0 cursor-pointer uppercase tracking-widest"
+                                            value={selectedReportDate}
+                                            onChange={(e) => setSelectedReportDate(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <div className="text-[9px] font-black text-rose-500 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" /> Report Calls
+                                    </div>
+                                    <div className="flex items-baseline gap-3">
+                                        <span className="text-2xl font-black text-rose-600 leading-none tabular-nums">{dynamicStats?.myTodayCalls || 0}</span>
+                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-rose-50 rounded-lg border border-rose-100 shadow-sm shrink-0 group hover:bg-rose-600 hover:text-white transition-all cursor-crosshair">
+                                            <PhoneIncoming size={10} className="text-rose-600 group-hover:text-white" />
+                                            <span className="text-[9px] font-black uppercase">Quota</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col">
+                                    <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mb-1.5">Leads Vault</p>
+                                    <div className="flex items-baseline gap-3">
+                                        <span className="text-2xl font-black text-indigo-600 leading-none tabular-nums">{dynamicStats?.myTotalAssigned || 0}</span>
+                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 rounded-lg border border-indigo-100 shadow-sm shrink-0 group hover:bg-indigo-600 hover:text-white transition-all cursor-crosshair">
+                                            <Users size={10} className="text-indigo-600 group-hover:text-white" />
+                                            <span className="text-[9px] font-black uppercase">Active</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="flex items-center gap-3">
                                 <div className="flex -space-x-2">
                                     {teamMembers.slice(0, 3).map(m => (
@@ -3426,6 +3517,7 @@ export default function CRMSpreadsheetPage() {
                     {currentView === "table" ? (
                         <motion.div
                             key="table"
+                            ref={tbodyScrollRef}
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
@@ -3607,10 +3699,27 @@ export default function CRMSpreadsheetPage() {
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
                                                     className={`px-5 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-emerald-500/30') : ''}`}
                                                 >
-                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
-                                                        <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={12} className={`${style.text} shrink-0`} />
-                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
+                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-1">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className={`rounded-full shrink-0 ${style.bg} border-[2.5px] ${style.border} shadow-lg flex items-center justify-center group-hover/h:scale-110 transition-all duration-500 group-hover/h:rotate-3 group-hover/h:shadow-indigo-500/20 active:scale-95 overflow-hidden
+                                                                ${width < 100 ? 'w-6 h-6 border-[1.5px]' : 'w-8 h-8'}
+                                                            `}>
+                                                                {col.id === "__profile" ? (
+                                                                    <Maximize2 size={width < 100 ? 10 : 14} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                ) : (
+                                                                    <TypeIcon size={width < 100 ? 12 : 16} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                )}
+                                                            </div>
+                                                            <span className={`border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight leading-[1.1]
+                                                                ${width < 150 ? 'text-[9px] tracking-tighter' : 'text-[11px]'}
+                                                            `} style={{
+                                                                display: '-webkit-box',
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: 'vertical',
+                                                                overflow: 'hidden',
+                                                                whiteSpace: 'normal',
+                                                                wordBreak: 'break-word'
+                                                            }}>{col.id === "__profile" ? "V" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
@@ -3935,24 +4044,22 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <AnimatePresence initial={false}>
-                                        {paginatedResponses.map((res, rIdx) => (
-                                            <motion.tr
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr>
+                                            <td 
+                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} 
+                                                colSpan={getColumns.length + 1}
+                                                className="border-none p-0"
+                                            />
+                                        </tr>
+                                    )}
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                        const res = paginatedResponses[virtualRow.index];
+                                        if (!res) return null;
+                                        const rIdx = virtualRow.index;
+                                        return (
+                                            <tr
                                                 key={res.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{
-                                                    opacity: (isSyncing || isBulkDeleting) ? 0.3 : 1,
-                                                    y: 0,
-                                                    scale: (isSyncing || isBulkDeleting) ? 0.995 : 1,
-                                                    filter: (isSyncing || isBulkDeleting) ? 'blur(2px)' : 'blur(0px)'
-                                                }}
-                                                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                                                transition={{
-                                                    duration: 0.3,
-                                                    ease: [0.23, 1, 0.32, 1], // Custom cubic-bezier for smooth feel
-                                                    delay: isSyncing ? 0 : rIdx * 0.01 // Stagger effect
-                                                }}
-                                                layout
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
                                                 className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
@@ -4293,7 +4400,23 @@ export default function CRMSpreadsheetPage() {
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
-                                                                {latestRemark ? <span className="text-xs font-bold text-indigo-600 truncate block max-w-full">{latestRemark}</span> : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>}
+                                                                {latestRemark ? (
+                                                                    <span 
+                                                                        className="text-[11px] font-bold text-indigo-600 block max-w-full leading-relaxed"
+                                                                        style={{
+                                                                            display: '-webkit-box',
+                                                                            WebkitLineClamp: 3,
+                                                                            WebkitBoxOrient: 'vertical',
+                                                                            overflow: 'hidden',
+                                                                            whiteSpace: 'normal',
+                                                                            wordBreak: 'break-word'
+                                                                        }}
+                                                                    >
+                                                                        {latestRemark}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>
+                                                                )}
                                                             </td>
                                                         );
                                                     }
@@ -4635,9 +4758,18 @@ export default function CRMSpreadsheetPage() {
                                                         </td>
                                                     );
                                                 })}
-                                            </motion.tr>
-                                        ))}
-                                    </AnimatePresence>
+                                            </tr>
+                                        );
+                                    })}
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (
+                                        <tr>
+                                            <td 
+                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
+                                                colSpan={getColumns.length + 1}
+                                                className="border-none p-0"
+                                            />
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
 
@@ -4880,9 +5012,18 @@ export default function CRMSpreadsheetPage() {
 
                                         <div className="grid grid-cols-1 gap-4">
                                             {conditions.map((cond, index) => {
-                                                const field = [...(data?.form?.fields || []), ...(data?.internalColumns || [])].find(f => f.id === cond.colId);
-                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
+                                                const field = [
+                                                    { id: "__submittedAt", label: "Submitted At (Portal Protocol)", type: "date" },
+                                                    { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                    { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                    { id: "__followUpStatus", label: "Lead Tracking Status (Portal Protocol)", type: "dropdown" },
+                                                    ...(data?.form?.fields || []), 
+                                                    ...(data?.internalColumns || [])
+                                                ].find(f => f.id === cond.colId);
+                                                
+                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : FILTER_OPERATORS.text;
                                                 const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
+                                                const isLockedField = cond.colId === "__submittedAt" || cond.colId === "__followUpStatus";
 
                                                 return (
                                                     <motion.div
@@ -4890,7 +5031,7 @@ export default function CRMSpreadsheetPage() {
                                                         key={index}
                                                         initial={{ x: -20, opacity: 0 }}
                                                         animate={{ x: 0, opacity: 1 }}
-                                                        className="flex items-center gap-4 bg-white p-6 rounded-[36px] border border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-200 transition-all group"
+                                                        className={`flex items-center gap-4 p-6 rounded-[36px] border transition-all group ${isLockedField ? 'bg-indigo-50/20 border-indigo-100/50 shadow-inner' : 'bg-white border-slate-200 shadow-sm hover:shadow-2xl hover:border-indigo-200'}`}
                                                     >
                                                         <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0 border border-indigo-100">{index + 1}</div>
 
@@ -4907,7 +5048,14 @@ export default function CRMSpreadsheetPage() {
                                                                     }}
                                                                 >
                                                                     <option value="">Select Field Protocol</option>
-                                                                    {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].filter(f => f.type !== "static").map(f => (
+                                                                    {[
+                                                                        { id: "__submittedAt", label: "Submitted At", type: "date" },
+                                                                        { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                                        { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                                        { id: "__followUpStatus", label: "Lead Tracking Status", type: "dropdown", options: CALL_STATUS_OPTIONS },
+                                                                        ...(data?.form?.fields || []), 
+                                                                        ...(data?.internalColumns || [])
+                                                                    ].filter(f => f.type !== "static").map(f => (
                                                                         <option key={f.id} value={f.id}>{f.label}</option>
                                                                     ))}
                                                                 </select>
@@ -4998,10 +5146,19 @@ export default function CRMSpreadsheetPage() {
                                                         </div>
 
                                                         <button
-                                                            onClick={() => setConditions(conditions.filter((_, idx) => idx !== index))}
-                                                            className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                                            onClick={() => {
+                                                                if (isLockedField) {
+                                                                    toast.error("Portal Architecture Locked: Core rules cannot be modified.", {
+                                                                        icon: "🔒",
+                                                                        style: { borderRadius: "12px" }
+                                                                    });
+                                                                    return;
+                                                                }
+                                                                setConditions(conditions.filter((_, idx) => idx !== index));
+                                                            }}
+                                                            className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all ${isLockedField ? 'text-indigo-300 opacity-50 cursor-not-allowed' : 'text-slate-300 hover:text-rose-500 hover:bg-rose-50 group-hover:opacity-100 opacity-0'}`}
                                                         >
-                                                            <Trash2 size={18} />
+                                                            {isLockedField ? <Lock size={16} /> : <Trash2 size={18} />}
                                                         </button>
                                                     </motion.div>
                                                 );
@@ -6437,8 +6594,8 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
 
                                                             <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
-                                                                {(data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0) > 0 ? (
-                                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                                {(data?.activities?.filter((a: any) => a.responseId === selectedResponse.id).length || 0) > 0 ? (
+                                                                    data!.activities.filter((a: any) => a.responseId === selectedResponse.id).map((act: any) => (
                                                                         <div key={act.id} className="relative pl-12 pb-12 group/audit">
                                                                             <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
                                                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />
@@ -6550,9 +6707,14 @@ export default function CRMSpreadsheetPage() {
                     formId={params.id as string}
                     onClose={() => setIsLeadAssignHubOpen(false)}
                     responses={data?.responses || []}
+                    totalCount={data?.filteredCount || 0}
                     selectedIds={selectedRows}
                     teamMembers={teamMembers}
                     onSuccess={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction)}
+                    onFetchAll={async () => {
+                        const allData = await fetch(`/api/crm/forms/${params.id}/responses?limit=1000&today=${new Date().toISOString().split('T')[0]}&conditions=${encodeURIComponent(JSON.stringify(conditions))}&conjunction=${filterConjunction}&search=${searchTerm}`).then(r => r.json());
+                        return allData.responses || [];
+                    }}
                 />
             )}
             {/* PREMIUM FLOATING BATCH ACTION DOCK */}

@@ -88,6 +88,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 const CALL_STATUS_OPTIONS = [
     "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
@@ -370,6 +371,7 @@ export default function CRMSpreadsheetPage() {
     const [editValue, setEditValue] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(10);
+    const tbodyScrollRef = useRef<HTMLDivElement>(null);
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
@@ -749,9 +751,10 @@ export default function CRMSpreadsheetPage() {
             // 🔑 Performance Fix: Removed 99999 limit hack. 
             // The backend already handles filtering, so we should always paginate.
             const effectiveLimit = limit;
+            const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
@@ -1740,6 +1743,13 @@ export default function CRMSpreadsheetPage() {
         return filteredResponses.slice(start, start + rowsPerPage);
     }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
 
+    const rowVirtualizer = useVirtualizer({
+        count: paginatedResponses.length,
+        getScrollElement: () => tbodyScrollRef.current,
+        estimateSize: () => density === "compact" ? 36 : density === "comfortable" ? 80 : 50,
+        overscan: 10,
+    });
+
     useEffect(() => {
         setCurrentPage(1);
         // searchTerm change pe bhi page 1 pe jaao
@@ -2082,21 +2092,21 @@ export default function CRMSpreadsheetPage() {
             if (!navigator.onLine) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
                 const existingIdx = pendingUpdates.findIndex((u: any) => u.responseId === responseId && u.columnId === columnId);
-                
+
                 if (existingIdx > -1) {
                     pendingUpdates[existingIdx] = { ...pendingUpdates[existingIdx], value, updatedAt: Date.now() };
                 } else {
-                    pendingUpdates.push({ 
-                        responseId, 
-                        columnId, 
-                        value, 
-                        isInternal, 
-                        formId: params.id, 
-                        tempId: crypto.randomUUID(), 
-                        updatedAt: Date.now() 
+                    pendingUpdates.push({
+                        responseId,
+                        columnId,
+                        value,
+                        isInternal,
+                        formId: params.id,
+                        tempId: crypto.randomUUID(),
+                        updatedAt: Date.now()
                     });
                 }
-                
+
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
                 toast("Saved offline. Will sync when online.", { icon: '📶' });
@@ -2144,21 +2154,21 @@ export default function CRMSpreadsheetPage() {
             if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch') || String(err).includes('Server error')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
                 const existingIdx = pendingUpdates.findIndex((u: any) => u.responseId === responseId && u.columnId === columnId);
-                
+
                 if (existingIdx > -1) {
                     pendingUpdates[existingIdx] = { ...pendingUpdates[existingIdx], value, updatedAt: Date.now() };
                 } else {
-                    pendingUpdates.push({ 
-                        responseId, 
-                        columnId, 
-                        value, 
-                        isInternal, 
-                        formId: params.id, 
-                        tempId: crypto.randomUUID(), 
-                        updatedAt: Date.now() 
+                    pendingUpdates.push({
+                        responseId,
+                        columnId,
+                        value,
+                        isInternal,
+                        formId: params.id,
+                        tempId: crypto.randomUUID(),
+                        updatedAt: Date.now()
                     });
                 }
-                
+
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
                 toast("Network error. Saved offline for later sync.", { icon: '📶' });
@@ -2245,17 +2255,17 @@ export default function CRMSpreadsheetPage() {
         try {
             if (!navigator.onLine) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ 
-                    responseId, 
-                    columnId, 
-                    value, 
-                    isInternal, 
+                pendingUpdates.push({
+                    responseId,
+                    columnId,
+                    value,
+                    isInternal,
                     type: 'STATUS_UPDATE',
                     remark: `Status action: ${value}`,
                     followUpStatus: value,
-                    formId: params.id, 
-                    tempId: crypto.randomUUID(), 
-                    updatedAt: Date.now() 
+                    formId: params.id,
+                    tempId: crypto.randomUUID(),
+                    updatedAt: Date.now()
                 });
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
@@ -2293,17 +2303,17 @@ export default function CRMSpreadsheetPage() {
 
             if (!navigator.onLine || String(e).includes('Network') || String(e).includes('fetch') || String(e).includes('Server error')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
-                pendingUpdates.push({ 
-                    responseId, 
-                    columnId, 
-                    value, 
-                    isInternal, 
+                pendingUpdates.push({
+                    responseId,
+                    columnId,
+                    value,
+                    isInternal,
                     type: 'STATUS_UPDATE',
                     remark: `Status action: ${value}`,
                     followUpStatus: value,
-                    formId: params.id, 
-                    tempId: crypto.randomUUID(), 
-                    updatedAt: Date.now() 
+                    formId: params.id,
+                    tempId: crypto.randomUUID(),
+                    updatedAt: Date.now()
                 });
                 localStorage.setItem(`offlineUpdates-${params.id}`, JSON.stringify(pendingUpdates));
                 setPendingOfflineCount(pendingUpdates.length);
@@ -2743,13 +2753,10 @@ export default function CRMSpreadsheetPage() {
         const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
-        const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
+        const statusCol = data.internalColumns?.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
         if (statusCol && (data.internalValues || []).length > 0) {
-            const valuesToCount = statsSource === data.responses ? data.internalValues : data.internalValues; // Actually internalValues only match current responses
-            // This is tricky because internalValues only come for the current page
-            // For now, we'll only show status counts for the statsSource
             (data.internalValues || []).filter(v => v.columnId === statusCol.id).forEach(v => {
                 statusCounts[v.value] = (statusCounts[v.value] || 0) + 1;
             });
@@ -2800,13 +2807,13 @@ export default function CRMSpreadsheetPage() {
 
     return (
         <div className={`min-h-screen flex flex-col h-screen overflow-hidden transition-all duration-700 ${isFullScreen ? 'p-0' : ''} ${canvasTheme === 'dark' ? 'bg-[#0f172a] text-slate-100' :
-                canvasTheme === 'midnight' ? 'bg-[#020617] text-slate-100' :
-                    canvasTheme === 'ocean' ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white' :
-                        canvasTheme === 'sunset' ? 'bg-gradient-to-br from-rose-900 via-purple-900 to-slate-900 text-white' :
-                            canvasTheme === 'aurora' ? 'bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 text-white' :
-                                canvasTheme === 'mesh' ? 'bg-[#f8fafc] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-slate-900' :
-                                    canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
-                                        'bg-[#f8fafc] text-slate-900'
+            canvasTheme === 'midnight' ? 'bg-[#020617] text-slate-100' :
+                canvasTheme === 'ocean' ? 'bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white' :
+                    canvasTheme === 'sunset' ? 'bg-gradient-to-br from-rose-900 via-purple-900 to-slate-900 text-white' :
+                        canvasTheme === 'aurora' ? 'bg-gradient-to-br from-emerald-900 via-teal-900 to-slate-900 text-white' :
+                            canvasTheme === 'mesh' ? 'bg-[#f8fafc] bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] text-slate-900' :
+                                canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
+                                    'bg-[#f8fafc] text-slate-900'
             }`}>
             {/* Deletion Progress Overlay */}
             <AnimatePresence>
@@ -2861,8 +2868,8 @@ export default function CRMSpreadsheetPage() {
             {/* Premium Enterprise Header */}
             {!isFullScreen && (
                 <header className={`h-[68px] border-b px-6 flex items-center justify-between shrink-0 z-50 shadow-sm relative transition-colors duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                        ? 'bg-black/20 backdrop-blur-md border-white/10'
-                        : 'bg-white border-slate-200'
+                    ? 'bg-black/20 backdrop-blur-md border-white/10'
+                    : 'bg-white border-slate-200'
                     }`}>
                     <div className="flex items-center gap-4">
                         <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
@@ -2937,8 +2944,8 @@ export default function CRMSpreadsheetPage() {
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search records..."
                                     className={`pl-9 pr-4 py-2 border rounded-lg outline-none text-xs font-bold transition-all min-w-[200px] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                            ? 'bg-white/5 border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:ring-white/5'
-                                            : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-50/50 focus:border-indigo-500'
+                                        ? 'bg-white/5 border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:ring-white/5'
+                                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-50/50 focus:border-indigo-500'
                                         }`}
                                 />
                             </div>
@@ -3002,8 +3009,8 @@ export default function CRMSpreadsheetPage() {
                             <button
                                 onClick={() => setIsThemePickerOpen(true)}
                                 className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                        ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
-                                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                    ? 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                                     }`}
                             >
                                 <Palette size={12} />
@@ -3091,8 +3098,8 @@ export default function CRMSpreadsheetPage() {
                             <button
                                 onClick={() => setIsFullScreen(true)}
                                 className={`p-2 rounded-lg transition-all active:scale-95 border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                        ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
-                                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    ? 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                                     }`}
                                 title="Full Screen Mode"
                             >
@@ -3390,13 +3397,14 @@ export default function CRMSpreadsheetPage() {
                 <AnimatePresence mode="wait">
                     {currentView === "table" ? (
                         <motion.div
+                            ref={tbodyScrollRef}
                             key="table"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className={`flex-1 w-full overflow-auto custom-scrollbar rounded-xl border relative transition-all duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                    ? 'bg-black/40 backdrop-blur-xl border-white/10 shadow-2xl'
-                                    : 'bg-white border-slate-200 shadow-sm'
+                            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.98, y: 10 }}
+                            className={`flex-1 w-full overflow-auto custom-scrollbar rounded-[40px] border-4 transition-all duration-700 relative ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                ? 'bg-black/30 backdrop-blur-2xl border-white/5 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)]'
+                                : 'bg-white border-white shadow-[0_40px_100px_-30px_rgba(0,0,0,0.12)]'
                                 }`}
                         >
                             <AnimatePresence>
@@ -3410,7 +3418,7 @@ export default function CRMSpreadsheetPage() {
                                         <div className="flex flex-col items-center gap-6 p-12 rounded-[48px] bg-white/95 shadow-[0_32px_100px_rgba(0,0,0,0.25)] border border-slate-200/50 animate-pulse relative">
                                             {/* Glow effect */}
                                             <div className="absolute inset-0 bg-indigo-500/5 blur-3xl rounded-full" />
-                                            
+
                                             <div className="relative w-24 h-24">
                                                 <motion.div
                                                     animate={{ rotate: 360, scale: [1, 1.05, 1] }}
@@ -3431,19 +3439,21 @@ export default function CRMSpreadsheetPage() {
                             </AnimatePresence>
                             <table
                                 style={{ minWidth: Math.max(totalTableWidth, 1200) }}
-                                className={`matrix-table table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${ (isSyncing || isBulkDeleting) ? 'select-none cursor-wait' : ''}`}
+                                className={`matrix-table table-fixed w-full border-separate border-spacing-0 transition-opacity duration-300 ${(isSyncing || isBulkDeleting) ? 'select-none cursor-wait' : ''}`}
                             >
                                 <thead className="sticky top-0 z-[50]">
                                     {/* Excel Column Labels Header with Group Indication */}
-                                    <tr className={`divide-x h-9 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                            ? 'bg-slate-900/80 divide-white/5 border-b border-white/10'
-                                            : 'bg-slate-50 divide-slate-100 border-b border-slate-200'
-                                        }`}>
-                                        <th className={`sticky left-0 z-[45] text-[9px] font-black uppercase p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} shadow-[1px_0_0_#EAECF0] transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                ? 'bg-slate-800 border-b border-white/10 text-slate-400 shadow-none'
-                                                : 'bg-slate-200 border-b border-slate-300 text-slate-500'
+                                    <tr className={`h-11 transition-all duration-500 overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-slate-900/40 divide-white/5 border-b border-white/5'
+                                        : 'bg-slate-50/80 divide-slate-200/50 border-b border-slate-100'
+                                        }`} style={{ tableLayout: 'fixed' }}>
+                                        <th className={`sticky left-0 z-[45] text-center p-0 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} transition-all duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-950/80 border-b border-white/5 text-slate-500'
+                                            : 'bg-slate-100/90 border-b border-slate-200 text-slate-400'
                                             }`}>
-                                            #
+                                            <div className="flex items-center justify-center h-full">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-slate-400 opacity-20" />
+                                            </div>
                                         </th>
                                         {getColumns.map((col, idx) => {
                                             const groupKey = getColumnGroup(col);
@@ -3454,42 +3464,49 @@ export default function CRMSpreadsheetPage() {
                                             return (
                                                 <th
                                                     key={`excel-label-${col.id}`}
-                                                    className={`border-b text-[9px] font-black uppercase p-0 h-9 text-center relative overflow-hidden transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                            ? 'bg-slate-900 border-white/10 text-slate-500'
-                                                            : `${style.headerBg} border-slate-200 text-slate-400`
+                                                    className={`border-b text-[8px] font-black uppercase p-0 h-14 text-center relative transition-all duration-700 group/label ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                        ? 'bg-slate-900/40 border-white/5 text-slate-600'
+                                                        : `${style.headerBg} border-slate-200/50 text-slate-300`
                                                         }`}
                                                     style={{ width: columnWidths[col.id] || (col.id === "__profile" ? 70 : col.id === "__contributor" ? 220 : col.id === "__assigned" ? 200 : 180) }}
                                                 >
-                                                    <div className="flex flex-col items-center justify-center h-full">
+                                                    <div className="flex flex-col items-center justify-center h-full pt-1 relative z-10 px-1">
                                                         {isGroupStart && (
-                                                            <div className={`absolute top-0 left-0 right-0 h-1 ${style.accent}`} />
+                                                            <motion.div
+                                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                className={`absolute top-2 left-2 right-2 h-7 rounded-full flex items-center justify-center ${style.bg} border-2 ${style.border} shadow-lg shadow-black/5 gap-2 px-3 overflow-hidden transition-all group-hover/label:scale-105 group-hover/label:shadow-indigo-500/10`}
+                                                                style={{ 
+                                                                    display: (columnWidths[col.id] || 180) < 100 ? 'none' : 'flex' 
+                                                                }}
+                                                            >
+                                                                <div className={`w-1.5 h-1.5 rounded-full ${style.accent} animate-pulse shadow-[0_0_8px_rgba(79,70,229,0.5)]`} />
+                                                                <span className={`${style.text} text-[8px] font-black tracking-[0.2em] uppercase truncate`}>{style.label}</span>
+                                                            </motion.div>
                                                         )}
-                                                        {isGroupStart ? (
-                                                            <span className={`${style.text} text-[7px] tracking-[0.2em] mb-0.5 opacity-80 uppercase`}>{style.label}</span>
-                                                        ) : (
-                                                            <div className="h-2" />
-                                                        )}
-                                                        <span className="opacity-40">{getExcelLabel(idx)}</span>
+                                                        <div className={`flex flex-col items-center gap-0.5 transition-all duration-500 ${isGroupStart && (columnWidths[col.id] || 180) >= 100 ? 'mt-8' : ''}`}>
+                                                            <span className="opacity-60 font-black text-[10px] tracking-widest">{getExcelLabel(idx)}</span>
+                                                        </div>
                                                     </div>
                                                 </th>
                                             );
                                         })}
                                     </tr>
-                                    <tr className={`h-14 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                            ? 'bg-slate-900 border-b border-white/10'
-                                            : 'bg-[#F9FAFB] border-b border-[#EAECF0]'
+                                    <tr className={`h-16 transition-all duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                        ? 'bg-slate-900/60 border-b border-white/5'
+                                        : 'bg-white/95 border-b border-slate-200 backdrop-blur-3xl'
                                         }`}>
-                                        <th className={`px-4 py-3 sticky left-0 z-[45] transition-colors ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                ? 'bg-slate-900 border-b border-white/10 shadow-[1px_0_0_rgba(255,255,255,0.1)]'
-                                                : 'bg-[#F9FAFB] border-b border-[#EAECF0] shadow-[1px_0_0_#EAECF0]'
+                                        <th className={`px-4 py-3 sticky left-0 z-[45] transition-all duration-500 ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                            ? 'bg-slate-900 border-b border-white/5 shadow-[1px_0_0_rgba(255,255,255,0.05)]'
+                                            : 'bg-white border-b border-slate-200 shadow-[2px_0_10px_-4px_rgba(0,0,0,0.05)]'
                                             }`}>
                                             <div className="flex items-center justify-center gap-1.5 relative">
                                                 <div className="relative flex items-center gap-1">
                                                     <div
                                                         onClick={() => toggleAllRows()}
                                                         className={`w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${selectedRows.length > 0
-                                                                ? (selectedRows.length === (filteredResponses?.length || 0) ? 'bg-indigo-600 border-indigo-600' : 'bg-indigo-100 border-indigo-400')
-                                                                : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')
+                                                            ? (selectedRows.length === (filteredResponses?.length || 0) ? 'bg-indigo-600 border-indigo-600' : 'bg-indigo-100 border-indigo-400')
+                                                            : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 border-white/10' : 'bg-white border-[#D0D5DD]')
                                                             }`}
                                                     >
                                                         {selectedRows.length === (filteredResponses?.length || 0) && selectedRows.length > 0 ? (
@@ -3513,8 +3530,8 @@ export default function CRMSpreadsheetPage() {
                                                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                                                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                                                 className={`absolute top-full left-0 mt-2 w-48 rounded-2xl shadow-2xl border z-[300] overflow-hidden p-1.5 backdrop-blur-3xl ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'bg-slate-900/95 border-white/10'
-                                                                        : 'bg-white border-slate-200'
+                                                                    ? 'bg-slate-900/95 border-white/10'
+                                                                    : 'bg-white border-slate-200'
                                                                     }`}
                                                             >
                                                                 <div className="px-3 py-2 border-b border-slate-100 mb-1">
@@ -3525,8 +3542,8 @@ export default function CRMSpreadsheetPage() {
                                                                         key={num}
                                                                         onClick={() => toggleAllRows(num)}
                                                                         className={`w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold flex items-center justify-between group/row transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                ? 'text-slate-300 hover:bg-white/10 hover:text-white'
-                                                                                : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+                                                                            ? 'text-slate-300 hover:bg-white/10 hover:text-white'
+                                                                            : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
                                                                             }`}
                                                                     >
                                                                         <span>Select First {num}</span>
@@ -3570,12 +3587,29 @@ export default function CRMSpreadsheetPage() {
                                                 <th
                                                     key={col.id}
                                                     style={{ width, left: isSticky ? leftOffset : undefined }}
-                                                    className={`px-5 py-4 border-b border-[#EAECF0] text-[12px] font-black uppercase tracking-widest text-left relative group/h ${isSticky ? 'sticky shadow-[1px_0_0_#EAECF0]' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-emerald-500/30') : ''}`}
+                                                    className={`px-3 py-6 border-b text-[12px] font-black uppercase tracking-[0.25em] text-left relative group/h transition-all duration-500 z-50 ${isSticky ? 'sticky shadow-[10px_0_30px_-15px_rgba(0,0,0,0.15)] bg-white ml-2 rounded-l-3xl' : ''} ${activeColumnFilter === col.id ? 'z-[200]' : (isSticky ? 'z-40' : 'z-20')} ${style.bg} ${style.text} ${isFiltered ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-emerald-500/[0.08] border-b-indigo-500/50 scale-[1.03] rounded-3xl shadow-2xl') : ''}`}
                                                 >
-                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-[2px]">
-                                                        <div className="flex items-center gap-2 truncate shrink">
-                                                            <TypeIcon size={12} className={`${style.text} shrink-0`} />
-                                                            <span className="truncate">{col.id === "__profile" ? "View" : col.label}</span>
+                                                    <div className="flex items-center justify-between gap-1 w-full h-full pb-1">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className={`rounded-full shrink-0 ${style.bg} border-[2.5px] ${style.border} shadow-lg flex items-center justify-center group-hover/h:scale-110 transition-all duration-500 group-hover/h:rotate-3 group-hover/h:shadow-indigo-500/20 active:scale-95 overflow-hidden
+                                                                ${width < 100 ? 'w-6 h-6 border-[1.5px]' : 'w-8 h-8'}
+                                                            `}>
+                                                                {col.id === "__profile" ? (
+                                                                    <Maximize2 size={width < 100 ? 10 : 14} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                ) : (
+                                                                    <TypeIcon size={width < 100 ? 12 : 16} className={`${style.text} shrink-0`} strokeWidth={3} />
+                                                                )}
+                                                            </div>
+                                                            <span className={`border-b-2 border-transparent group-hover/h:border-current transition-all py-1 font-black text-slate-800 tracking-tight leading-[1.1]
+                                                                ${width < 150 ? 'text-[9px] tracking-tighter' : 'text-[11px]'}
+                                                            `} style={{
+                                                                display: '-webkit-box',
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: 'vertical',
+                                                                overflow: 'hidden',
+                                                                whiteSpace: 'normal',
+                                                                wordBreak: 'break-word'
+                                                            }}>{col.id === "__profile" ? "V" : col.label}</span>
                                                         </div>
 
                                                         {col.id !== "__profile" && (
@@ -3612,8 +3646,8 @@ export default function CRMSpreadsheetPage() {
                                                                 {activeColumnFilter === col.id && (
                                                                     <div
                                                                         className={`ignore-click-outside absolute top-full right-0 mt-1 shadow-2xl rounded-xl py-0 min-w-[220px] max-w-[300px] z-[9999] max-h-80 flex flex-col font-sans border backdrop-blur-3xl ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                ? 'bg-slate-900/95 border-white/10 text-white'
-                                                                                : 'bg-white border-slate-200 text-slate-900'
+                                                                            ? 'bg-slate-900/95 border-white/10 text-white'
+                                                                            : 'bg-white border-slate-200 text-slate-900'
                                                                             }`}
                                                                         onClick={(e) => e.stopPropagation()}
                                                                         onMouseDown={(e) => e.stopPropagation()}
@@ -3634,8 +3668,8 @@ export default function CRMSpreadsheetPage() {
                                                                                     value={activeColumnFilterSearch}
                                                                                     onChange={(e) => setActiveColumnFilterSearch(e.target.value)}
                                                                                     className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-[10px] font-bold outline-none transition-all border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                            ? 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-indigo-500'
-                                                                                            : 'bg-slate-100/50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-300 shadow-inner'
+                                                                                        ? 'bg-white/5 border-white/10 text-white focus:bg-white/10 focus:border-indigo-500'
+                                                                                        : 'bg-slate-100/50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-300 shadow-inner'
                                                                                         }`}
                                                                                 />
                                                                             </div>
@@ -3877,8 +3911,8 @@ export default function CRMSpreadsheetPage() {
                                                                                 <button
                                                                                     onClick={() => setConditions(prev => prev.filter(c => c.colId !== col.id))}
                                                                                     className={`w-full text-center py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                            ? 'bg-rose-950/40 border-rose-500/30 text-rose-400 hover:bg-rose-900/60'
-                                                                                            : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                                                                                        ? 'bg-rose-950/40 border-rose-500/30 text-rose-400 hover:bg-rose-900/60'
+                                                                                        : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
                                                                                         }`}
                                                                                 >
                                                                                     Clear Filter
@@ -3900,29 +3934,28 @@ export default function CRMSpreadsheetPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <AnimatePresence initial={false}>
-                                        {paginatedResponses.map((res, rIdx) => (
-                                            <motion.tr
+                                    {rowVirtualizer.getVirtualItems().length > 0 && rowVirtualizer.getVirtualItems()[0].start > 0 && (
+                                        <tr>
+                                            <td style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} colSpan={getColumns.length + 1} />
+                                        </tr>
+                                    )}
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                        const res = paginatedResponses[virtualRow.index];
+                                        if (!res) return null;
+                                        const rIdx = virtualRow.index;
+                                        return (
+                                            <tr
                                                 key={res.id}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{
-                                                    opacity: (isSyncing || isBulkDeleting) ? 0.3 : 1,
-                                                    y: 0,
-                                                    scale: (isSyncing || isBulkDeleting) ? 0.995 : 1,
-                                                    filter: (isSyncing || isBulkDeleting) ? 'blur(2px)' : 'blur(0px)'
-                                                }}
-                                                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                                                transition={{
-                                                    duration: 0.3,
-                                                    ease: [0.23, 1, 0.32, 1], // Custom cubic-bezier for smooth feel
-                                                    delay: isSyncing ? 0 : rIdx * 0.01 // Stagger effect
-                                                }}
-                                                layout
                                                 data-highlighted={highlightedRowId === res.id}
                                                 data-row-color={res.rowColor || ""}
-                                                className={`group cursor-pointer transition-none relative [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                style={{
+                                                    height: `${virtualRow.size}px`,
+                                                    backgroundColor: res.rowColor || (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'transparent' : 'white')
+                                                }}
+                                                className={`group cursor-pointer transition-all relative border-b [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
                                                     ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? '[&>td]:border-white/5' : '[&>td]:border-[#EAECF0]'}
-                                                    ${density === 'compact' ? 'h-[32px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'}                                                     ${(() => {
+                                                    ${density === 'compact' ? 'h-[36px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
+                                                    ${(() => {
                                                         const remarks = res.remarks || [];
                                                         const latestRemark = remarks[0];
                                                         if (latestRemark?.nextFollowUpDate && latestRemark?.followUpStatus !== 'Closed') {
@@ -3936,10 +3969,11 @@ export default function CRMSpreadsheetPage() {
                                                         return '';
                                                     })()}`}
                                             >
-                                                <td className={`border-b border-[#EAECF0] text-center sticky left-0 bg-white group-hover:bg-[#F9FAFB] z-[35] 
+                                                <td className={`border-b text-center sticky left-0 group-hover:bg-slate-50 z-[35] transition-all duration-300
+                                                    ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/5' : 'bg-white border-slate-100'}
                                                     ${isPureMaster ? 'w-[70px]' : 'w-[56px]'} 
                                                     ${density === 'compact' ? 'h-[32px]' : density === 'comfortable' ? 'h-[80px]' : 'h-[50px]'} 
-                                                    overflow-visible shadow-[1px_0_0_#EAECF0]`}
+                                                    overflow-visible shadow-[4px_0_15px_-5px_rgba(0,0,0,0.05)]`}
                                                 >
                                                     <div className="flex items-center justify-center gap-2 w-full h-full">
                                                         <div
@@ -3968,8 +4002,8 @@ export default function CRMSpreadsheetPage() {
                                                                         }
                                                                     }}
                                                                     className={`p-1 px-2 border rounded-md transition-all flex items-center gap-1 mt-1 group-hover:scale-105 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                            ? 'text-rose-400 bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/60'
-                                                                            : 'text-rose-500 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                                                                        ? 'text-rose-400 bg-rose-950/40 border-rose-500/30 hover:bg-rose-900/60'
+                                                                        : 'text-rose-500 bg-rose-50 border-rose-200 hover:bg-rose-100'
                                                                         }`}
                                                                     title="Master Purge"
                                                                 >
@@ -4000,16 +4034,16 @@ export default function CRMSpreadsheetPage() {
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
                                                                 }}
                                                                 className={`px-4 py-2 border-b text-center transition-colors relative ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center justify-center gap-1">
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); setSelectedResponse(res); setHighlightedRowId(res.id); }}
                                                                         className={`p-1.5 rounded-lg transition-all border border-transparent ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                ? 'text-slate-400 hover:text-indigo-400 hover:bg-white/5 hover:border-white/10'
-                                                                                : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'
+                                                                            ? 'text-slate-400 hover:text-indigo-400 hover:bg-white/5 hover:border-white/10'
+                                                                            : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'
                                                                             }`}
                                                                     >
                                                                         <Maximize2 size={14} />
@@ -4019,8 +4053,8 @@ export default function CRMSpreadsheetPage() {
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setOpenColorPicker(openColorPicker === res.id ? null : res.id); }}
                                                                             className={`ignore-click-outside p-1.5 rounded-lg transition-all border border-transparent ${res.rowColor
-                                                                                    ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-amber-400 bg-amber-950/40 border-amber-500/30' : 'text-amber-600 bg-amber-50 border-amber-200')
-                                                                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-amber-400 hover:bg-white/5 hover:border-white/10' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200')
+                                                                                ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-amber-400 bg-amber-950/40 border-amber-500/30' : 'text-amber-600 bg-amber-50 border-amber-200')
+                                                                                : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-amber-400 hover:bg-white/5 hover:border-white/10' : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 hover:border-amber-200')
                                                                                 }`}
                                                                         >
                                                                             <Palette size={14} />
@@ -4069,23 +4103,23 @@ export default function CRMSpreadsheetPage() {
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
                                                                 }}
                                                                 className={`px-5 py-3 border-b transition-colors relative ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                             >
                                                                 <div className="flex items-center gap-3">
                                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm border overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                            ? 'bg-indigo-950 text-indigo-400 border-indigo-500/30'
-                                                                            : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                                                        ? 'bg-indigo-950 text-indigo-400 border-indigo-500/30'
+                                                                        : 'bg-indigo-50 text-indigo-600 border-indigo-100'
                                                                         }`}>
                                                                         {(() => {
                                                                             const m = teamMembers.find(t => t.clerkId === res.submittedBy);
                                                                             return <img src={getFallbackAvatar(res.submittedBy || 'guest', m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />;
                                                                         })()}
                                                                     </div>
-                                                                    <div className="min-w-0">
-                                                                        <p className={`text-[13px] font-black truncate uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
-                                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <p className={`text-[12px] font-black uppercase tracking-tight leading-none mb-1 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{res.submittedByName || "Guest User"}</p>
+                                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{res.submittedAt ? format(new Date(res.submittedAt), "MMM dd, HH:mm") : "Unknown Time"}</p>
                                                                     </div>
                                                                 </div>
                                                             </td>
@@ -4111,8 +4145,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`ignore-click-outside px-5 py-3 border-b transition-colors relative cursor-pointer ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isCellOpen ? 'z-[100]' : (isSticky ? 'z-30' : '')} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4130,8 +4164,8 @@ export default function CRMSpreadsheetPage() {
                                                                             const initial = m?.firstName ? (m.firstName[0]?.toUpperCase() || '?') : m?.email ? (m.email[0]?.toUpperCase() || '?') : '?';
                                                                             return (
                                                                                 <div key={uid} title={m?.firstName ? `${m.firstName} ${m.lastName || ''}` : (m?.email || 'Unknown')} className={`inline-flex h-7 w-7 rounded-full ring-2 items-center justify-center text-[10px] font-black shadow-sm border shrink-0 hover:z-10 duration-200 overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                        ? 'ring-slate-900 bg-indigo-950 text-indigo-400 border-indigo-500/30 hover:ring-indigo-500'
-                                                                                        : 'ring-white bg-indigo-50 text-indigo-700 border-indigo-100 hover:ring-indigo-500'
+                                                                                    ? 'ring-slate-900 bg-indigo-950 text-indigo-400 border-indigo-500/30 hover:ring-indigo-500'
+                                                                                    : 'ring-white bg-indigo-50 text-indigo-700 border-indigo-100 hover:ring-indigo-500'
                                                                                     }`}>
                                                                                     <img src={getFallbackAvatar(uid, m?.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
                                                                                 </div>
@@ -4219,8 +4253,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4246,8 +4280,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-5 py-3 border-b transition-colors relative cursor-pointer ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4255,7 +4289,23 @@ export default function CRMSpreadsheetPage() {
                                                                     setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
                                                                 }}
                                                             >
-                                                                {latestRemark ? <span className="text-xs font-bold text-indigo-600 truncate block max-w-full">{latestRemark}</span> : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>}
+                                                                {latestRemark ? (
+                                                                    <span 
+                                                                        className="text-[11px] font-bold text-indigo-600 block max-w-full leading-relaxed"
+                                                                        style={{
+                                                                            display: '-webkit-box',
+                                                                            WebkitLineClamp: 3,
+                                                                            WebkitBoxOrient: 'vertical',
+                                                                            overflow: 'hidden',
+                                                                            whiteSpace: 'normal',
+                                                                            wordBreak: 'break-word'
+                                                                        }}
+                                                                    >
+                                                                        {latestRemark}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Add</span>
+                                                                )}
                                                             </td>
                                                         );
                                                     }
@@ -4269,8 +4319,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-5 py-3 border-b transition-colors relative cursor-pointer text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4279,13 +4329,13 @@ export default function CRMSpreadsheetPage() {
                                                                 }}
                                                             >
                                                                 {nextDate ? (
-                                                                    <span className={`text-[10px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                            ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
-                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    <span className={`text-[9px] font-black uppercase tracking-widest border px-2 py-1 rounded inline-block shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
+                                                                        ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                        : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                         }`}>
                                                                         {safeFormat(nextDate.toString(), "MMM dd")}
                                                                     </span>
-                                                                ) : <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
+                                                                ) : <span className="text-[9px] font-black uppercase text-slate-300 tracking-widest">+ Schedule</span>}
                                                             </td>
                                                         );
                                                     }
@@ -4300,8 +4350,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-4 py-2 border-b transition-colors cursor-pointer relative text-center ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 group-hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                    ? 'border-white/5 group-hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                     } ${isSticky ? `sticky z-30 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ''} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4318,16 +4368,16 @@ export default function CRMSpreadsheetPage() {
                                                             >
                                                                 {latestStatus ? (
                                                                     <span className={`text-[10px] font-black uppercase border px-2 py-1 rounded inline-block tracking-widest shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                            ? (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
-                                                                                ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
-                                                                                    ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-950/40 text-amber-400 border-amber-500/30' :
-                                                                                        ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-950/40 text-blue-400 border-blue-500/30' :
-                                                                                            'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
-                                                                            : (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                                ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                                    ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                                                        ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200')
+                                                                        ? (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                            ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-950/40 text-amber-400 border-amber-500/30' :
+                                                                                    ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-950/40 text-blue-400 border-blue-500/30' :
+                                                                                        'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                        : (['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(latestStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                            ['Missed', 'Not interested', 'Invalid Number'].includes(latestStatus) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(latestStatus) ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                                                    ['Scheduled', 'Walk-in scheduled'].includes(latestStatus) ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200')
                                                                         }`}>
                                                                         {latestStatus}
                                                                     </span>
@@ -4348,8 +4398,8 @@ export default function CRMSpreadsheetPage() {
                                                                 id={`cell-${res.id}-${col.id}`}
                                                                 style={{ width, left: isSticky ? leftOffset : undefined }}
                                                                 className={`px-3 py-2 border-b transition-colors relative text-center group/paymentcel ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                        ? 'border-white/5 hover:bg-white/5'
-                                                                        : 'border-[#EAECF0] hover:bg-slate-50'
+                                                                    ? 'border-white/5 hover:bg-white/5'
+                                                                    : 'border-[#EAECF0] hover:bg-slate-50'
                                                                     } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900 border-white/10' : 'bg-white border-[#EAECF0]'}` : ""} ${isFocused ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4364,8 +4414,8 @@ export default function CRMSpreadsheetPage() {
                                                                             setIsPaymentHubOpen(true);
                                                                         }}
                                                                         className={`absolute top-1 right-1 opacity-0 group-hover/paymentcel:opacity-100 p-1 border border-transparent rounded transition-all shadow-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                ? 'bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white'
-                                                                                : 'bg-white hover:bg-emerald-50 hover:border-emerald-200 text-slate-300 hover:text-emerald-600'
+                                                                            ? 'bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white'
+                                                                            : 'bg-white hover:bg-emerald-50 hover:border-emerald-200 text-slate-300 hover:text-emerald-600'
                                                                             }`}
                                                                         title="Open Full Payment Hub Dashboard"
                                                                     >
@@ -4382,8 +4432,8 @@ export default function CRMSpreadsheetPage() {
                                                                     </div>
                                                                 ) : (
                                                                     <button className={`inline-flex items-center justify-center gap-1 px-2 py-1 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all border ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                            ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-emerald-500/50 hover:text-emerald-400'
-                                                                            : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'
+                                                                        ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:border-emerald-500/50 hover:text-emerald-400'
+                                                                        : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600'
                                                                         }`}>
                                                                         <span>₹</span> Add
                                                                     </button>
@@ -4434,8 +4484,8 @@ export default function CRMSpreadsheetPage() {
                                                                 }
                                                             }}
                                                             className={`px-5 border-b transition-colors relative select-none ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                    ? 'border-white/5 group-hover:bg-white/5'
-                                                                    : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
+                                                                ? 'border-white/5 group-hover:bg-white/5'
+                                                                : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
                                                                 ${density === 'compact' ? 'py-1' : density === 'comfortable' ? 'py-6' : 'py-3'}`}
                                                         >
@@ -4491,20 +4541,20 @@ export default function CRMSpreadsheetPage() {
                                                                         {col.type === "dropdown" && val ? (
                                                                             <div className="flex -space-x-1 group/badge shrink-0">
                                                                                 <span className={`px-2.5 py-1 rounded-full font-black uppercase tracking-widest border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                        ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30 shadow-[0_4px_12px_rgba(16,185,129,0.2)]' :
-                                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
-                                                                                                'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
-                                                                                        : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-[0_4px_12px_rgba(16,185,129,0.1)]' :
-                                                                                            val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                                                'bg-indigo-50 text-indigo-700 border-indigo-100')
+                                                                                    ? (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30 shadow-[0_4px_12px_rgba(16,185,129,0.2)]' :
+                                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                            'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                    : (val.toLowerCase() === 'paid' || val.toLowerCase().includes('done') ? 'bg-emerald-50 text-emerald-700 border-emerald-100 shadow-[0_4px_12px_rgba(16,185,129,0.1)]' :
+                                                                                        val.toLowerCase().includes('unable') || val.toLowerCase().includes('failed') ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                                            'bg-indigo-50 text-indigo-700 border-indigo-100')
                                                                                     }`} style={{ fontSize: density === 'compact' ? '9px' : '11px' }}>
                                                                                     {val}
                                                                                 </span>
                                                                             </div>
                                                                         ) : col.type === "user" && val ? (
                                                                             <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border shrink-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                    ? 'bg-white/5 border-white/10'
-                                                                                    : 'bg-slate-50 border-slate-200'
+                                                                                ? 'bg-white/5 border-white/10'
+                                                                                : 'bg-slate-50 border-slate-200'
                                                                                 }`}>
                                                                                 <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-[9px] font-black text-white uppercase shadow-sm">
                                                                                     {teamMembers.find(m => m.clerkId === val)?.email?.[0] || '?'}
@@ -4516,8 +4566,8 @@ export default function CRMSpreadsheetPage() {
                                                                             </div>
                                                                         ) : col.type === "date" && val ? (
                                                                             <span className={`text-[13px] font-bold flex items-center gap-1.5 uppercase tracking-tighter px-2.5 py-1.5 rounded-md shrink-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                    ? 'bg-white/5 text-slate-300'
-                                                                                    : 'bg-slate-100/50 text-slate-600'
+                                                                                ? 'bg-white/5 text-slate-300'
+                                                                                : 'bg-slate-100/50 text-slate-600'
                                                                                 }`}>
                                                                                 <Calendar size={12} className="text-rose-400" />
                                                                                 {safeFormat(val, "MMM dd, yyyy")}
@@ -4546,7 +4596,16 @@ export default function CRMSpreadsheetPage() {
                                                                                 </a>
                                                                             </div>
                                                                         ) : (
-                                                                            <span className={`font-bold truncate w-full block overflow-hidden whitespace-nowrap text-ellipsis ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[13px]' : 'text-[15px]'}`}>
+                                                                            <span 
+                                                                                className={`font-semibold transition-colors break-words overflow-hidden ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-200' : 'text-slate-700'} ${density === 'compact' ? 'text-[12px]' : 'text-[14px]'}`}
+                                                                                style={{
+                                                                                    display: '-webkit-box',
+                                                                                    WebkitLineClamp: 3,
+                                                                                    WebkitBoxOrient: 'vertical',
+                                                                                    whiteSpace: 'normal',
+                                                                                    lineHeight: '1.4'
+                                                                                }}
+                                                                            >
                                                                                 {(() => {
                                                                                     if (!val || isStatusCol) return (isStatusCol ? "" : "—");
                                                                                     // Apply premium styles for sync columns by label
@@ -4556,8 +4615,8 @@ export default function CRMSpreadsheetPage() {
                                                                                     if (col.label === "Next Follow-up Date") {
                                                                                         return (
                                                                                             <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-lg font-black text-[11px] uppercase tracking-widest shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                                    ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
-                                                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                                                ? 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                                                                                                : 'bg-amber-50 text-amber-700 border-amber-200'
                                                                                                 }`}>
                                                                                                 <Calendar size={12} />
                                                                                                 {safeFormat(val, "dd MMM")}
@@ -4567,12 +4626,12 @@ export default function CRMSpreadsheetPage() {
                                                                                     if (col.label === "Follow-up Status") {
                                                                                         return (
                                                                                             <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                                                                    ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
-                                                                                                        val === 'Missed' ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
-                                                                                                            'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
-                                                                                                    : (val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                                                        val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                                                            'bg-indigo-50 text-indigo-700 border-indigo-200')
+                                                                                                ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
+                                                                                                    val === 'Missed' ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' :
+                                                                                                        'bg-indigo-950/40 text-indigo-400 border-indigo-500/30')
+                                                                                                : (val === 'Closed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                                                    val === 'Missed' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                                                        'bg-indigo-50 text-indigo-700 border-indigo-200')
                                                                                                 }`}>
                                                                                                 {val}
                                                                                             </span>
@@ -4597,16 +4656,21 @@ export default function CRMSpreadsheetPage() {
                                                         </td>
                                                     );
                                                 })}
-                                            </motion.tr>
-                                        ))}
-                                    </AnimatePresence>
+                                            </tr>
+                                        );
+                                    })}
+                                    {rowVirtualizer.getVirtualItems().length > 0 && (rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end) > 0 && (
+                                        <tr>
+                                            <td style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} colSpan={getColumns.length + 1} />
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
 
                             {/* Pagination Controls */}
                             <div className={`px-6 py-4 flex items-center justify-between sticky left-0 w-full transition-colors border-t duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                    ? 'bg-slate-900/90 border-white/10 backdrop-blur-md'
-                                    : 'bg-white border-[#EAECF0]'
+                                ? 'bg-slate-900/90 border-white/10 backdrop-blur-md'
+                                : 'bg-white border-[#EAECF0]'
                                 }`}>
                                 <div className="flex items-center gap-4">
                                     <div className={`flex items-center gap-2 border-r pr-4 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'border-white/10' : 'border-slate-200'}`}>
@@ -4619,8 +4683,8 @@ export default function CRMSpreadsheetPage() {
                                                 setCurrentPage(1);
                                             }}
                                             className={`border-none rounded-lg p-1 px-2 text-[10px] font-black focus:ring-0 transition-colors ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                    ? 'bg-white/5 text-white'
-                                                    : 'bg-slate-50 text-slate-900'
+                                                ? 'bg-white/5 text-white'
+                                                : 'bg-slate-50 text-slate-900'
                                                 }`}
                                         >
                                             {[10, 25, 50, 100, 200, 500].map(v => (
@@ -4639,8 +4703,8 @@ export default function CRMSpreadsheetPage() {
                                         onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                         disabled={currentPage === 1}
                                         className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
-                                                : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                            ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                            : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
                                             }`}
                                     >
                                         <ChevronLeft size={16} /> Previous
@@ -4661,8 +4725,8 @@ export default function CRMSpreadsheetPage() {
                                                     key={pageNum}
                                                     onClick={() => setCurrentPage(pageNum)}
                                                     className={`w-10 h-10 text-sm font-medium rounded-lg transition-all ${currentPage === pageNum
-                                                            ? 'bg-indigo-600 text-white shadow-lg border-indigo-600'
-                                                            : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:bg-white/10' : 'text-[#667085] hover:bg-[#F9FAFB]')
+                                                        ? 'bg-indigo-600 text-white shadow-lg border-indigo-600'
+                                                        : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:bg-white/10' : 'text-[#667085] hover:bg-[#F9FAFB]')
                                                         }`}
                                                 >
                                                     {pageNum}
@@ -4675,8 +4739,8 @@ export default function CRMSpreadsheetPage() {
                                         onClick={() => setCurrentPage(prev => Math.min(data?.totalPages || 1, prev + 1))}
                                         disabled={currentPage === (data?.totalPages || 1)}
                                         className={`px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center gap-2 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                                ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
-                                                : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
+                                            ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                                            : 'bg-white border border-[#D0D5DD] text-[#344054] hover:bg-[#F9FAFB]'
                                             }`}
                                     >
                                         Next <ChevronRight size={16} />
@@ -6252,8 +6316,8 @@ export default function CRMSpreadsheetPage() {
                                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 group-hover:text-indigo-400">Execution Status</p>
                                                                     <div className="flex items-center gap-4">
                                                                         <div className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-sm ${(selectedResponse.remarks?.[0]?.followUpStatus || "") === "Drained" || (selectedResponse.remarks?.[0]?.followUpStatus || "") === "Closed"
-                                                                                ? "bg-rose-500 text-white shadow-rose-200"
-                                                                                : "bg-emerald-500 text-white shadow-emerald-200"
+                                                                            ? "bg-rose-500 text-white shadow-rose-200"
+                                                                            : "bg-emerald-500 text-white shadow-emerald-200"
                                                                             }`}>
                                                                             {selectedResponse.remarks?.[0]?.followUpStatus || "ACTIVE PIPELINE"}
                                                                         </div>
@@ -6638,8 +6702,8 @@ export default function CRMSpreadsheetPage() {
                                                     setStatusMatrixModal(null);
                                                 }}
                                                 className={`w-full text-left px-6 py-4 rounded-[24px] text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between group ${isSelected
-                                                        ? 'bg-indigo-600 text-white shadow-xl scale-[1.02]'
-                                                        : 'bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
+                                                    ? 'bg-indigo-600 text-white shadow-xl scale-[1.02]'
+                                                    : 'bg-slate-50 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
                                                     }`}
                                             >
                                                 <span>{opt}</span>
@@ -6679,8 +6743,8 @@ export default function CRMSpreadsheetPage() {
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsFullScreen(!isFullScreen)}
                 className={`fixed bottom-10 right-10 z-[101] w-16 h-16 rounded-3xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] flex flex-col items-center justify-center transition-all duration-500 border-2 backdrop-blur-xl group ${isFullScreen
-                        ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40'
-                        : 'bg-indigo-600/90 text-white border-indigo-400/50'
+                    ? 'bg-slate-950/90 text-white border-slate-800 shadow-slate-900/40'
+                    : 'bg-indigo-600/90 text-white border-indigo-400/50'
                     }`}
                 title={isFullScreen ? "Exit Full View" : "Enable Full Table View"}
             >

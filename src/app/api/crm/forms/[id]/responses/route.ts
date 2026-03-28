@@ -21,7 +21,7 @@ export async function POST(
                 formId,
                 submittedBy: user?.id || null,
                 submittedByName: user ? `${user.firstName} ${user.lastName}` : "Public User",
-                assignedTo: user?.id ? [user.id] : [],
+                assignedTo: [], // 🚀 NEW: Start as unassigned for distribution hub
                 values: {
                     create: Object.entries(values).map(([fieldId, value]) => ({
                         fieldId,
@@ -144,6 +144,10 @@ export async function GET(
             return acc;
         }, {});
 
+        // Localized Date Reference to handle timezone shifts
+        const todayRef = searchParams.get("today") || new Date().toISOString().split('T')[0];
+        const now = new Date(todayRef);
+
         const advancedFilters: any[] = [];
         Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
             const columnFilters: any[] = [];
@@ -207,14 +211,20 @@ export async function GET(
                     columnFilters.push({ submittedByName: getPrismaOp(op, val, val2) });
                 } else if (colId === "__assigned") {
                     if (op === "is_empty" || (op === "equals" && !val)) {
-                        columnFilters.push({ AND: [{ OR: [{ assignedTo: { equals: [] } }, { assignedTo: null }] }, { submittedBy: null }] });
+                        columnFilters.push({ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] });
                     } else if (op === "is_not_empty") {
-                        columnFilters.push({ OR: [{ NOT: { assignedTo: { equals: [] } } }, { NOT: { assignedTo: null } }, { NOT: { submittedBy: null } }] });
+                        columnFilters.push({ AND: [{ NOT: { assignedTo: { isEmpty: true } } }, { NOT: { assignedTo: null } }] });
                     } else if (val === "__REASSIGNED_TO_ME__") {
                         columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
                     } else if (typeof val === 'string' && val.startsWith("__GLOBAL_OWNER__")) {
                         const targetId = val.replace("__GLOBAL_OWNER__", "");
-                        columnFilters.push({ OR: [{ assignedTo: { has: targetId } }, { submittedBy: targetId }] });
+                        // 🔥 MODIFIED: "Raw" owner leads = submitted by you AND not yet reassigned
+                        columnFilters.push({ 
+                            AND: [
+                                { submittedBy: targetId }, 
+                                { OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] } 
+                            ] 
+                        });
                     } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
                         const targetId = val.replace("__STRICT_ASSIGNED__", "");
                         columnFilters.push({ AND: [{ assignedTo: { has: targetId } }, { NOT: { submittedBy: targetId } }] });
@@ -227,9 +237,23 @@ export async function GET(
                         if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
                         else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
                         else if (op === "today") {
-                            const start = new Date(); start.setHours(0, 0, 0, 0);
-                            const end = new Date(); end.setHours(23, 59, 59, 999);
+                            const start = new Date(now); start.setHours(0, 0, 0, 0);
+                            const end = new Date(now); end.setHours(23, 59, 59, 999);
                             columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "yesterday") {
+                            const d = new Date(now); d.setDate(d.getDate() - 1);
+                            const start = new Date(d); start.setHours(0, 0, 0, 0);
+                            const end = new Date(d); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "tomorrow") {
+                            const d = new Date(now); d.setDate(d.getDate() + 1);
+                            const start = new Date(d); start.setHours(0, 0, 0, 0);
+                            const end = new Date(d); end.setHours(23, 59, 59, 999);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
+                        } else if (op === "this_week") {
+                            const start = new Date(now.setDate(now.getDate() - now.getDay()));
+                            start.setHours(0, 0, 0, 0);
+                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start } } } });
                         } else if (op === "exact_date" && val) {
                             const start = new Date(val); start.setHours(0, 0, 0, 0);
                             const end = new Date(val); end.setHours(23, 59, 59, 999);
@@ -265,17 +289,16 @@ export async function GET(
                     } else if (colType === "date") {
                         // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
                         const toISO = (d: Date) => d.toISOString().split('T')[0];
-                        const now = new Date();
 
                         if (op === "today") {
-                            const str = toISO(now);
+                            const str = todayRef;
                             columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
                         } else if (op === "yesterday") {
-                            const d = new Date(); d.setDate(d.getDate() - 1);
+                            const d = new Date(now); d.setDate(d.getDate() - 1);
                             const str = toISO(d);
                             columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
                         } else if (op === "tomorrow") {
-                            const d = new Date(); d.setDate(d.getDate() + 1);
+                            const d = new Date(now); d.setDate(d.getDate() + 1);
                             const str = toISO(d);
                             columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
                         } else if (op === "this_week") {
