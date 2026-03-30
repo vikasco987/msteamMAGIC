@@ -354,6 +354,10 @@ export default function CRMSpreadsheetPage() {
     const searchParams = useSearchParams();
     const [data, setData] = useState<MasterData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [userRole, setUserRole] = useState<string>("GUEST");
+    const [isMaster, setIsMaster] = useState(false);
+    const [isPureMaster, setIsPureMaster] = useState(false);
+    const [isTL, setIsTL] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
@@ -563,43 +567,58 @@ export default function CRMSpreadsheetPage() {
 
     // Column Order Persistence
     useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
         const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
+        
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default
+        if (!isPrivileged && data?.form?.defaultColumnOrder && data.form.defaultColumnOrder.length > 0) {
+            setColumnOrder(data.form.defaultColumnOrder);
+            return;
+        }
+
         if (localOrder) {
             try { setColumnOrder(JSON.parse(localOrder)); } catch (e) { console.error(e); }
         } else if (data?.form?.defaultColumnOrder && data.form.defaultColumnOrder.length > 0) {
-            // 🌎 PUSH PROTOCOL: Use system default if no local preference exists
             setColumnOrder(data.form.defaultColumnOrder);
         }
-    }, [params.id, data?.form?.defaultColumnOrder]);
+    }, [params.id, data?.form?.defaultColumnOrder, userRole, isMaster, isPureMaster]);
 
     useEffect(() => {
-        if (columnOrder.length > 0) {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (columnOrder.length > 0 && isPrivileged) {
             localStorage.setItem(`matrix_order_${params.id}`, JSON.stringify(columnOrder));
         }
-    }, [columnOrder, params.id]);
+    }, [columnOrder, params.id, userRole, isMaster, isPureMaster]);
 
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     
     // Hidden Columns Persistence
     useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
         const localHidden = localStorage.getItem(`matrix_hidden_${params.id}`);
+
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default
+        if (!isPrivileged && data?.form?.defaultHiddenColumns && data.form.defaultHiddenColumns.length > 0) {
+            setHiddenColumns(data.form.defaultHiddenColumns);
+            return;
+        }
+
         if (localHidden) {
             try { setHiddenColumns(JSON.parse(localHidden)); } catch (e) { console.error(e); }
         } else if (data?.form?.defaultHiddenColumns && data.form.defaultHiddenColumns.length > 0) {
-            // 🌎 PUSH PROTOCOL: Use system default if no local preference exists
             setHiddenColumns(data.form.defaultHiddenColumns);
         }
-    }, [params.id, data?.form?.defaultHiddenColumns]);
+    }, [params.id, data?.form?.defaultHiddenColumns, userRole, isMaster, isPureMaster]);
 
     useEffect(() => {
-        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
-    }, [hiddenColumns, params.id]);
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (isPrivileged) {
+            localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
+        }
+    }, [hiddenColumns, params.id, userRole, isMaster, isPureMaster]);
 
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
-    const [userRole, setUserRole] = useState<string>("GUEST");
-    const [isMaster, setIsMaster] = useState(false);
-    const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
@@ -842,6 +861,7 @@ export default function CRMSpreadsheetPage() {
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
+            setIsTL(json.userRole === 'TL');
 
             // Set Pinned State
             if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
@@ -5535,12 +5555,14 @@ export default function CRMSpreadsheetPage() {
                                         </div>
                                     )}
                                     <div className="flex justify-between items-center gap-2">
-                                        <button
-                                            onClick={handleResetToSystemDefault}
-                                            className="px-4 py-2 text-slate-400 hover:text-slate-900 text-[10px] font-black uppercase tracking-widest transition-all"
-                                        >
-                                            Reset to Default
-                                        </button>
+                                        {isTL && (
+                                            <button
+                                                onClick={handleResetToSystemDefault}
+                                                className="px-4 py-2 text-slate-400 hover:text-slate-900 text-[10px] font-black uppercase tracking-widest transition-all"
+                                            >
+                                                Reset to Default
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setIsColumnManagerOpen(false)}
                                             className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
