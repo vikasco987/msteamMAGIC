@@ -91,7 +91,7 @@ import { useUser } from "@clerk/nextjs";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const CALL_STATUS_OPTIONS = [
-    "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
+    "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"
 ];
 
 const getExcelLabel = (index: number): string => {
@@ -1384,7 +1384,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1394,7 +1394,7 @@ export default function CRMSpreadsheetPage() {
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
         // Filter duplicate internal columns to avoid "extras"
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -1468,7 +1468,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1477,7 +1477,7 @@ export default function CRMSpreadsheetPage() {
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -4709,7 +4709,7 @@ export default function CRMSpreadsheetPage() {
                                                                                             </span>
                                                                                         );
                                                                                     }
-                                                                                    if (col.label === "Follow-up Status") {
+                                                                                    if (col.label === "Calling Status") {
                                                                                         return (
                                                                                             <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                                 ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
@@ -6678,7 +6678,7 @@ export default function CRMSpreadsheetPage() {
                     }}
                     availableColumns={[
                         { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
-                        { id: "__followUpStatus", label: "Follow-up Status", isInternal: false, type: "text" },
+                        { id: "__followUpStatus", label: "Calling Status", isInternal: false, type: "text" },
                         { id: "__nextFollowUpDate", label: "Next Follow-up Date", isInternal: false, type: "date" },
                         { id: "__recentRemark", label: "Recent Remark", isInternal: false, type: "text" },
                         ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),

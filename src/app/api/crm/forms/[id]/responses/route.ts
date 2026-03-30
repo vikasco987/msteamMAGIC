@@ -124,10 +124,16 @@ export async function GET(
             teamMemberIds = members.map(m => m.clerkId);
         }
 
-        const permissionWhere: any = isMaster ? {} : {
+        const isSeller = userRole === "SELLER";
+        const permissionWhere: any = isMaster ? {} : (isSeller ? {
             OR: [
                 { assignedTo: { has: userId } },
-                { assignedTo: { isEmpty: true } }, // 🛡️ POOL ACCESS: Allow viewing all unassigned leads
+                { submittedBy: userId }
+            ]
+        } : {
+            OR: [
+                { assignedTo: { has: userId } },
+                { assignedTo: { isEmpty: true } }, // 🛡️ POOL ACCESS: Allow viewing all unassigned leads for non-sellers
                 { assignedTo: { equals: [] } },    // 🛡️ Safety for uninitialized assignment fields
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
@@ -136,7 +142,7 @@ export async function GET(
                     { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
                 ] : [])
             ]
-        };
+        });
 
         // Group conditions by colId for OR logic within columns
         const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {

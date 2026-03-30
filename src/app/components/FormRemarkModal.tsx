@@ -80,28 +80,24 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         let daysToAdd = 0;
 
         switch (form.followUpStatus) {
-            case "Missed":
-            case "Call Again":
+            case "CALL AGAIN":
             case "RNR":
-            case "RNR2 (Checked)":
+            case "RNR 2":
             case "RNR3":
-            case "Switch off":
+            case "SWITCH OFF":
                 daysToAdd = 1;
                 break;
-            case "Called":
-            case "Call done":
+            case "CALL DONE":
+            case "MEETING":
                 daysToAdd = 2;
                 break;
-            case "Scheduled":
-            case "Walked In":
+            case "MEETING":
                 daysToAdd = 3;
                 break;
-            case "Follow-up Done":
-                daysToAdd = 7;
-                break;
-            case "Closed":
-            case "Not interested":
-            case "Invalid Number":
+            case "INCOMING NOT AVAIABLE":
+            case "DUPLICATE":
+            case "WRONG NUMBER":
+            case "INVALID NUMBER":
                 setForm(prev => ({ ...prev, nextFollowUpDate: "" }));
                 return;
             default:
@@ -188,7 +184,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         const payload = { 
             remark: finalRemark,
             nextFollowUpDate: form.nextFollowUpDate || null,
-            followUpStatus: form.followUpStatus || "Scheduled",
+            followUpStatus: form.followUpStatus || "CALL AGAIN",
             leadStatus: form.leadStatus || null,
             columnId 
         };
@@ -276,7 +272,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 <div className="bg-indigo-600 p-5 pl-6 text-white flex justify-between items-center shrink-0">
                     <div>
                         <h3 className="text-xl font-black flex items-center gap-2 text-white">
-                            <FaCalendarAlt /> {columnId ? "Status Updates" : "Follow-ups & Remarks"}
+                            <FaCalendarAlt /> {columnId ? "Status Updates" : "Calls & Remarks"}
                         </h3>
                         <p className="text-indigo-100 text-[11px] mt-1 font-bold uppercase tracking-widest">
                             Client interaction history
@@ -297,13 +293,13 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                             <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
                                 <FaCalendarAlt className="text-slate-300 text-xl" />
                             </div>
-                            <h4 className="text-sm font-bold text-slate-700">No Follow-ups Yet</h4>
-                            <p className="text-xs text-slate-500 mt-1 mb-4">You haven't added any remarks or follow-up dates to this response.</p>
+                            <h4 className="text-sm font-bold text-slate-700">No Interactions Yet</h4>
+                            <p className="text-xs text-slate-500 mt-1 mb-4">You haven't added any remarks or calling dates to this response.</p>
                             <button
                                 onClick={() => setIsAdding(true)}
                                 className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl text-xs font-bold transition-colors inline-flex items-center gap-2"
                             >
-                                <FaPlus /> Add First Follow-up
+                                <FaPlus /> Add First Interaction
                             </button>
                         </div>
                     ) : (
@@ -313,7 +309,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                     onClick={() => setIsAdding(true)}
                                     className="w-full py-3 border-2 border-dashed border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white"
                                 >
-                                    <FaPlus /> Add New Follow-up
+                                    <FaPlus /> Add New Interaction
                                 </button>
                             ) : (
                                 <form onSubmit={handleSubmit} className="bg-white border border-indigo-100 shadow-xl rounded-[32px] p-6 space-y-5 animate-in slide-in-from-top-4">
@@ -330,7 +326,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                                 />
                                             </div>
                                             <div>
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Next Follow-up Date (Optional)</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Next Scheduled Interaction (Optional)</label>
                                                 <input
                                                     type="date"
                                                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 shadow-inner"
@@ -341,27 +337,24 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                         </>
                                     )}
                                     <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Follow-up Status</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Calling Status</label>
                                         <select
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
                                             value={form.followUpStatus}
                                             onChange={(e) => setForm({ ...form, followUpStatus: e.target.value })}
                                         >
-                                            <option value="">Select Follow-up Status</option>
-                                            <option>Scheduled</option>
-                                            <option>Called</option>
-                                            <option>Call Again</option>
-                                            <option>Call done</option>
-                                            <option>Not interested</option>
+                                            <option value="">Select Calling Status</option>
+                                            <option>CALL AGAIN</option>
+                                            <option>CALL DONE</option>
                                             <option>RNR</option>
-                                            <option>RNR2 (Checked)</option>
+                                            <option>INVALID NUMBER</option>
+                                            <option>SWITCH OFF</option>
+                                            <option>RNR 2</option>
                                             <option>RNR3</option>
-                                            <option>Switch off</option>
-                                            <option>Invalid Number</option>
-                                            <option>Walked In</option>
-                                            <option>Follow-up Done</option>
-                                            <option>Missed</option>
-                                            <option>Closed</option>
+                                            <option>INCOMING NOT AVAIABLE</option>
+                                            <option>MEETING</option>
+                                            <option>DUPLICATE</option>
+                                            <option>WRONG NUMBER</option>
                                         </select>
                                     </div>
                                     <div>
@@ -396,7 +389,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                                     Saving...
                                                 </div>
                                             ) : (
-                                                <><FaSave /> {columnId ? "Log Interaction" : "Save Follow-up"}</>
+                                                <><FaSave /> {columnId ? "Log Interaction" : "Save Interaction"}</>
                                             )}
                                         </button>
                                     </div>
@@ -439,9 +432,9 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                                 )}
                                                 {r.followUpStatus && (
                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 border rounded-md text-[10px] font-black uppercase tracking-widest ${
-                                                        ['Closed', 'Follow-up Done', 'Walked In', 'Call done'].includes(r.followUpStatus || '') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                        ['Missed', 'Not interested', 'Invalid Number'].includes(r.followUpStatus || '') ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                        ['RNR', 'RNR2 (Checked)', 'RNR3', 'Switch off', 'Call Again'].includes(r.followUpStatus || '') ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        ['CALL DONE', 'MEETING'].includes(r.followUpStatus || '') ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                        ['DUPLICATE', 'WRONG NUMBER', 'INVALID NUMBER'].includes(r.followUpStatus || '') ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                        ['RNR', 'RNR 2', 'RNR3', 'SWITCH OFF', 'CALL AGAIN'].includes(r.followUpStatus || '') ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                         'bg-indigo-50 text-indigo-700 border-indigo-200'
                                                     }`}>
                                                         {r.followUpStatus}
