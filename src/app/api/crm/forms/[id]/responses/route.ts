@@ -125,16 +125,27 @@ export async function GET(
         }
 
         const isSeller = userRole === "SELLER";
-        const permissionWhere: any = isMaster ? {} : (isSeller ? {
+        const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
-                { submittedBy: userId }
-            ]
-        } : {
-            OR: [
-                { assignedTo: { has: userId } },
-                { assignedTo: { isEmpty: true } }, // 🛡️ POOL ACCESS: Allow viewing all unassigned leads for non-sellers
-                { assignedTo: { equals: [] } },    // 🛡️ Safety for uninitialized assignment fields
+                // 🛡️ SUBMITTER SHIELD: Submitter sees it ONLY if it hasn't been reassigned to someone else
+                {
+                    AND: [
+                        { submittedBy: userId },
+                        {
+                            OR: [
+                                { assignedTo: { has: userId } },
+                                { assignedTo: { isEmpty: true } },
+                                { assignedTo: { equals: [] } }
+                            ]
+                        }
+                    ]
+                },
+                // 🛡️ POOL ACCESS: Restricted for SELLERS
+                ...(!isSeller ? [
+                    { assignedTo: { isEmpty: true } },
+                    { assignedTo: { equals: [] } }
+                ] : []),
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
                 ...(isTL && teamMemberIds.length > 0 ? [
@@ -142,7 +153,7 @@ export async function GET(
                     { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: { in: teamMemberIds } }] }
                 ] : [])
             ]
-        });
+        };
 
         // Group conditions by colId for OR logic within columns
         const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {
