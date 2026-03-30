@@ -39,6 +39,16 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
     const [isAdding, setIsAdding] = useState(false);
     const [isListening, setIsListening] = useState(false);
 
+    // 🗣️ VOICE FEEDBACK ENGINE (Speech Synthesis)
+    const speakResponse = (text: string) => {
+        if (typeof window === 'undefined' || !window.speechSynthesis) return;
+        window.speechSynthesis.cancel(); 
+        const utterance = new ((window as any).SpeechSynthesisUtterance)(text);
+        utterance.rate = 1.1; 
+        utterance.lang = "en-IN";
+        window.speechSynthesis.speak(utterance);
+    };
+
     const toggleListening = () => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -48,7 +58,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
         try {
             const recognition = new SpeechRecognition();
-            recognition.lang = "hi-IN"; 
+            recognition.lang = "en-IN"; 
             recognition.interimResults = false;
             recognition.maxAlternatives = 1;
             recognition.continuous = false;
@@ -60,117 +70,111 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 if (event.error !== 'no-speech') toast.error(`Mic Error: ${event.error}`);
             };
 
-            const romanizeHindi = (hindi: string) => {
-                const map: Record<string, string> = {
-                    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'n',
-                    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'nya',
-                    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
-                    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
-                    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
-                    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
-                    'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n',
-                    '्': '', '।': '.', ' ': ' '
-                };
-
+            const processTranscript = (text: string) => {
                 const dictionary: Record<string, string> = {
-                    'स्विग्गी': 'swiggy', 'जोमैटो': 'zomato', 'कॉल': 'call', 'कस्टमर': 'customer',
-                    'ऑनबोर्डिंग': 'onboarding', 'लोडिंग': 'loading', 'बिजी': 'busy', 'पेमेंट': 'payment',
-                    'इंटरेस्टेड': 'interested', 'इंटरेस्ट': 'interest', 'बाद': 'baad', 'मैसेज': 'message',
-                    'बात': 'baat', 'कल': 'kal', 'बोल': 'bol', 'रहा': 'raha', 'रही': 'rahee', 'रहे': 'rahe',
-                    'हूँ': 'hoon', 'हुँ': 'hoon', 'हैं': 'hain', 'है': 'hai', 'था': 'tha', 'थी': 'thi', 'थे': 'the',
-                    'परसों': 'parson', 'परसो': 'parson', 'आज': 'aaj', 'हो': 'ho', 'गया': 'gaya', 'गयी': 'gayee', 'थीं': 'theen',
-                    'कर': 'kar', 'करो': 'karo', 'करना': 'karna', 'करेंगे': 'karenge', 'ठीक': 'theek', 'दिक्कत': 'dikkat',
-                    'समझ': 'samajh', 'बोलना': 'bolna', 'बोला': 'bola', 'बोलूंगा': 'bolunga', 'बोली': 'bolee'
+                    '\\bcal\\b': 'kal', '\\bcall\\b': 'kal', '\\bperson\\b': 'parson',
+                    '\\bhay\\b': 'hai', '\\bhigh\\b': 'hai', '\\bhey\\b': 'hai',
+                    '\\bball\\b': 'bol', '\\braha\\b': 'raha', '\\brahow\\b': 'raho',
+                    '\\bli\\b': 'liye', '\\blee\\b': 'liye', '\\bkey\\b': 'ke',
+                    '\\bkay\\b': 'ke', '\\bmarning\\b': 'morning'
                 };
-
-                let processed = hindi;
-                for (const [hindiWord, engWord] of Object.entries(dictionary)) {
-                    processed = processed.replace(new RegExp(hindiWord, 'g'), engWord);
-                }
-
-                let romanized = '';
-                for (let i = 0; i < processed.length; i++) {
-                    const char = processed[i];
-                    const next = processed[i + 1];
-                    if (map[char]) {
-                        romanized += map[char];
-                        const isConsonant = "कखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह".includes(char);
-                        const isVowelSign = "ािीुूेैोौ्ं".includes(next);
-                        if (isConsonant && !isVowelSign && next !== ' ' && next !== undefined) {
-                            romanized += 'a';
-                        }
-                    } else if (char.match(/[a-z0-9]/i)) {
-                        romanized += char;
-                    }
-                }
-
-                let final = romanized.toLowerCase().replace(/\s+/g, ' ').trim();
-                const smartFixes: Record<string, string> = {
-                    '\\bbt\\b': 'baat', '\\bkr\\b': 'kar', '\\bh\\b': 'hai',
-                    '\\bhu\\b': 'hoon', '\\bbta\\b': 'bataya', '\\bmarning\\b': 'morning', 
-                    '\\bonbording\\b': 'onboarding', '\\btomorrow\\b': 'tomorrow'
-                };
-                Object.entries(smartFixes).forEach(([wrong, right]) => {
-                    final = final.replace(new RegExp(wrong, 'g'), right);
+                let cleaned = text.toLowerCase();
+                Object.entries(dictionary).forEach(([wrong, right]) => {
+                    cleaned = cleaned.replace(new RegExp(wrong, 'gi'), right);
                 });
-                return final;
+                return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
             };
 
             const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
 
             recognition.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                const romanTranscript = romanizeHindi(transcript);
+                const rawTranscript = event.results[0][0].transcript;
+                const transcript = processTranscript(rawTranscript);
+                const startTime = performance.now();
                 
+                const getSimilarity = (s1: string, s2: string) => {
+                    const longer = s1.length > s2.length ? s1.toLowerCase() : s2.toLowerCase();
+                    const shorter = s1.length > s2.length ? s2.toLowerCase() : s1.toLowerCase();
+                    if (longer.length === 0) return 1.0;
+                    const editDistance = (a: string, b: string) => {
+                        const costs = [];
+                        for (let i = 0; i <= a.length; i++) {
+                            let last = i;
+                            for (let j = 0; j <= b.length; j++) {
+                                if (i === 0) costs[j] = j;
+                                else if (j > 0) {
+                                    let newVal = costs[j-1];
+                                    if (a[i-1] !== b[j-1]) newVal = Math.min(Math.min(newVal, last), costs[j]) + 1;
+                                    costs[j-1] = last; last = newVal;
+                                }
+                            }
+                            if (i > 0) costs[b.length] = last;
+                        }
+                        return costs[b.length];
+                    };
+                    return (longer.length - editDistance(longer, shorter)) / longer.length;
+                };
+
                 let detectedCalling = "";
                 let detectedLead = "";
-                
                 let detectedDateString = "";
                 const today = new Date();
-                const schedLC = romanTranscript.toLowerCase();
-                if (schedLC.includes("parson") || schedLC.includes("parso")) {
+                const transcriptLC = transcript.toLowerCase();
+                if (transcriptLC.includes("parson")) {
                     const d = new Date(today); d.setDate(today.getDate() + 2);
                     detectedDateString = d.toISOString().split('T')[0];
-                } else if (schedLC.includes("kal") || schedLC.includes("tomorrow")) {
+                } else if (transcriptLC.includes("kal") || transcriptLC.includes("tomorrow")) {
                     const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
                     detectedDateString = tomorrow.toISOString().split('T')[0];
                 }
 
-                let workingTranscript = romanTranscript.replace(/\b(status|kardo|kar do|set|lead|karna hai|karna|hoga|kariye|karona|bol raha hun|bol rahi hun|bol rahe hain|bola hai|ko|li|liye|ke|is|se|me|main|kal|parson|parso|today|aaj)\b/gi, '').trim();
-                let finalRemark = workingTranscript;
+                const SEARCH_PATTERNS = [
+                    ...CALL_STATUS_OPTIONS.map(opt => ({ text: opt, intent: opt, type: 'calling' })),
+                    ...LEAD_STATUS_OPTIONS.map(opt => ({ text: opt, intent: opt, type: 'lead' })),
+                    { text: "nr", intent: "RNR", type: 'calling' },
+                    { text: "call karenge", intent: "CALL AGAIN", type: 'calling' },
+                    { text: "baat karenge", intent: "CALL AGAIN", type: 'calling' },
+                    { text: "meeting fix", intent: "MEETING", type: 'calling' },
+                    { text: "done", intent: "CALL DONE", type: 'calling' }
+                ];
 
-                const CRM_SHORTHANDS: Record<string, string> = {
-                    'nr': 'RNR', 'arnar': 'RNR', 'r n r': 'RNR', 'anar': 'RNR', 'call': 'CALL DONE', 'done': 'CALL DONE', 'duplicate': 'DUPLICATE', 'meeting': 'MEETING'
-                };
-
-                Object.entries(CRM_SHORTHANDS).forEach(([short, full]) => {
-                    const regex = new RegExp(`\\b${short}\\b`, 'gi');
-                    if (regex.test(workingTranscript)) {
-                        detectedCalling = full;
-                        finalRemark = finalRemark.replace(regex, '').trim();
+                let bestMatch = { intent: "", type: "", rating: 0 };
+                SEARCH_PATTERNS.forEach(p => {
+                    const rating = getSimilarity(transcriptLC, p.text);
+                    if (rating > bestMatch.rating && rating > 0.65) {
+                        bestMatch = { intent: p.intent, type: p.type, rating };
                     }
                 });
 
-                if (!detectedCalling) {
-                    CALL_STATUS_OPTIONS.forEach(opt => {
-                        const regex = new RegExp(`\\b${opt.replace(/\s+/g, '\\s*')}\\b`, 'gi');
-                        if (regex.test(workingTranscript)) {
-                            detectedCalling = opt;
-                            finalRemark = finalRemark.replace(regex, '').trim();
-                        }
-                    });
+                const confidence = bestMatch.rating;
+                const endTime = performance.now();
+                console.log(`⚡ AI Latency: ${(endTime - startTime).toFixed(2)}ms`);
+
+                if (confidence >= 0.8) {
+                    if (bestMatch.type === 'calling') {
+                        detectedCalling = bestMatch.intent;
+                        speakResponse(`Status set to ${bestMatch.intent}`);
+                    }
+                    if (bestMatch.type === 'lead') {
+                        detectedLead = bestMatch.intent;
+                        speakResponse(`Lead marked as ${bestMatch.intent}`);
+                    }
+                } else if (confidence >= 0.65) {
+                    toast(`🤔 AI: Did you mean "${bestMatch.intent}"?`, { icon: '🤖' });
+                    speakResponse(`Did you mean ${bestMatch.intent}?`);
                 }
 
-                LEAD_STATUS_OPTIONS.forEach(opt => {
-                    const pattern = opt.toLowerCase().slice(0, 5);
-                    const regex = new RegExp(`\\b(${opt}|${pattern}[a-z]*)\\b`, 'gi');
-                    if (regex.test(workingTranscript)) {
-                        detectedLead = opt;
-                        finalRemark = finalRemark.replace(regex, '').trim();
-                    }
-                });
+                let finalRemark = transcript.trim();
+                if (detectedCalling || detectedLead) {
+                    const regex = new RegExp(`\\b${bestMatch.intent.replace(/\s+/g, '\\s*')}\\b`, 'gi');
+                    finalRemark = finalRemark.replace(regex, '').trim();
+                }
 
-                finalRemark = finalRemark.replace(/\s+/g, ' ').trim();
+                if (!bestMatch.intent && transcript.length > 5) {
+                    console.log("❌ MISSED INTENT:", { text: transcript, timestamp: new Date().toISOString() });
+                } else if (bestMatch.intent) {
+                    console.log("✅ MATCHED INTENT:", { input: transcript, output: bestMatch.intent, confidence, latency: `${(endTime - startTime).toFixed(2)}ms` });
+                }
 
                 setForm(prev => ({ 
                     ...prev, 
@@ -181,29 +185,25 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 }));
 
                 if (detectedCalling || detectedLead || detectedDateString) {
-                    toast.success(`✨ AI: ${detectedCalling || detectedLead}${detectedDateString ? ' (Date set!)' : ''}`);
+                    toast.success(`✨ AI (Confidence: ${Math.round(confidence * 100)}%): Logged`);
+                    if (detectedDateString && !detectedCalling) speakResponse("Date set for follow-up");
                 }
 
-                const TRANSCRIPT_LC = transcript.toLowerCase();
-                if (TRANSCRIPT_LC.includes("save kardo") || TRANSCRIPT_LC.includes("submit kardo") || TRANSCRIPT_LC.includes("ho gaya")) {
-                    toast.loading("AI: Saving interaction...");
-                    setTimeout(() => {
-                        const submitButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
-                        if (submitButton) submitButton.click();
-                    }, 800);
+                const tLC = rawTranscript.toLowerCase();
+                if (tLC.includes("save kardo") || tLC.includes("submit kardo") || tLC.includes("ho gaya")) {
+                    speakResponse("Saving results");
+                    toast.loading("Saving...");
+                    setTimeout(() => (document.querySelector('button[type="submit"]') as HTMLButtonElement)?.click(), 800);
                 }
-
-                if (TRANSCRIPT_LC.includes("band kar do") || TRANSCRIPT_LC.includes("close kardo") || TRANSCRIPT_LC.includes("cancel kardo")) {
-                    toast.success("AI: Closing modal...");
+                if (tLC.includes("band kar do") || tLC.includes("cancel kardo")) {
+                    speakResponse("Closing");
+                    toast.success("Closing...");
                     setTimeout(() => onClose(), 500);
                 }
             };
 
-            if (isListening) {
-                recognition.stop();
-            } else {
-                recognition.start();
-            }
+            if (isListening) recognition.stop();
+            else recognition.start();
         } catch (e) {
             console.error(e);
             toast.error("Voice typing failed");
@@ -217,7 +217,6 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         if (cached) {
             try { setRemarks(JSON.parse(cached)); } catch (e) { }
         }
-
         try {
             const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks?_t=${Date.now()}`);
             if (res.ok) {
