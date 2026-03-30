@@ -266,6 +266,9 @@ model DynamicForm {
 
   pinnedBy        String[] @default([]) // Array of Clerk User IDs who pinned this form
 
+  defaultColumnOrder String[] @default([])
+  defaultHiddenColumns String[] @default([])
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

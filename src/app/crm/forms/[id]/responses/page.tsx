@@ -242,6 +242,8 @@ interface MasterData {
         visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
         id?: string; // Added for FormRemarkModal
         columnPermissions?: any; // Added for GAC logic
+        defaultColumnOrder?: string[];
+        defaultHiddenColumns?: string[];
     };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
@@ -375,7 +377,6 @@ export default function CRMSpreadsheetPage() {
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
-    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
@@ -554,33 +555,41 @@ export default function CRMSpreadsheetPage() {
         }
     }, [columnWidths, params.id]);
 
-    // Hidden Columns Persistence
-    useEffect(() => {
-        const saved = localStorage.getItem(`matrix_hidden_${params.id}`);
-        if (saved) {
-            try { setHiddenColumns(JSON.parse(saved)); } catch (e) { console.error(e); }
-        }
-    }, [params.id]);
-
-    useEffect(() => {
-        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
-    }, [hiddenColumns, params.id]);
-
     const [columnOrder, setColumnOrder] = useState<string[]>([]);
 
     // Column Order Persistence
     useEffect(() => {
-        const saved = localStorage.getItem(`matrix_order_${params.id}`);
-        if (saved) {
-            try { setColumnOrder(JSON.parse(saved)); } catch (e) { console.error(e); }
+        const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
+        if (localOrder) {
+            try { setColumnOrder(JSON.parse(localOrder)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultColumnOrder && data.form.defaultColumnOrder.length > 0) {
+            // 🌎 PUSH PROTOCOL: Use system default if no local preference exists
+            setColumnOrder(data.form.defaultColumnOrder);
         }
-    }, [params.id]);
+    }, [params.id, data?.form?.defaultColumnOrder]);
 
     useEffect(() => {
         if (columnOrder.length > 0) {
             localStorage.setItem(`matrix_order_${params.id}`, JSON.stringify(columnOrder));
         }
     }, [columnOrder, params.id]);
+
+    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+    
+    // Hidden Columns Persistence
+    useEffect(() => {
+        const localHidden = localStorage.getItem(`matrix_hidden_${params.id}`);
+        if (localHidden) {
+            try { setHiddenColumns(JSON.parse(localHidden)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultHiddenColumns && data.form.defaultHiddenColumns.length > 0) {
+            // 🌎 PUSH PROTOCOL: Use system default if no local preference exists
+            setHiddenColumns(data.form.defaultHiddenColumns);
+        }
+    }, [params.id, data?.form?.defaultHiddenColumns]);
+
+    useEffect(() => {
+        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
+    }, [hiddenColumns, params.id]);
 
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
@@ -1475,6 +1484,44 @@ export default function CRMSpreadsheetPage() {
         newOrder[index] = newOrder[targetIndex];
         newOrder[targetIndex] = temp;
         setColumnOrder(newOrder);
+    };
+
+    const handleSaveGlobalLayout = async () => {
+        if (!isPureMaster) {
+            toast.error("Only Master Authority can push global protocols");
+            return;
+        }
+
+        const confirmPush = confirm("Push this layout to all users? This will become the default view for everyone who hasn't customized their matrix.");
+        if (!confirmPush) return;
+
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    defaultColumnOrder: columnOrder,
+                    defaultHiddenColumns: hiddenColumns
+                })
+            });
+            if (!res.ok) throw new Error("Push failed");
+            toast.success("Global Protocol Applied! Everyone will now see this format.", { icon: "🌎" });
+        } catch (err) {
+            toast.error("Global protocols sync failed");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleResetToSystemDefault = () => {
+        localStorage.removeItem(`matrix_order_${params.id}`);
+        localStorage.removeItem(`matrix_hidden_${params.id}`);
+        if (data?.form) {
+            setColumnOrder(data.form.defaultColumnOrder || []);
+            setHiddenColumns(data.form.defaultHiddenColumns || []);
+            toast.success("Synchronized with system global format");
+        }
     };
 
     const totalTableWidth = useMemo(() => {
@@ -5436,8 +5483,8 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-[#F9FAFB]">
                                     <div>
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Manage Columns</h3>
-                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Select columns to display in the matrix</p>
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Matrix Column Protocol</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Configure global layout & visibility</p>
                                     </div>
                                     <button onClick={() => setIsColumnManagerOpen(false)} className="p-2 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200">
                                         <X size={16} className="text-slate-400" />
@@ -5501,25 +5548,43 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
-                                    {isMaster && (
-                                        <div className="flex gap-2">
+                                    {(isMaster || isPureMaster) && (
+                                        <div className="flex flex-col gap-2 p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Sparkles size={12} className="text-indigo-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Master Authority</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => addHubColumns('sales')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                >
+                                                    + Sales Hub
+                                                </button>
+                                                <button
+                                                    onClick={() => addHubColumns('remarks')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
+                                                >
+                                                    + Remark Hub
+                                                </button>
+                                            </div>
                                             <button
-                                                onClick={() => addHubColumns('sales')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                onClick={handleSaveGlobalLayout}
+                                                className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
                                             >
-                                                + Sales Hub
-                                            </button>
-                                            <button
-                                                onClick={() => addHubColumns('remarks')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
-                                            >
-                                                + Remark Hub
+                                                <ShieldCheck size={14} /> Push Global Format for All
                                             </button>
                                         </div>
                                     )}
-                                    <div className="flex justify-end">
+                                    <div className="flex justify-between items-center gap-2">
+                                        <button
+                                            onClick={handleResetToSystemDefault}
+                                            className="px-4 py-2 text-slate-400 hover:text-slate-900 text-[10px] font-black uppercase tracking-widest transition-all"
+                                        >
+                                            Reset to Default
+                                        </button>
                                         <button
                                             onClick={() => setIsColumnManagerOpen(false)}
                                             className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
