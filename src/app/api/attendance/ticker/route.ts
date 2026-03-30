@@ -85,7 +85,12 @@ export async function GET() {
       late: Array.from(lateMap.values()).map(({ name, latenessStr }) => ({ name, latenessStr }))
     });
   } catch (err) {
-    console.error("Ticker fetch error:", err);
-    return NextResponse.json({ early: [], late: [] }, { status: 500 });
+    console.error("Ticker fetch error (Connection or Query failure):", err);
+    // 🛡️ Fail-safe: Return empty results to prevent dashboard crash if DB is unreachable
+    return NextResponse.json({ 
+        date: moment().tz("Asia/Kolkata").format("DD MMM YYYY"),
+        early: [], 
+        late: [] 
+    }, { status: 200 });
   }
 }

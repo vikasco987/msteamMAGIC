@@ -81,6 +81,13 @@ export async function GET(
         fields.forEach(f => colMap[f.id] = f.type);
         internalColumns.forEach(c => colMap[c.id] = c.type);
 
+        const statusColIds = internalColumns
+            .filter(c => {
+                const l = c.label.toUpperCase();
+                return l.includes("STATUS") || l.includes("CALLING") || l.includes("LEAD") || l.includes("RESULT");
+            })
+            .map(c => c.id);
+
         const form = {
             ...rawForm,
             id: rawForm._id.$oid || rawForm._id,
@@ -296,9 +303,30 @@ export async function GET(
                             columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
                         }
                     } else if (colId === "__followUpStatus") {
-                        if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
-                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: {} } });
-                        else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
+                        if (op === "is_empty") {
+                            columnFilters.push({ 
+                                AND: [
+                                    { remarks: { none: {} } },
+                                    { internalValues: { none: { columnId: { in: statusColIds } } } }
+                                ] 
+                            });
+                        } else if (op === "is_not_empty") {
+                            columnFilters.push({ 
+                                OR: [
+                                    { remarks: { some: {} } },
+                                    { internalValues: { some: { columnId: { in: statusColIds } } } }
+                                ] 
+                            });
+                        } else {
+                            const pOp = getPrismaOp(op, val, val2);
+                            columnFilters.push({
+                                OR: [
+                                    { remarks: { some: { followUpStatus: pOp } } },
+                                    { remarks: { some: { leadStatus: pOp } } },
+                                    { internalValues: { some: { columnId: { in: statusColIds }, value: pOp } } }
+                                ]
+                            });
+                        }
                     } else if (colId === "__recentRemark" || colId === "__followup") {
                         if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
                         else if (op === "is_not_empty") columnFilters.push({ remarks: { some: {} } });

@@ -42,6 +42,8 @@ type FormDetail = {
         submittedAt: string;
         lastStatus: string;
         lastRemark: string;
+        interactionDate: string;
+        interactedBy: string;
         values: ResponseField[];
         internalValues: InternalField[];
     }[];
@@ -186,51 +188,84 @@ export default function CallReportDetailsPage() {
                                     <table className="w-full text-left border-collapse min-w-[800px]">
                                         <thead>
                                             <tr className="bg-slate-50/50">
-                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Contact Action</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 w-16">Row No.</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Phone Number</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Services</th>
                                                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Interaction Log</th>
-                                                {formGroup.form.fields.slice(0, 3).map(f => (
-                                                    <th key={f.id} className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">{f.label}</th>
-                                                ))}
-                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Actions</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Contact Action</th>
+                                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Raw</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {filteredResponses.map((res, rIdx) => (
-                                                <tr key={res.id} className="group/row hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 h-20">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col gap-1">
-                                                            <span className={`px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border w-fit shadow-sm ${
-                                                                ['Closed', 'Call done', 'Follow-up Done', 'Walked In'].includes(res.lastStatus) ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                                ['Missed', 'Not interested', 'RNR'].includes(res.lastStatus) ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                                                                'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                            {filteredResponses.map((res, rIdx) => {
+                                                // Dynamic discovery of Phone and Services fields
+                                                const phoneField = formGroup.form.fields.find(f => 
+                                                    f.label.toUpperCase().includes("PHONE") || 
+                                                    f.label.toUpperCase().includes("MOBILE") ||
+                                                    f.label.toUpperCase().includes("CONTACT")
+                                                );
+                                                const servicesField = formGroup.form.fields.find(f => 
+                                                    f.label.toUpperCase().includes("SERVICE") || 
+                                                    f.label.toUpperCase().includes("PRODUCT") ||
+                                                    f.label.toUpperCase().includes("CATEGORY")
+                                                );
+
+                                                return (
+                                                    <tr key={res.id} className="group/row hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 min-h-[80px]">
+                                                        {/* 1. Row No */}
+                                                        <td className="px-6 py-6 text-xs font-black text-slate-400">
+                                                            {rIdx + 1}
+                                                        </td>
+                                                        {/* 2. Phone Number */}
+                                                        <td className="px-6 py-6 text-sm font-black text-indigo-600 tracking-tight">
+                                                            {phoneField ? getFieldValue(res, phoneField.id) : "N/A"}
+                                                        </td>
+                                                        {/* 3. Services */}
+                                                        <td className="px-6 py-6">
+                                                            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200">
+                                                                {servicesField ? getFieldValue(res, servicesField.id) : "—"}
+                                                            </span>
+                                                        </td>
+                                                        {/* 4. Interaction Log - FULL SHOW */}
+                                                        <td className="px-6 py-6">
+                                                            <div className="flex flex-col gap-1.5">
+                                                                <p className="text-sm font-bold text-slate-700 leading-relaxed max-w-2xl whitespace-pre-wrap">{res.lastRemark || "No interaction notes recorded."}</p>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
+                                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{format(parseISO(res.interactionDate), "MMM dd, yyyy • HH:mm aaa")}</p>
+                                                                    </div>
+                                                                    <span className="w-1 h-1 bg-slate-200 rounded-full" />
+                                                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-100 rounded-md border border-slate-200">
+                                                                        <User size={10} className="text-slate-400" />
+                                                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">Filled By: {res.interactedBy}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        {/* 5. Contact Action */}
+                                                        <td className="px-6 py-6">
+                                                            <span className={`px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest border shadow-sm ${
+                                                                ['Closed', 'Call done', 'Follow-up Done', 'Walked In', 'CONNECTED', 'INTERESTED', 'ONBOARDED'].includes((res.lastStatus || "").toUpperCase()) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                ['Missed', 'Not interested', 'RNR', 'REJECTED', 'INVALID NUMBER'].includes((res.lastStatus || "").toUpperCase()) ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                'bg-amber-50 text-amber-700 border-amber-200'
                                                             }`}>
                                                                 {res.lastStatus}
                                                             </span>
-                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{format(parseISO(res.submittedAt), "HH:mm aaa")}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="max-w-[200px] truncate">
-                                                            <p className="text-xs font-bold text-slate-600 truncate">{res.lastRemark || "No interaction notes."}</p>
-                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mt-0.5">Primary Sync Key</p>
-                                                        </div>
-                                                    </td>
-                                                    {formGroup.form.fields.slice(0, 3).map(f => (
-                                                        <td key={f.id} className="px-6 py-4 text-xs font-black text-slate-700">
-                                                            {getFieldValue(res, f.id)}
                                                         </td>
-                                                    ))}
-                                                    <td className="px-6 py-4 text-right">
-                                                        <button 
-                                                            onClick={() => window.open(`/crm/forms/${formGroup.form.id}/responses?fullview=true`, '_blank')}
-                                                            className="p-3 bg-slate-50 hover:bg-white text-slate-400 hover:text-indigo-600 border border-slate-100 hover:border-indigo-200 rounded-2xl transition-all shadow-sm group-hover/row:scale-110"
-                                                            title="Navigate to Form Context"
-                                                        >
-                                                            <ExternalLink size={16} />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                        {/* Raw Action */}
+                                                        <td className="px-6 py-6 text-right">
+                                                            <button 
+                                                                onClick={() => window.open(`/crm/forms/${formGroup.form.id}/responses?fullview=true`, '_blank')}
+                                                                className="p-3 bg-slate-50 hover:bg-white text-slate-400 hover:text-indigo-600 border border-slate-100 hover:border-indigo-200 rounded-2xl transition-all shadow-sm group-hover/row:scale-110"
+                                                                title="Navigate to Form Context"
+                                                            >
+                                                                <ExternalLink size={16} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>

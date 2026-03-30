@@ -126,6 +126,15 @@ export default function FollowUpBoard() {
         return [...set].sort();
     }, [data]);
 
+    const interactionStatuses = useMemo(() => {
+        const set = new Set<string>();
+        // Master list seed
+        ["CALL AGAIN", "CALL DONE", "RNR", "MEETING", "INTERESTED", "ONBOARDED", "CLOSED", "FOLLOW UP", "SCHEDULED", "PAYMENT PENDING", "BUSY", "CONNECTED", "REJECTED"].forEach(s => set.add(s));
+        // Real data seed
+        data.forEach(d => d.remarks.forEach(r => { if (r.followUpStatus) set.add(r.followUpStatus) }));
+        return [...set].sort();
+    }, [data]);
+
     const filteredData = useMemo(() => {
         const now = startOfDay(new Date());
 
@@ -145,10 +154,16 @@ export default function FollowUpBoard() {
             // 2. Advanced Filters
             if (filterForm !== "all" && res.form.title !== filterForm) return false;
             if (filterAuthor !== "all" && latest.authorName !== filterAuthor) return false;
-            if (filterInteractionStatus !== "all" && latest.followUpStatus !== filterInteractionStatus) return false;
+            
+            // 🔥 NORMALIZE STATUS FILTER (TRIM & CASE)
+            if (filterInteractionStatus !== "all") {
+                const s1 = (latest.followUpStatus || "Scheduled").trim().toUpperCase();
+                const s2 = filterInteractionStatus.trim().toUpperCase();
+                if (s1 !== s2) return false;
+            }
 
             // 3. Tab Filtering
-            if (latest.followUpStatus === "Closed") {
+            if (latest.followUpStatus === "Closed" || latest.followUpStatus === "ONBOARDED") {
                 return activeTab === "closed";
             }
 
@@ -256,9 +271,7 @@ export default function FollowUpBoard() {
                             className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                         >
                             <option value="all">All Statuses</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Missed">Missed</option>
-                            <option value="Closed">Closed</option>
+                            {interactionStatuses.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
                     <div className="flex items-end justify-between px-2">

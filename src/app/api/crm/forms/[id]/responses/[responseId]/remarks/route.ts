@@ -140,15 +140,23 @@ export async function POST(
                 where: {
                     formId: cleanedFormId,
                     OR: [
-                        { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status"] } },
+                        { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status", "Status", "STATUS"] } },
                         { label: { contains: "Calling Date", mode: 'insensitive' } }
                     ]
                 }
             })
         ]);
 
+        // 🛡️ DATA NORMALIZATION ENGINE (TRIM & UNIFY)
+        const normalize = (s: any) => (typeof s === 'string' ? s.trim() : s);
+        const normFollowUp = normalize(followUpStatus);
+        const normLead = normalize(leadStatus);
+        const masterStatus = normFollowUp || normLead || null;
+
         const syncToValue = async (colLabel: string, val: string) => {
-            const col = remarkCols.find(c => c.label === colLabel);
+            if (!val) return;
+            const normalizedVal = normalize(val);
+            const col = remarkCols.find(c => c.label.toUpperCase().trim() === colLabel.toUpperCase().trim());
             if (!col) return;
             
             const existing = await (prisma as any).internalValue.findFirst({
@@ -158,25 +166,26 @@ export async function POST(
             if (existing) {
                 await (prisma as any).internalValue.update({
                     where: { id: existing.id },
-                    data: { value: val, updatedByName: user.firstName || "System" }
+                    data: { value: normalizedVal, updatedByName: user.firstName || "System" }
                 });
             } else {
                 await (prisma as any).internalValue.create({
-                    data: { responseId: cleanedResponseId, columnId: col.id, value: val, updatedByName: user.firstName || "System" }
+                    data: { responseId: cleanedResponseId, columnId: col.id, value: normalizedVal, updatedByName: user.firstName || "System" }
                 });
             }
         };
 
-        await syncToValue("Recent Remark", remark);
-        if (nextFollowUpDate) await syncToValue("Next Follow-up Date", String(nextFollowUpDate));
-        
-        if (followUpStatus && !columnId) {
-            await syncToValue("Follow-up Status", followUpStatus);
+        // 🚀 MIRROR FIX (Universal Broadcast)
+        // Whenever status is hit, we update ALL variants to keep data identical
+        if (masterStatus) {
+            const statusVariants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Interaction Status", "Lead Status", "Interaction Result"];
+            for (const variant of statusVariants) {
+                await syncToValue(variant, masterStatus);
+            }
         }
 
-        if (leadStatus) {
-            await syncToValue("Lead Status", leadStatus);
-        }
+        await syncToValue("Recent Remark", remark);
+        if (nextFollowUpDate) await syncToValue("Next Follow-up Date", String(nextFollowUpDate));
 
         // 📅 CLOCK SYNC: Automatically update ANY "Calling Date" variants found in Internal Columns
         const todayStr = new Date().toISOString().split('T')[0];

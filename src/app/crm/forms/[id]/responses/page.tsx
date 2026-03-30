@@ -3781,6 +3781,51 @@ export default function CRMSpreadsheetPage() {
                                                                                         { label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" }
                                                                                     );
 
+                                                                                } else if (
+                                                                                    col.id === "__followUpStatus" || 
+                                                                                    col.id === "__followup" || 
+                                                                                    col.id === "__recentRemark" || 
+                                                                                    col.id === "__nextFollowUpDate" ||
+                                                                                    (col.label && (
+                                                                                        col.label.toUpperCase().includes("STATUS") || 
+                                                                                        col.label.toUpperCase().includes("CALLING") ||
+                                                                                        col.label.toUpperCase().includes("LEAD") ||
+                                                                                        col.label.toUpperCase().includes("RESULT")
+                                                                                    ))
+                                                                                ) {
+                                                                                    // 🛡️ Standardized Interaction Hierarchy (Trimmed & Unified)
+                                                                                    const MASTER_STATUS_LIST = [
+                                                                                        "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "SWITCHED OFF", "RNR 2", "RNR3", 
+                                                                                        "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER", "BUSY", "AGENT BUSY", 
+                                                                                        "NOT ANSWERED", "NOT PICKED", "NOT REACHABLE", "OUT OF SERVICE",
+                                                                                        "Will Share today", "Will let me know in 2 days", "Not Interested", "INTERESTED", "Onboarded", 
+                                                                                        "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
+                                                                                        "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW", "FOLLOW UP", "REJECTED", "CONNECTED",
+                                                                                        "CLOSED", "ONBOARDING", "SCHEDULED", "PAID WORK", "PAYMENT PENDING"
+                                                                                    ];
+                                                                                    
+                                                                                    const statusMap = new Map<string, string>(); // Normalized Upper -> Display Case
+                                                                                    
+                                                                                    // Feed from Master List
+                                                                                    MASTER_STATUS_LIST.forEach(s => {
+                                                                                        const norm = s.trim();
+                                                                                        if (norm) statusMap.set(norm.toUpperCase(), norm);
+                                                                                    });
+                                                                                    
+                                                                                    // Feed from existing data (Auto-normalize)
+                                                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+                                                                                    dataSource.forEach(res => {
+                                                                                        const v = getCellValue(res.id, col.id, col.isInternal);
+                                                                                        if (v) {
+                                                                                            const norm = v.toString().trim();
+                                                                                            if (norm) statusMap.set(norm.toUpperCase(), norm);
+                                                                                        }
+                                                                                    });
+                                                                                    
+                                                                                    availableValues = Array.from(statusMap.values())
+                                                                                        .sort((a, b) => a.localeCompare(b))
+                                                                                        .map(s => ({ label: s, value: s }));
+
                                                                                 } else if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
                                                                                         if (col.type === "user" && typeof o === 'string') {
@@ -3816,7 +3861,10 @@ export default function CRMSpreadsheetPage() {
                                                                                     const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
                                                                                     dataSource.forEach(res => {
                                                                                         const v = getCellValue(res.id, col.id, col.isInternal);
-                                                                                        if (v) vals.add(v.toString());
+                                                                                        if (v) {
+                                                                                            const norm = v.toString().trim();
+                                                                                            if (norm) vals.add(norm);
+                                                                                        }
                                                                                     });
                                                                                     availableValues = Array.from(vals)
                                                                                         .filter(Boolean)
@@ -3875,7 +3923,10 @@ export default function CRMSpreadsheetPage() {
                                                                                 }
 
                                                                                 return finalDisplayOptions.map(opt => {
-                                                                                    const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
+                                                                                    const isSelected = conditions.some(c => 
+                                                                                        c.colId === col.id && 
+                                                                                        c.val.toString().trim().toUpperCase() === opt.value.toString().trim().toUpperCase()
+                                                                                    );
                                                                                     return (
                                                                                         <button
                                                                                             key={opt.value}
@@ -3883,11 +3934,16 @@ export default function CRMSpreadsheetPage() {
                                                                                                 if (autoApply) setIsSyncing(true); // 🔥 Immediate feedback for Status and other filters
                                                                                                 setCurrentPage(1); // Reset to first page on filter change
                                                                                                 if (isSelected) {
-                                                                                                    setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
+                                                                                                    setConditions(prev => prev.filter(c => 
+                                                                                                        !(c.colId === col.id && c.val.toString().trim().toUpperCase() === opt.value.toString().trim().toUpperCase())
+                                                                                                    ));
                                                                                                 } else {
                                                                                                     let autoOp = 'equals';
                                                                                                     if (col.type === "multi_select" || col.type === "user") autoOp = 'contains';
-                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
+                                                                                                    setConditions(prev => [
+                                                                                                        ...prev.filter(c => c.colId !== col.id || c.val.toString().trim().toUpperCase() !== opt.value.toString().trim().toUpperCase()), 
+                                                                                                        { colId: col.id, op: autoOp, val: opt.value }
+                                                                                                    ]);
                                                                                                 }
                                                                                             }}
                                                                                             className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 group/btn transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}

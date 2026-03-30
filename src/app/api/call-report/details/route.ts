@@ -19,34 +19,47 @@ export async function GET(req: Request) {
         const start = startOfDay(targetDate);
         const end = endOfDay(targetDate);
 
-        // Define valid status strings we track
-        const targetStatuses = [
-            "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Scheduled", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
-        ];
-
-        // 1. Fetch remarks for the specific criteria
-        const whereClause: any = {
-            createdById: userId,
-            createdAt: { gte: start, lte: end },
-            followUpStatus: { in: targetStatuses }
-        };
-
-        // Note: type filter is logic-based after fetching for a specific lead on that day.
-        // We'll fetch all and filter by logic.
-        const remarks = await (prisma as any).formRemark.findMany({
-            where: whereClause,
-            select: {
-                responseId: true,
-                columnId: true,
-                followUpStatus: true,
-                createdAt: true
-            }
+        // 🛡️ MANUAL DATE PARITY BOOST
+        // Fetch Internal Values for 'Calling Date' or 'Interaction Date' columns for today
+        const internalCols = await prisma.internalColumn.findMany({
+            where: { label: { contains: "Calling", mode: 'insensitive' } } // Target calling date columns
         });
+        const colIds = internalCols.map(c => c.id);
+
+        const [remarks, manualDates] = await Promise.all([
+            prisma.formRemark.findMany({ 
+                where: {
+                    createdById: userId,
+                    createdAt: { gte: start, lte: end }
+                }
+            }),
+            prisma.internalValue.findMany({
+                where: {
+                    columnId: { in: colIds },
+                    value: { gte: start.toISOString(), lte: end.toISOString() },
+                    response: { assignedTo: { has: userId } } // Leads assigned to THIS user
+                }
+            })
+        ]);
+
+        console.log(`Details API: Found ${remarks.length} remarks and ${manualDates.length} manual matches for ${userId}`);
+
+        // Target valid call statuses (EXHAUSTIVE LIST for JS Filtering)
+        const targetStatuses = [
+            "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER",
+            "CALLED", "NOT INTERESTED", "WALKED IN", "FOLLOW-UP DONE", "MISSED", "CLOSED", "WALK-IN SCHEDULED",
+            "INTERESTED", "BUSY", "CONNECTED", "ONBOARDED", "ONBOARDING", "PAYMENT PENDING", "FOLLOW UP", "SCHEDULED", "REJECTED"
+        ];
 
         // 2. Identify Unique Leads (Response IDs) based on 'type'
         const responseIdInteractions = new Map<string, { type: 'NEW' | 'FOLLOWUP' }>();
+        const processedResponseIds = new Set<string>();
+
+        // 🟢 BRANCH 1: System Interactions
         for (const r of remarks) {
             const respId = r.responseId;
+            processedResponseIds.add(respId);
+
             if (!responseIdInteractions.has(respId)) {
                 responseIdInteractions.set(respId, { type: 'FOLLOWUP' });
             }
@@ -55,7 +68,17 @@ export async function GET(req: Request) {
             }
         }
 
-        // Filter based on requested type
+        // 🔵 BRANCH 2: Manual Schedules (only if not already remarked)
+        for (const m of manualDates) {
+            const respId = m.responseId;
+            if (processedResponseIds.has(respId)) continue;
+
+            if (!responseIdInteractions.has(respId)) {
+                responseIdInteractions.set(respId, { type: 'FOLLOWUP' });
+            }
+        }
+
+        // Filter based on requested type (NEW, FOLLOWUP, or COMBINED)
         const targetResponseIds = Array.from(responseIdInteractions.entries())
             .filter(([_, info]) => {
                 if (type === "COMBINED") return true;
@@ -80,10 +103,7 @@ export async function GET(req: Request) {
                 values: true,
                 internalValues: true,
                 remarks: {
-                    where: {
-                        createdById: userId,
-                        createdAt: { gte: start, lte: end }
-                    },
+                    // Fetch LAST remark for context, preferring the one from today
                     orderBy: { createdAt: 'desc' },
                     take: 1
                 }
@@ -106,6 +126,8 @@ export async function GET(req: Request) {
                 submittedAt: res.submittedAt,
                 lastStatus: res.remarks[0]?.followUpStatus || "N/A",
                 lastRemark: res.remarks[0]?.remark || "",
+                interactionDate: res.remarks[0]?.createdAt || res.submittedAt, 
+                interactedBy: res.remarks[0]?.authorName || "System", // WHO DID THIS?
                 values: res.values.map(v => ({ fieldId: v.fieldId, value: v.value })),
                 internalValues: res.internalValues.map(v => ({ columnId: v.columnId, value: v.value }))
             });
