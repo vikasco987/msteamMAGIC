@@ -367,6 +367,16 @@ export default function CRMSpreadsheetPage() {
     const [selectedResponse, setSelectedResponse] = useState<FormResponse | null>(null);
     const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
     const [openColorPicker, setOpenColorPicker] = useState<string | null>(null);
+    const [customDate, setCustomDate] = useState<string>(searchParams.get('date') || format(new Date(), 'yyyy-MM-dd'));
+    const isTodaySelected = customDate === format(new Date(), 'yyyy-MM-dd');
+    const selectedDateList = customDate.split(',').filter(Boolean);
+    const isMultiPerspective = selectedDateList.length > 1;
+    const [isDateHubOpen, setIsDateHubOpen] = useState(!searchParams.get('date'));
+    const [localDates, setLocalDates] = useState<string[]>(selectedDateList);
+
+    useEffect(() => {
+        if (isDateHubOpen) setLocalDates(selectedDateList);
+    }, [isDateHubOpen]);
 
     // ⚡ Performance Fix: Debounce Search to prevent re-filtering on every keystroke
     useEffect(() => {
@@ -668,10 +678,10 @@ export default function CRMSpreadsheetPage() {
 
         if (!isAddingRow) {
             const pageToFetch = filtersChanged ? 1 : currentPage;
-            // 🛡️ SECURITY & IDENTITY LOCK: Force Today + Empty Status globally for this portal.
+            // 🛡️ SECURITY & IDENTITY LOCK: Force Date (Custom or Today) + Empty Status globally for this portal.
             // MERGE core portal logic with user's optional filters.
             const lockedConds = [
-                { colId: "__submittedAt", op: "today", val: "" },
+                { colId: "__submittedAt", op: isTodaySelected ? "today" : "exact_date", val: isTodaySelected ? "" : customDate },
                 { colId: "__followUpStatus", op: "is_empty", val: "" },
                 ...conditions.filter(c => c.colId !== "__submittedAt" && c.colId !== "__followUpStatus")
             ];
@@ -742,7 +752,7 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
-    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+    const fetchData = async (page = currentPage, limit = rowsPerPage, search = debouncedSearchTerm, sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -802,7 +812,7 @@ export default function CRMSpreadsheetPage() {
             const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${customDate}&_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
@@ -1048,8 +1058,8 @@ export default function CRMSpreadsheetPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (isLoaded && user) fetchData();
-    }, [params.id, isLoaded, user]);
+        if (isLoaded && user) fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+    }, [params.id, isLoaded, user, customDate, currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
     // Yeh performance release ke liye zaroori hai
@@ -1668,9 +1678,14 @@ export default function CRMSpreadsheetPage() {
 
     const filteredResponses = useMemo(() => {
         if (!data) return [];
+        const isServerFiltering = data.totalPages !== undefined;
         let results = data.responses || [];
 
-        const isServerFiltering = data.totalPages !== undefined;
+        // 🛡️ REDUNDANCY SHIELD: Skip client-side filtering if server already did the heavy lifting
+        // This ensures pagination fidelity (displaying full pages of filtered results)
+        if (isServerFiltering) {
+            return results;
+        }
 
         if (debouncedSearchTerm) {
             const term = debouncedSearchTerm.toLowerCase();
@@ -1683,10 +1698,6 @@ export default function CRMSpreadsheetPage() {
                 (r.remarks || []).some((rem: any) => (rem.remark || "").toLowerCase().includes(term) || (rem.followUpStatus || "").toLowerCase().includes(term))
             );
         }
-
-        // NOTE: We no longer short-circuit here. We allow local filtering to run as a second pass
-        // on the server's results. This ensures that local 'pendingUpdates' and specific 
-        // operators like 'is_empty' are always respected correctly.
 
         if (conditions.length > 0) {
             const before = results.length;
@@ -2858,12 +2869,12 @@ export default function CRMSpreadsheetPage() {
 
         const statsSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
 
-        const totalEntries = data.filteredCount || statsSource.length;
+        const totalEntries = data?.filteredCount || statsSource.length;
         const newToday = statsSource.filter(r => new Date(r.createdAt) >= today).length;
         const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
-        const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
+        const statusCol = data?.internalColumns?.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
         if (statusCol && (data.internalValues || []).length > 0) {
@@ -2875,7 +2886,7 @@ export default function CRMSpreadsheetPage() {
             });
         }
 
-        const targetUserId = selectedReportUserId || data.clerkId || "";
+        const targetUserId = selectedReportUserId || data?.clerkId || "";
         const referenceDate = new Date(selectedReportDate);
         referenceDate.setHours(0, 0, 0, 0);
 
@@ -2898,7 +2909,8 @@ export default function CRMSpreadsheetPage() {
             myTodayCalls,
             myTotalAssigned,
             targetUserName: teamMembers.find(t => t.clerkId === targetUserId)?.firstName || "Myself",
-            statusColName: statusCol?.label || "Status"
+            statusColName: statusCol?.label || "Status",
+            statusColId: statusCol?.id
         };
     }, [data]);
 
@@ -2946,50 +2958,104 @@ export default function CRMSpreadsheetPage() {
                                 canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
                                     'bg-[#f8fafc] text-slate-900'
             }`}>
-            {/* Deletion Progress Overlay */}
+
+            {/* 🛡️ DATE MATRIX ENTRY GATEWAY (High-Fidelity Selection Page) */}
             <AnimatePresence>
-                {deleteProgress && (
-                    <motion.div
+                {isDateHubOpen && (
+                    <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6"
+                        className="fixed inset-0 z-[500] bg-slate-950/80 backdrop-blur-2xl flex items-center justify-center p-6"
                     >
-                        <motion.div
-                            initial={{ scale: 0.9, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-200"
+                        <motion.div 
+                            initial={{ scale: 0.9, y: 40, opacity: 0 }}
+                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                            className="bg-white rounded-[48px] shadow-2xl p-16 w-full max-w-2xl border border-white/20 text-center relative overflow-hidden"
                         >
-                            <div className="flex items-center gap-4 mb-6">
-                                <div className="p-3 bg-rose-50 rounded-xl">
-                                    <Trash2 className="text-rose-600 animate-pulse" size={24} />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-black text-slate-900">Purging Matrix Data</h3>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Operation in progress...</p>
-                                </div>
+                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600" />
+                            
+                            <div className="w-24 h-24 bg-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-indigo-200 mb-8 mt-4 rotate-3">
+                                <Sparkles className="text-white" size={48} />
                             </div>
 
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-end mb-1">
-                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                        Deleting {deleteProgress.current} / {deleteProgress.total}
-                                    </span>
-                                    <span className="text-sm font-black text-indigo-600">
-                                        {Math.round((deleteProgress.current / deleteProgress.total) * 100)}%
-                                    </span>
+                            <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-4 lowercase">Matrix.hub</h2>
+                            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.4em] mb-12">Select Operational Perspective</p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <button
+                                    onClick={() => {
+                                        const t = format(new Date(), 'yyyy-MM-dd');
+                                        setCustomDate(t);
+                                        setIsDateHubOpen(false);
+                                    }}
+                                    className="p-10 bg-slate-50 hover:bg-indigo-600 group transition-all duration-500 rounded-[32px] border border-slate-200 hover:shadow-2xl text-center"
+                                >
+                                    <div className="w-14 h-14 bg-white rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
+                                        <Clock className="text-indigo-600" size={28} />
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-900 group-hover:text-white">Today's Live</h3>
+                                    <p className="text-slate-400 text-[8px] font-black uppercase mt-1 group-hover:text-indigo-100">Live Matrix Feed</p>
+                                </button>
+
+                                <div className="p-10 bg-slate-50 hover:bg-emerald-600/5 transition-all duration-500 rounded-[32px] border border-slate-200 group relative flex flex-col items-center">
+                                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform">
+                                        <Calendar className="text-emerald-600" size={28} />
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-900">Custom Scan</h3>
+                                    <p className="text-slate-400 text-[8px] font-black uppercase mt-1 group-hover:text-emerald-600">Historical Perspective Hub</p>
+                                    
+                                    <div className="mt-8 w-full space-y-4">
+                                        <div className="flex flex-wrap gap-2 justify-center max-h-32 overflow-y-auto scrollbar-none p-1">
+                                            {localDates.map((d, idx) => (
+                                                <div key={idx} className="px-3 py-1.5 bg-white border border-slate-200 rounded-full flex items-center gap-2 shadow-sm animate-in fade-in zoom-in duration-300">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">{format(new Date(d), 'MMM d')}</span>
+                                                    <button 
+                                                        onClick={() => setLocalDates(prev => prev.filter(item => item !== d))}
+                                                        className="hover:text-rose-500 transition-colors"
+                                                    >
+                                                        <X size={10} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {localDates.length === 0 && (
+                                                <p className="text-[10px] font-bold text-slate-300 italic">No dates added to this scan...</p>
+                                            )}
+                                        </div>
+
+                                        <div className="relative group/input">
+                                            <input 
+                                                type="date" 
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    if (!val) return;
+                                                    if (!localDates.includes(val)) {
+                                                        const newList = [...localDates, val].sort();
+                                                        setLocalDates(newList);
+                                                    }
+                                                }}
+                                                className="w-full bg-white p-3 rounded-2xl border-2 border-slate-100 text-[11px] font-black uppercase outline-none focus:border-emerald-500 transition-all cursor-pointer shadow-sm pr-10"
+                                            />
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 bg-emerald-50 text-emerald-600 rounded-lg pointer-events-none group-focus-within/input:bg-emerald-600 group-focus-within/input:text-white transition-all">
+                                                <Plus size={14} />
+                                            </div>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => {
+                                                if (localDates.length > 0) {
+                                                    setCustomDate(localDates.join(','));
+                                                    setIsDateHubOpen(false);
+                                                }
+                                            }}
+                                            disabled={localDates.length === 0}
+                                            className={`w-full py-4 rounded-[20px] font-black text-[11px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 shadow-lg ${localDates.length > 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200' : 'bg-slate-100 text-slate-300'}`}
+                                        >
+                                            <Sparkles size={14} className={localDates.length > 0 ? "animate-pulse" : ""} />
+                                            Activate Cluster Matrix
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
-                                    <motion.div
-                                        className="h-full bg-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.3)]"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${(deleteProgress.current / deleteProgress.total) * 100}%` }}
-                                        transition={{ type: "spring", damping: 20, stiffness: 100 }}
-                                    />
-                                </div>
-                                <p className="text-[10px] text-center text-slate-400 font-bold italic">
-                                    Please do not close this window during the purge cycle.
-                                </p>
                             </div>
                         </motion.div>
                     </motion.div>
@@ -3004,62 +3070,39 @@ export default function CRMSpreadsheetPage() {
                     }`}>
                     <div className="flex items-center gap-4">
                         {searchParams.get('fullview') === 'true' ? (
-                            <Link href={`/crm/forms/${params.id}/responses`} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center group shadow-lg shadow-indigo-100">
+                            <Link href={`/crm/forms/${params.id}/responses`} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center group shadow-lg shadow-indigo-100 shrink-0">
                                 <ArrowLeft size={16} />
                                 <span className="ml-2 text-[10px] font-black uppercase tracking-widest hidden md:block">Back to CRM</span>
                             </Link>
                         ) : (
-                            <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group">
+                            <button onClick={() => router.back()} className="p-2 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center justify-center group shrink-0">
                                 <ArrowLeft size={16} className="text-slate-500 group-hover:text-indigo-600 transition-colors" />
                             </button>
                         )}
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h1 className={`text-lg font-black tracking-tight transition-colors duration-500 ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-slate-900'}`}>{data?.form?.title || "Today's Lead Matrix"}</h1>
-                                {(isUserInvolved && searchParams.get('fullview') !== 'true') && (
-                                    <button
-                                        onClick={togglePin}
-                                        className={`p-1.5 rounded-lg transition-all ${isPinned ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 border border-transparent')}`}
-                                        title={isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
-                                    >
-                                        {isPinned ? <Pin className="fill-current" size={16} /> : <PinOff size={16} />}
-                                    </button>
-                                )}
-                                <div className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-lg shadow-lg shadow-emerald-100 border border-emerald-400/30">
-                                    <Clock size={10} className="text-white" />
-                                    <span className="text-[9px] font-black text-white uppercase tracking-widest leading-none">Today's Leads Hub</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-100">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">{isPureMaster ? "Master Cloud" : "Network Realtime"}</span>
-                                </div>
-                                {isPureMaster && (
-                                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-600 rounded-full shadow-lg shadow-indigo-200">
-                                        <ShieldCheck size={10} className="text-white" />
-                                        <span className="text-[9px] font-black text-white uppercase tracking-widest">Master Auth</span>
-                                    </div>
-                                )}
-
-                                {/* System Online/Offline Status Indicator */}
-                                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border shadow-sm transition-all cursor-pointer ${isOnline ? 'bg-white border-slate-200 hover:border-slate-300' : 'bg-rose-50 border-rose-200 animate-pulse'}`} onClick={handleManualSync}>
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-lg font-black tracking-tight truncate">
+                                    {isTodaySelected ? "Today's Matrix" : isMultiPerspective ? `Cluster Scan: ${selectedDateList.length} Days` : `Matrix Hub: ${format(new Date(selectedDateList[0]), 'MMM d')}`}
+                                </h1>
+                                <button 
+                                    onClick={() => setIsDateHubOpen(true)}
+                                    className={`p-2 rounded-xl border transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/10 border-white/20' : 'hover:bg-slate-50 border-slate-200'} shrink-0`}
+                                    title="Change Date Perspective"
+                                >
+                                    <Calendar size={16} />
+                                </button>
+                                <div className={`hidden md:flex items-center gap-2 px-2.5 py-1 rounded-full border shadow-sm transition-all cursor-pointer ${isOnline ? 'bg-white border-slate-200' : 'bg-rose-50 border-rose-200 animate-pulse'}`} onClick={handleManualSync}>
                                     <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'}`} />
                                     <span className={`text-[10px] font-black uppercase tracking-widest ${isOnline ? 'text-slate-600' : 'text-rose-600'}`}>
                                         {isOnline ? 'Online' : 'Offline'}
                                     </span>
-                                    {pendingOfflineCount > 0 && (
-                                        <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-md ml-1 border border-amber-200">
-                                            <CloudOff size={10} />
-                                            {pendingOfflineCount} Pending Sync
-                                        </span>
-                                    )}
                                 </div>
                             </div>
-
                             {/* Fast View Switchers */}
-                            <div className="flex items-center gap-4 mt-1.5">
+                            <div className="flex items-center gap-4 overflow-x-auto scrollbar-none pb-0.5">
                                 <button
                                     onClick={handleClearFilters}
-                                    className={`text-[10px] font-black uppercase tracking-widest transition-all ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
+                                    className={`text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${!activeViewId && conditions.length === 0 ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                 >
                                     Default Canvas
                                 </button>
@@ -3067,7 +3110,7 @@ export default function CRMSpreadsheetPage() {
                                     <button
                                         key={view.id}
                                         onClick={() => applySavedView(view)}
-                                        className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeViewId === view.id ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
+                                        className={`text-[9px] font-black uppercase tracking-widest transition-all shrink-0 ${activeViewId === view.id ? 'text-indigo-600' : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600')}`}
                                     >
                                         {view.name}
                                     </button>
@@ -3085,10 +3128,7 @@ export default function CRMSpreadsheetPage() {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     placeholder="Search records..."
-                                    className={`pl-9 pr-4 py-2 border rounded-lg outline-none text-xs font-bold transition-all min-w-[200px] ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
-                                        ? 'bg-white/5 border-white/10 text-white placeholder-slate-500 focus:bg-white/10 focus:ring-white/5'
-                                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-50/50 focus:border-indigo-500'
-                                        }`}
+                                    className={`pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs font-bold w-[180px] focus:w-[240px] transition-all`}
                                 />
                             </div>
 
@@ -6209,16 +6249,33 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-4">
-                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
+                                    <div
+                                        onClick={() => { setConditions([]); setIsDynamicReportOpen(false); toast.success("Matrix Reset: Today's High-Density Feed"); }}
+                                        className="p-6 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 group-hover:text-indigo-600 transition-colors">Total Records</p>
                                         <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
                                     </div>
-                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "today", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Sector Priority Leads");
+                                        }}
+                                        className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100 cursor-pointer hover:bg-emerald-100 hover:border-emerald-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2 group-hover:bg-emerald-200 transition-colors">New Today</p>
                                         <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
                                     </div>
-                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "this_month", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Performance Yield Analysis");
+                                        }}
+                                        className="p-6 bg-blue-50 rounded-2xl border border-blue-100 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2 group-hover:bg-blue-200 transition-colors">New This Month</p>
                                         <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
                                     </div>
                                 </div>
@@ -6228,9 +6285,20 @@ export default function CRMSpreadsheetPage() {
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
                                         <div className="space-y-3">
                                             {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-                                                <div key={status} className="flex items-center justify-between">
-                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
-                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
+                                                <div
+                                                    key={status}
+                                                    onClick={() => {
+                                                        const colId = dynamicStats.statusColId || "";
+                                                        if (colId) {
+                                                            setConditions([{ colId, op: "equals", val: status }]);
+                                                            setIsDynamicReportOpen(false);
+                                                            toast.success(`Matrix Path: ${status}`);
+                                                        }
+                                                    }}
+                                                    className="flex items-center justify-between p-2 hover:bg-white rounded-xl cursor-pointer transition-all active:scale-[0.98] group"
+                                                >
+                                                    <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{status || "Unspecified"}</span>
+                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all">{count}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -6482,7 +6550,7 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
 
                                                             <div className="grid grid-cols-1 gap-12 px-2">
-                                                                {[...data?.internalColumns?.map(c => ({ ...c, isInternal: true })) || [], ...data.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, isInternal: false })) || []].map((col) => {
+                                                                {[...(data?.internalColumns?.map(c => ({ ...c, isInternal: true })) || []), ...(data?.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, isInternal: false })) || [])].map((col) => {
                                                                     const val = getCellValue(selectedResponse.id, col.id, col.isInternal);
                                                                     const isInternal = col.isInternal;
 

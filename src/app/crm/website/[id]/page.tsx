@@ -569,7 +569,7 @@ export default function CRMSpreadsheetPage() {
     useEffect(() => {
         const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
         const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
-        
+
         // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
         if (!isPrivileged && data?.form?.defaultColumnOrder) {
             setColumnOrder(data.form.defaultColumnOrder);
@@ -591,7 +591,7 @@ export default function CRMSpreadsheetPage() {
     }, [columnOrder, params.id, userRole, isMaster, isPureMaster]);
 
     const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
-    
+
     // Hidden Columns Persistence
     useEffect(() => {
         const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
@@ -726,7 +726,7 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
-    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+    const fetchData = async (page = currentPage, limit = rowsPerPage, search = debouncedSearchTerm, sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -1032,8 +1032,8 @@ export default function CRMSpreadsheetPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (isLoaded && user) fetchData();
-    }, [params.id, isLoaded, user]);
+        if (isLoaded && user) fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+    }, [params.id, isLoaded, user, currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
     // Yeh performance release ke liye zaroori hai
@@ -1530,7 +1530,7 @@ export default function CRMSpreadsheetPage() {
                 })
             });
             if (!res.ok) throw new Error("Push failed");
-            
+
             toast.success("Master Protocol Synchronized! Everyone is now locked to this format.", { icon: "🌎" });
             fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
         } catch (err) {
@@ -1652,9 +1652,14 @@ export default function CRMSpreadsheetPage() {
 
     const filteredResponses = useMemo(() => {
         if (!data) return [];
+        const isServerFiltering = data.totalPages !== undefined;
         let results = data.responses || [];
 
-        const isServerFiltering = data.totalPages !== undefined;
+        // 🛡️ REDUNDANCY SHIELD: Skip client-side filtering if server already did the heavy lifting
+        // This ensures pagination fidelity (displaying full pages of filtered results)
+        if (isServerFiltering) {
+            return results;
+        }
 
         if (debouncedSearchTerm) {
             const term = debouncedSearchTerm.toLowerCase();
@@ -1667,10 +1672,6 @@ export default function CRMSpreadsheetPage() {
                 (r.remarks || []).some((rem: any) => (rem.remark || "").toLowerCase().includes(term) || (rem.followUpStatus || "").toLowerCase().includes(term))
             );
         }
-
-        // NOTE: We no longer short-circuit here. We allow local filtering to run as a second pass
-        // on the server's results. This ensures that local 'pendingUpdates' and specific 
-        // operators like 'is_empty' are always respected correctly.
 
         if (conditions.length > 0) {
             const before = results.length;
@@ -2825,15 +2826,15 @@ export default function CRMSpreadsheetPage() {
 
         const statsSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
 
-        const totalEntries = data.filteredCount || statsSource.length;
+        const totalEntries = data?.filteredCount || statsSource.length;
         const newToday = statsSource.filter(r => new Date(r.createdAt) >= today).length;
         const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
-        const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
+        const statusCol = data?.internalColumns?.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
-        if (statusCol && (data.internalValues || []).length > 0) {
+        if (statusCol && (data?.internalValues || []).length > 0) {
             const valuesToCount = statsSource === data.responses ? data.internalValues : data.internalValues; // Actually internalValues only match current responses
             // This is tricky because internalValues only come for the current page
             // For now, we'll only show status counts for the statsSource
@@ -2847,7 +2848,8 @@ export default function CRMSpreadsheetPage() {
             newToday,
             newThisMonth,
             statusCounts,
-            statusColName: statusCol?.label || "Status"
+            statusColName: statusCol?.label || "Status",
+            statusColId: statusCol?.id
         };
     }, [data]);
 
@@ -3275,8 +3277,12 @@ export default function CRMSpreadsheetPage() {
                         </div>
 
                         <div className="flex items-center gap-8">
-                            <div className="flex flex-col">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Core</p>
+                            <div
+                                onClick={handleClearFilters}
+                                className="flex flex-col cursor-pointer hover:bg-slate-50 p-2 rounded-xl transition-all active:scale-95 group"
+                                title="Reset Matrix Protocol"
+                            >
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5 group-hover:text-indigo-600 transition-colors">Total Core</p>
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg font-black text-slate-900">{data?.totalCount || "..."}</span>
                                     <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">+Live</span>
@@ -3293,8 +3299,15 @@ export default function CRMSpreadsheetPage() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col pr-8 border-r border-slate-100">
-                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Attention Matrix</p>
+                            <div
+                                onClick={() => {
+                                    setConditions([{ colId: "__nextFollowUpDate", op: "today", val: "" }]);
+                                    toast.success("Focus Shift: Attention Matrix Locked (Today's Follow-ups)");
+                                }}
+                                className="flex flex-col pr-8 border-r border-slate-100 cursor-pointer hover:bg-amber-50 p-2 rounded-xl transition-all active:scale-95 group"
+                                title="Filter: Today's Follow-up Protocol"
+                            >
+                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5 group-hover:text-amber-600">Attention Matrix</p>
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg font-black text-amber-600">{todayFollowUps.length}</span>
                                     <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
@@ -3912,8 +3925,8 @@ export default function CRMSpreadsheetPage() {
                                 <tbody>
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }}
                                                 colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
                                                 className="border-none p-0"
                                             />
@@ -4611,8 +4624,8 @@ export default function CRMSpreadsheetPage() {
                                     })}
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }}
                                                 colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
                                                 className="border-none p-0"
                                             />
@@ -4868,8 +4881,15 @@ export default function CRMSpreadsheetPage() {
 
                                         <div className="grid grid-cols-1 gap-4">
                                             {conditions.map((cond, index) => {
-                                                const field = [...(data?.form?.fields || []), ...(data?.internalColumns || [])].find(f => f.id === cond.colId);
-                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
+                                                const field = [
+                                                    { id: "__submittedAt", label: "Submitted At (Portal Protocol)", type: "date" },
+                                                    { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                    { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                    { id: "__followUpStatus", label: "Lead Tracking Status (Portal Protocol)", type: "dropdown" },
+                                                    ...(data?.form?.fields || []),
+                                                    ...(data?.internalColumns || [])
+                                                ].find(f => f.id === cond.colId);
+                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : FILTER_OPERATORS.text;
                                                 const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
 
                                                 return (
@@ -4895,7 +4915,14 @@ export default function CRMSpreadsheetPage() {
                                                                     }}
                                                                 >
                                                                     <option value="">Select Field Protocol</option>
-                                                                    {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].filter(f => f.type !== "static").map(f => (
+                                                                    {([
+                                                                        { id: "__submittedAt", label: "Submitted At", type: "date" },
+                                                                        { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                                        { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                                        { id: "__followUpStatus", label: "Lead Tracking Status", type: "dropdown", options: CALL_STATUS_OPTIONS },
+                                                                        ...(data?.form?.fields || []),
+                                                                        ...(data?.internalColumns || [])
+                                                                    ] as any[]).filter(f => f.type !== "static").map(f => (
                                                                         <option key={f.id} value={f.id}>{f.label}</option>
                                                                     ))}
                                                                 </select>
@@ -4949,7 +4976,7 @@ export default function CRMSpreadsheetPage() {
                                                                                 }}
                                                                             >
                                                                                 <option value="">Option Metric</option>
-                                                                                {field?.options?.map((opt: any) => {
+                                                                                {(field as any)?.options?.map((opt: any) => {
                                                                                     const label = typeof opt === 'string' ? opt : opt.label;
                                                                                     return <option key={label} value={label}>{label}</option>;
                                                                                 })}
@@ -6042,16 +6069,33 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-4">
-                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
+                                    <div
+                                        onClick={() => { setConditions([]); setIsDynamicReportOpen(false); toast.success("Matrix Reset: All Records"); }}
+                                        className="p-6 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 group-hover:text-indigo-600 transition-colors">Total Records</p>
                                         <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
                                     </div>
-                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "today", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Today's High-Priority Leads");
+                                        }}
+                                        className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100 cursor-pointer hover:bg-emerald-100 hover:border-emerald-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2 group-hover:bg-emerald-200 transition-colors">New Today</p>
                                         <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
                                     </div>
-                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "this_month", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Monthly Yield Analysis");
+                                        }}
+                                        className="p-6 bg-blue-50 rounded-2xl border border-blue-100 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2 group-hover:bg-blue-200 transition-colors">New This Month</p>
                                         <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
                                     </div>
                                 </div>
@@ -6061,9 +6105,20 @@ export default function CRMSpreadsheetPage() {
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
                                         <div className="space-y-3">
                                             {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-                                                <div key={status} className="flex items-center justify-between">
-                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
-                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
+                                                <div
+                                                    key={status}
+                                                    onClick={() => {
+                                                        const colId = dynamicStats.statusColId || "";
+                                                        if (colId) {
+                                                            setConditions([{ colId, op: "equals", val: status }]);
+                                                            setIsDynamicReportOpen(false);
+                                                            toast.success(`Matrix Path: ${status}`);
+                                                        }
+                                                    }}
+                                                    className="flex items-center justify-between p-2 hover:bg-white rounded-xl cursor-pointer transition-all active:scale-[0.98] group"
+                                                >
+                                                    <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{status || "Unspecified"}</span>
+                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all">{count}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -6315,7 +6370,7 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
 
                                                             <div className="grid grid-cols-1 gap-12 px-2">
-                                                                {[...data?.internalColumns?.map(c => ({ ...c, isInternal: true })) || [], ...data.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, isInternal: false })) || []].map((col) => {
+                                                                {[...(data?.internalColumns?.map(c => ({ ...c, label: c.label || c.id, isInternal: true })) || []), ...(data?.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, label: f.label || f.id, isInternal: false })) || [])].map((col) => {
                                                                     const val = getCellValue(selectedResponse.id, col.id, col.isInternal);
                                                                     const isInternal = col.isInternal;
 
@@ -6445,8 +6500,8 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
 
                                                             <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
-                                                                {(data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0) > 0 ? (
-                                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                                {(data?.activities?.filter((a: any) => a.responseId === selectedResponse.id).length || 0) > 0 ? (
+                                                                    data?.activities?.filter((a: any) => a.responseId === selectedResponse.id).map((act: any) => (
                                                                         <div key={act.id} className="relative pl-12 pb-12 group/audit">
                                                                             <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
                                                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />

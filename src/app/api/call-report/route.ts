@@ -37,7 +37,8 @@ export async function GET(req: Request) {
 
         // Target valid call statuses
         const targetStatuses = [
-            "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Scheduled", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
+            "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER",
+            "Called", "Call Again", "Call done", "Not interested", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
         ];
 
         const where: any = {
@@ -56,8 +57,14 @@ export async function GET(req: Request) {
         console.log(`Report API: Found ${remarks.length} remarks for ${targetDate.toISOString()}`);
 
         // Categorize interactions
-        const connectedStatuses = ["Call Again", "Call done", "Not interested", "Walk-in scheduled", "Closed", "Follow up done", "Called", "Scheduled", "Follow-up Done", "Walked In"];
-        const notConnectedStatuses = ["RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Missed"];
+        const connectedStatuses = [
+            "CALL DONE", "CALL AGAIN", "MEETING", "DUPLICATE",
+            "Call Again", "Call done", "Not interested", "Walk-in scheduled", "Closed", "Follow up done", "Called", "Scheduled", "Follow-up Done", "Walked In"
+        ];
+        const notConnectedStatuses = [
+            "RNR", "RNR 2", "RNR3", "SWITCH OFF", "INVALID NUMBER", "INCOMING NOT AVAIABLE", "WRONG NUMBER",
+            "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Missed"
+        ];
 
         type Interaction = {
             type: 'NEW' | 'FOLLOWUP';
@@ -103,11 +110,11 @@ export async function GET(req: Request) {
                 inter.type = 'NEW';
             }
 
-            // 2. STATUS CONVERSION:
-            // If any remark for this lead is connected, mark whole interaction as connected
-            if (connectedStatuses.includes(r.followUpStatus || "")) {
+            // 2. STATUS CONVERSION (Case-Insensitive Normalization):
+            const statusRaw = (r.followUpStatus || "").trim().toUpperCase();
+            if (connectedStatuses.some(s => s.trim().toUpperCase() === statusRaw)) {
                 inter.connected = true;
-            } else if (notConnectedStatuses.includes(r.followUpStatus || "")) {
+            } else if (notConnectedStatuses.some(s => s.trim().toUpperCase() === statusRaw)) {
                 inter.notConnected = true;
             }
         }

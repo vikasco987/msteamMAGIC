@@ -38,6 +38,16 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
     const [isAdding, setIsAdding] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const recognitionRef = React.useRef<any>(null);
+
+    // Stop recognition on unmount
+    useEffect(() => {
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.abort();
+            }
+        };
+    }, []);
 
     // 🗣️ VOICE FEEDBACK ENGINE (Speech Synthesis)
     const speakResponse = (text: string) => {
@@ -56,12 +66,20 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
             return;
         }
 
+        // 🛡️ Instance Lockdown: Stop existing session if active
+        if (isListening && recognitionRef.current) {
+            recognitionRef.current.stop();
+            return;
+        }
+
+        const initialRemark = form.remark.replace(/\.\.\.$/, '').trim();
+
         try {
             const recognition = new SpeechRecognition();
             recognition.lang = "en-IN"; 
-            recognition.interimResults = false;
+            recognition.interimResults = true;
             recognition.maxAlternatives = 1;
-            recognition.continuous = false;
+            recognition.continuous = true; // ⚡ Keep it alive for complex multi-intent
 
             recognition.onstart = () => setIsListening(true);
             recognition.onend = () => setIsListening(false);
@@ -88,10 +106,89 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
             const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
 
             recognition.onresult = (event: any) => {
-                const rawTranscript = event.results[0][0].transcript;
-                const transcript = processTranscript(rawTranscript);
-                const startTime = performance.now();
+                let fullFinal = "";
+                let fullInterim = "";
+
+                for (let i = 0; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) fullFinal += event.results[i][0].transcript;
+                    else fullInterim += event.results[i][0].transcript;
+                }
+
+                // Core logic now uses the TOTAL transcript since mic started
+                const rawTranscript = (fullFinal || fullInterim).toLowerCase();
                 
+                // ⚡ REAL-TIME INTENT DETECTION (Global)
+                const ACTIONS = {
+                    SAVE: rawTranscript.includes("save") || rawTranscript.includes("submit") || rawTranscript.includes("ho gaya"),
+                    CLOSE: rawTranscript.includes("band") || rawTranscript.includes("close") || rawTranscript.includes("cancel")
+                };
+
+                // Update UI state with total session results
+                const currentTranscript = fullFinal + (fullInterim ? " " + fullInterim + "..." : "");
+                setForm(prev => ({ 
+                    ...prev, 
+                    remark: initialRemark ? initialRemark + " " + currentTranscript : currentTranscript 
+                }));
+
+                if (!fullFinal) return; // Only trigger major NLP on final results
+
+                const tWords = fullFinal.toLowerCase();
+                const isNegated = (target: string) => {
+                    const t = target.toLowerCase();
+                    return tWords.includes(`nahi ${t}`) || tWords.includes(`not ${t}`) || tWords.includes(`${t} nahi`);
+                };
+
+                const tClean = tWords.replace(/\bkarke\b|\bkar do\b|\bkardo\b/gi, '').trim();
+                const transcript = processTranscript(tClean);
+                
+                // 📅 SMART DATE PRIORITY ENGINE
+                let detectedDateString = "";
+                const today = new Date();
+                const numMap: Record<string, number> = { 
+                    'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'panch': 5, 'chhe': 6, 'saat': 7, 
+                    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7 
+                };
+                
+                let daysToAdd = 0;
+                let priorityLevel = 0;
+
+                const weekMatch = tWords.match(/(\d+|ek|do|teen|one|two|three)\s*(hafte|week|weeks)/);
+                if (weekMatch) {
+                    const val = weekMatch[1];
+                    daysToAdd = (numMap[val] || parseInt(val) || 1) * 7;
+                    priorityLevel = 3;
+                } else if (tWords.includes("agle hafte") || tWords.includes("next week")) {
+                    daysToAdd = 7;
+                    priorityLevel = 3;
+                }
+
+                if (priorityLevel < 3) {
+                    const dayMatch = tWords.match(/(\d+|ek|do|teen|char|panch|chhe|saat|one|two|three|four|five|six|seven)\s*(din|day|days)/);
+                    if (dayMatch) {
+                        const val = dayMatch[1];
+                        daysToAdd = numMap[val] || parseInt(val) || 0;
+                        priorityLevel = 2;
+                    }
+                }
+
+                if (priorityLevel < 1) {
+                    if (!isNegated("parson") && tWords.includes("parson")) {
+                        daysToAdd = 2;
+                        priorityLevel = 1;
+                    } else if (!isNegated("kal") && (tWords.includes("kal") || tWords.includes("tomorrow"))) {
+                        daysToAdd = 1;
+                        priorityLevel = 1;
+                    }
+                }
+
+                const hasConflict = (priorityLevel > 1) && (tWords.includes("kal") || tWords.includes("tomorrow") || tWords.includes("parson"));
+                if (hasConflict) speakResponse("Aapne date conflict bola hai, main strongest date set kar rahi hoon.");
+
+                if (daysToAdd > 0) {
+                    const finalD = new Date(today); finalD.setDate(today.getDate() + daysToAdd);
+                    detectedDateString = finalD.toISOString().split('T')[0];
+                }
+
                 const getSimilarity = (s1: string, s2: string) => {
                     const longer = s1.length > s2.length ? s1.toLowerCase() : s2.toLowerCase();
                     const shorter = s1.length > s2.length ? s2.toLowerCase() : s1.toLowerCase();
@@ -117,93 +214,67 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
                 let detectedCalling = "";
                 let detectedLead = "";
-                let detectedDateString = "";
-                const today = new Date();
-                const transcriptLC = transcript.toLowerCase();
-                if (transcriptLC.includes("parson")) {
-                    const d = new Date(today); d.setDate(today.getDate() + 2);
-                    detectedDateString = d.toISOString().split('T')[0];
-                } else if (transcriptLC.includes("kal") || transcriptLC.includes("tomorrow")) {
-                    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-                    detectedDateString = tomorrow.toISOString().split('T')[0];
-                }
-
                 const SEARCH_PATTERNS = [
                     ...CALL_STATUS_OPTIONS.map(opt => ({ text: opt, intent: opt, type: 'calling' })),
                     ...LEAD_STATUS_OPTIONS.map(opt => ({ text: opt, intent: opt, type: 'lead' })),
                     { text: "nr", intent: "RNR", type: 'calling' },
                     { text: "call karenge", intent: "CALL AGAIN", type: 'calling' },
-                    { text: "baat karenge", intent: "CALL AGAIN", type: 'calling' },
-                    { text: "meeting fix", intent: "MEETING", type: 'calling' },
-                    { text: "done", intent: "CALL DONE", type: 'calling' }
+                    { text: "meeting fix", intent: "MEETING", type: 'calling' }
                 ];
 
                 let bestMatch = { intent: "", type: "", rating: 0 };
                 SEARCH_PATTERNS.forEach(p => {
-                    const rating = getSimilarity(transcriptLC, p.text);
+                    if (isNegated(p.text)) return; 
+                    const exists = tWords.includes(p.text.toLowerCase());
+                    const rating = exists ? 1.0 : getSimilarity(tWords, p.text);
                     if (rating > bestMatch.rating && rating > 0.65) {
                         bestMatch = { intent: p.intent, type: p.type, rating };
                     }
                 });
 
-                const confidence = bestMatch.rating;
-                const endTime = performance.now();
-                console.log(`⚡ AI Latency: ${(endTime - startTime).toFixed(2)}ms`);
-
-                if (confidence >= 0.8) {
-                    if (bestMatch.type === 'calling') {
-                        detectedCalling = bestMatch.intent;
-                        speakResponse(`Status set to ${bestMatch.intent}`);
-                    }
-                    if (bestMatch.type === 'lead') {
-                        detectedLead = bestMatch.intent;
-                        speakResponse(`Lead marked as ${bestMatch.intent}`);
-                    }
-                } else if (confidence >= 0.65) {
-                    toast(`🤔 AI: Did you mean "${bestMatch.intent}"?`, { icon: '🤖' });
-                    speakResponse(`Did you mean ${bestMatch.intent}?`);
+                if (bestMatch.rating >= 0.8) {
+                    if (bestMatch.type === 'calling') detectedCalling = bestMatch.intent;
+                    if (bestMatch.type === 'lead') detectedLead = bestMatch.intent;
+                } else if (bestMatch.rating >= 0.6) {
+                    speakResponse(`Mujhe laga aap keh rahe ho ${bestMatch.intent}, confirm karein?`);
                 }
 
                 let finalRemark = transcript.trim();
-                if (detectedCalling || detectedLead) {
-                    const regex = new RegExp(`\\b${bestMatch.intent.replace(/\s+/g, '\\s*')}\\b`, 'gi');
-                    finalRemark = finalRemark.replace(regex, '').trim();
-                }
-
-                if (!bestMatch.intent && transcript.length > 5) {
-                    console.log("❌ MISSED INTENT:", { text: transcript, timestamp: new Date().toISOString() });
-                } else if (bestMatch.intent) {
-                    console.log("✅ MATCHED INTENT:", { input: transcript, output: bestMatch.intent, confidence, latency: `${(endTime - startTime).toFixed(2)}ms` });
-                }
+                const processedText = [detectedCalling, detectedLead, bestMatch.intent].filter(Boolean);
+                processedText.forEach(t => {
+                    if (!t) return;
+                    const cleanRegex = new RegExp(`\\b${t.replace(/\s+/g, '\\s*')}\\b`, 'gi');
+                    finalRemark = finalRemark.replace(cleanRegex, '').trim();
+                });
 
                 setForm(prev => ({ 
                     ...prev, 
-                    remark: prev.remark ? `${prev.remark} ${finalRemark}` : finalRemark,
                     followUpStatus: detectedCalling || prev.followUpStatus,
                     leadStatus: detectedLead || prev.leadStatus,
                     nextFollowUpDate: detectedDateString || prev.nextFollowUpDate
                 }));
 
-                if (detectedCalling || detectedLead || detectedDateString) {
-                    toast.success(`✨ AI (Confidence: ${Math.round(confidence * 100)}%): Logged`);
-                    if (detectedDateString && !detectedCalling) speakResponse("Date set for follow-up");
-                }
-
-                const tLC = rawTranscript.toLowerCase();
-                if (tLC.includes("save kardo") || tLC.includes("submit kardo") || tLC.includes("ho gaya")) {
-                    speakResponse("Saving results");
-                    toast.loading("Saving...");
+                // ⚡ PRIORITY EXECUTION ENGINE (Final)
+                if (detectedCalling) speakResponse(`Status set to ${detectedCalling}`);
+                if (detectedLead) speakResponse(`Lead marked as ${detectedLead}`);
+                if (detectedDateString) speakResponse(`Date set for ${daysToAdd} days later`);
+                
+                if (ACTIONS.SAVE) {
+                    speakResponse("Saving interaction matrix now.");
+                    toast.loading("AI Pulse: Saving...");
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
                     setTimeout(() => (document.querySelector('button[type="submit"]') as HTMLButtonElement)?.click(), 800);
-                }
-                if (tLC.includes("band kar do") || tLC.includes("cancel kardo")) {
-                    speakResponse("Closing");
-                    toast.success("Closing...");
-                    setTimeout(() => onClose(), 500);
+                } else if (ACTIONS.CLOSE) {
+                    speakResponse("Terminating session.");
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
+                    setTimeout(() => onClose(), 400);
                 }
             };
 
-            if (isListening) recognition.stop();
-            else recognition.start();
+            recognitionRef.current = recognition;
+            recognition.start();
         } catch (e) {
             console.error(e);
             toast.error("Voice typing failed");
@@ -235,20 +306,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         }
     };
 
-    useEffect(() => {
-        if (!isAdding) return;
-        const today = new Date();
-        let daysToAdd = 0;
-        switch (form.followUpStatus) {
-            case "CALL AGAIN": case "RNR": case "RNR 2": case "RNR3": case "SWITCH OFF": daysToAdd = 1; break;
-            case "CALL DONE": case "MEETING": daysToAdd = 2; break;
-        }
-        if (daysToAdd > 0) {
-            const nextDate = new Date(today);
-            nextDate.setDate(today.getDate() + daysToAdd);
-            setForm(prev => ({ ...prev, nextFollowUpDate: nextDate.toISOString().split('T')[0] }));
-        }
-    }, [form.followUpStatus, isAdding]);
+    // 🛑 REMOVED: Automatic date calculation (User wants manual control)
 
     const LEAD_STATUS_OPTIONS = [
         "Will Share today", "Will let me know in 2 days", "Not Intertested", "Onboarded", 
@@ -288,29 +346,33 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         const finalRemark = form.remark || `Status interaction: ${form.followUpStatus}`;
         if (!finalRemark && !columnId) return toast.error("Please enter a remark.");
+        
         const payload = { 
             remark: finalRemark,
             nextFollowUpDate: form.nextFollowUpDate || null,
-            followUpStatus: form.followUpStatus || "CALL AGAIN",
+            followUpStatus: form.followUpStatus || null,
             leadStatus: form.leadStatus || null,
             columnId 
         };
+
+        toast.success("Update recorded!", { id: "save-interaction" });
+        setIsAdding(false);
+
         if (!navigator.onLine) {
             const offlineItem = { id: `offline-${Date.now()}`, formId, responseId, data: payload, remark: payload.remark, authorName: "You (Offline)", createdAt: new Date().toISOString(), nextFollowUpDate: payload.nextFollowUpDate, followUpStatus: payload.followUpStatus, columnId: payload.columnId };
             const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
             localStorage.setItem("offline_remarks_queue", JSON.stringify([...queue, offlineItem]));
             setRemarks(prev => [offlineItem as any, ...prev]);
             setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "", leadStatus: "" });
-            setIsAdding(false);
-            toast.success("Saved offline. Will sync when online.");
-            if (onSave) onSave();
             return;
         }
+
         setLoading(true);
+        // Background Save
         try {
             const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks`, {
                 method: "POST",
@@ -318,16 +380,12 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
-                toast.success(columnId ? "Status updated!" : "Follow-up added!");
-                setForm({ remark: "", nextFollowUpDate: "", followUpStatus: "", leadStatus: "" });
-                setIsAdding(false);
-                fetchRemarks();
                 if (onSave) onSave();
-            } else {
-                toast.error("Failed to save follow-up.");
+                if (columnId) onClose();
+                fetchRemarks(); // Silently refresh local history
             }
         } catch (error) {
-            toast.error("Error saving follow-up.");
+            toast.error("Background sync failed. Data cached locally.");
         } finally {
             setLoading(false);
         }

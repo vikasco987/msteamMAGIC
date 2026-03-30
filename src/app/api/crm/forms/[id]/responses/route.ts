@@ -165,9 +165,10 @@ export async function GET(
         console.log("📥 [PRO-LOG] [STEP 4 BACKEND] Received Conditions Map:", JSON.stringify(groupedConditions));
         console.log("📥 [PRO-LOG] [STEP 4 BACKEND] Conjunction:", conjunction);
 
-        // Localized Date Reference to handle timezone shifts
-        const todayRef = searchParams.get("today") || new Date().toISOString().split('T')[0];
-        const now = new Date(todayRef);
+        // Localized Date Reference to handle multi-date perspectives
+        const todayParams = (searchParams.get("today") || new Date().toISOString().split('T')[0]).split(",");
+        const perspectiveDates = todayParams.map(d => new Date(d));
+        const now = perspectiveDates[0]; // Primary reference for relative calcs like yesterday/tomorrow
 
         const advancedFilters: any[] = [];
         Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
@@ -179,41 +180,39 @@ export async function GET(
                 if (!op) return;
 
                 const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
-                    const isNum = colType === "number" || colType === "currency";
-                    const isDate = colType === "date";
-
-                    const castVal = (v: any) => {
-                        if (isNum && !isNaN(Number(v))) return String(v);
-                        // 🔥 Important: Do NOT trim strings globally here, 
-                        // as some legacy statuses or internal values may rely on exact match including spaces
-                        return v;
-                    };
-
                     switch (operator) {
-                        case "equals": return isNum ? { equals: castVal(value) } : { equals: castVal(value), mode: 'insensitive' as const };
-                        case "not_equals": return isNum ? { not: castVal(value) } : { not: castVal(value), mode: 'insensitive' as const };
-                        case "contains": return { contains: value, mode: 'insensitive' as const };
-                        case "starts_with": return { startsWith: value, mode: 'insensitive' as const };
-                        case "ends_with": return { endsWith: value, mode: 'insensitive' as const };
-                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' as const };
-                        case "is_empty": return { equals: "" };
-                        case "is_not_empty": return { not: "" };
-                        case "is_true": return { equals: "true" };
-                        case "is_false": return { equals: "false" };
-                        case "gt": return { gt: castVal(value) };
-                        case "lt": return { lt: castVal(value) };
-                        case "gte": return { gte: castVal(value) };
-                        case "lte": return { lte: castVal(value) };
-                        case "between": return { gte: castVal(value), lte: castVal(secondValue) };
-                        default: return { contains: value, mode: 'insensitive' as const };
+                        case "equals":
+                        case "equals_date":
+                            return { equals: value, mode: 'insensitive' };
+                        case "contains":
+                            return { contains: value, mode: 'insensitive' };
+                        case "greater_than":
+                        case "after":
+                            return { gt: value };
+                        case "less_than":
+                        case "before":
+                            return { lt: value };
+                        case "greater_than_or_equal":
+                        case "gte":
+                            return { gte: value };
+                        case "less_than_or_equal":
+                        case "lte":
+                            return { lte: value };
+                        case "between":
+                            return { gte: value, lte: secondValue };
+                        default:
+                            return { equals: value, mode: 'insensitive' };
                     }
                 };
 
                 if (colId === "__submittedAt") {
                     if (op === "today") {
-                        const start = new Date(); start.setHours(0, 0, 0, 0);
-                        const end = new Date(); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ submittedAt: { gte: start, lte: end } });
+                        const dateFilters = perspectiveDates.map(pDate => {
+                            const start = new Date(pDate); start.setHours(0, 0, 0, 0);
+                            const end = new Date(pDate); end.setHours(23, 59, 59, 999);
+                            return { submittedAt: { gte: start, lte: end } };
+                        });
+                        columnFilters.push({ OR: dateFilters });
                     } else if (op === "this_week") {
                         const now = new Date();
                         const start = new Date(now.setDate(now.getDate() - now.getDay()));
@@ -326,16 +325,37 @@ export async function GET(
                         const toISO = (d: Date) => d.toISOString().split('T')[0];
 
                         if (op === "today") {
-                            const str = todayRef;
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                            const dateFilters = todayParams.map(str => ({
+                                OR: [
+                                    { values: { some: { fieldId: colId, value: str } } },
+                                    { internalValues: { some: { columnId: colId, value: str } } }
+                                ]
+                            }));
+                            columnFilters.push({ OR: dateFilters });
                         } else if (op === "yesterday") {
-                            const d = new Date(now); d.setDate(d.getDate() - 1);
-                            const str = toISO(d);
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                            const dateFilters = perspectiveDates.map(pDate => {
+                                const d = new Date(pDate); d.setDate(d.getDate() - 1);
+                                const str = toISO(d);
+                                return {
+                                    OR: [
+                                        { values: { some: { fieldId: colId, value: str } } },
+                                        { internalValues: { some: { columnId: colId, value: str } } }
+                                    ]
+                                };
+                            });
+                            columnFilters.push({ OR: dateFilters });
                         } else if (op === "tomorrow") {
-                            const d = new Date(now); d.setDate(d.getDate() + 1);
-                            const str = toISO(d);
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
+                            const dateFilters = perspectiveDates.map(pDate => {
+                                const d = new Date(pDate); d.setDate(d.getDate() + 1);
+                                const str = toISO(d);
+                                return {
+                                    OR: [
+                                        { values: { some: { fieldId: colId, value: str } } },
+                                        { internalValues: { some: { columnId: colId, value: str } } }
+                                    ]
+                                };
+                            });
+                            columnFilters.push({ OR: dateFilters });
                         } else if (op === "this_week") {
                             const start = new Date(now.setDate(now.getDate() - now.getDay()));
                             columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: toISO(start) } } } }, { internalValues: { some: { columnId: colId, value: { gte: toISO(start) } } } }] });

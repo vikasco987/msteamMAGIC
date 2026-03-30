@@ -50,7 +50,7 @@ export async function POST(
                     responseId: cleanedResponseId,
                     remark,
                     nextFollowUpDate: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
-                    followUpStatus: followUpStatus || "scheduled",
+                    followUpStatus: followUpStatus || null,
                     leadStatus: leadStatus || null,
                     columnId: columnId?.trim() || null,
                     authorName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.emailAddresses[0].emailAddress.split('@')[0],
@@ -66,7 +66,7 @@ export async function POST(
                         responseId: cleanedResponseId,
                         remark,
                         nextFollowUpDate: nextFollowUpDate ? new Date(nextFollowUpDate) : null,
-                        followUpStatus: followUpStatus || "scheduled",
+                        followUpStatus: followUpStatus || null,
                         authorName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.emailAddresses[0].emailAddress.split('@')[0],
                         authorEmail: user.emailAddresses[0].emailAddress,
                         createdById: user.id
@@ -124,19 +124,28 @@ export async function POST(
         await processRemarkAutomation({
             responseId: cleanedResponseId,
             remark,
-            status: followUpStatus || "scheduled",
+            status: followUpStatus || null,
             userId: user.id,
             userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "Staff",
             formId: cleanedFormId
         });
 
         // Sync to Internal Values (Manual Upsert for MongoDB robustness)
-        const remarkCols = await prisma.internalColumn.findMany({
-            where: {
-                formId: cleanedFormId,
-                label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status"] }
-            }
-        });
+        // 🧩 FUZZY-SCHEMA SYNC: Find the "Calling Date" using partial matching to ignore trailing spaces
+        const [remarkFields, remarkCols] = await Promise.all([
+            prisma.formField.findMany({
+                where: { formId: cleanedFormId, label: { contains: "Calling Date", mode: 'insensitive' } }
+            }),
+            prisma.internalColumn.findMany({
+                where: {
+                    formId: cleanedFormId,
+                    OR: [
+                        { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status"] } },
+                        { label: { contains: "Calling Date", mode: 'insensitive' } }
+                    ]
+                }
+            })
+        ]);
 
         const syncToValue = async (colLabel: string, val: string) => {
             const col = remarkCols.find(c => c.label === colLabel);
@@ -167,6 +176,42 @@ export async function POST(
 
         if (leadStatus) {
             await syncToValue("Lead Status", leadStatus);
+        }
+
+        // 📅 CLOCK SYNC: Automatically update ANY "Calling Date" variants found in Internal Columns
+        const todayStr = new Date().toISOString().split('T')[0];
+        const actualCallingCols = remarkCols.filter(c => c.label.toLowerCase().includes("calling date"));
+        for (const col of actualCallingCols) {
+            await syncToValue(col.label, todayStr);
+        }
+
+        // 🛡️ STATIC FIELD FALLBACK: Update ANY "Calling Date" variants found in Form Fields
+        const dateFields = remarkFields.filter(f => f.label.toLowerCase().includes("calling date"));
+        if (dateFields.length > 0) {
+            const response = await prisma.formResponse.findUnique({ where: { id: cleanedResponseId } });
+            if (response) {
+                const currentValues = (response as any).values || [];
+                let updated = false;
+                const newValues = currentValues.map((v: any) => {
+                    if (dateFields.some(f => f.id === v.fieldId)) {
+                        updated = true;
+                        return { ...v, value: todayStr };
+                    }
+                    return v;
+                });
+
+                // Add if missing
+                if (!updated) {
+                    dateFields.forEach(f => {
+                        newValues.push({ fieldId: f.id, value: todayStr });
+                    });
+                }
+
+                await prisma.formResponse.update({
+                    where: { id: cleanedResponseId },
+                    data: { values: newValues } as any
+                });
+            }
         }
 
         // Sync to specific custom column if provided
