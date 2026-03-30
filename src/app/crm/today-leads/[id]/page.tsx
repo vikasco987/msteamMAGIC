@@ -576,15 +576,15 @@ export default function CRMSpreadsheetPage() {
         const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
         const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
         
-        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default
-        if (!isPrivileged && data?.form?.defaultColumnOrder && data.form.defaultColumnOrder.length > 0) {
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
+        if (!isPrivileged && data?.form?.defaultColumnOrder) {
             setColumnOrder(data.form.defaultColumnOrder);
             return;
         }
 
         if (localOrder) {
             try { setColumnOrder(JSON.parse(localOrder)); } catch (e) { console.error(e); }
-        } else if (data?.form?.defaultColumnOrder && data.form.defaultColumnOrder.length > 0) {
+        } else if (data?.form?.defaultColumnOrder) {
             setColumnOrder(data.form.defaultColumnOrder);
         }
     }, [params.id, data?.form?.defaultColumnOrder, userRole, isMaster, isPureMaster]);
@@ -604,14 +604,14 @@ export default function CRMSpreadsheetPage() {
         const localHidden = localStorage.getItem(`matrix_hidden_${params.id}`);
 
         // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default
-        if (!isPrivileged && data?.form?.defaultHiddenColumns && data.form.defaultHiddenColumns.length > 0) {
+        if (!isPrivileged && data?.form?.defaultHiddenColumns) {
             setHiddenColumns(data.form.defaultHiddenColumns);
             return;
         }
 
         if (localHidden) {
             try { setHiddenColumns(JSON.parse(localHidden)); } catch (e) { console.error(e); }
-        } else if (data?.form?.defaultHiddenColumns && data.form.defaultHiddenColumns.length > 0) {
+        } else if (data?.form?.defaultHiddenColumns) {
             setHiddenColumns(data.form.defaultHiddenColumns);
         }
     }, [params.id, data?.form?.defaultHiddenColumns, userRole, isMaster, isPureMaster]);
@@ -1524,13 +1524,16 @@ export default function CRMSpreadsheetPage() {
     };
 
     const handleSaveGlobalLayout = async () => {
-        if (!isMaster && !isPureMaster) {
+        if (!isPureMaster) {
             toast.error("Only Master Authority can push global protocols");
             return;
         }
 
-        const confirmPush = confirm("Push this layout to all users? This will become the default view for everyone who hasn't customized their matrix.");
+        const confirmPush = confirm("Push this layout as the GLOBAL MATRIX PROTOCOL? This will LOCK the format for all Sellers and Interns across the entire system.");
         if (!confirmPush) return;
+
+        // CRITICAL: Calculate FULL current order to ensure ALL columns are explicitly synced
+        const fullCurrentOrder = allColumns.map(c => c.id);
 
         setIsSyncing(true);
         try {
@@ -1538,15 +1541,16 @@ export default function CRMSpreadsheetPage() {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    defaultColumnOrder: columnOrder,
+                    defaultColumnOrder: fullCurrentOrder,
                     defaultHiddenColumns: hiddenColumns
                 })
             });
             if (!res.ok) throw new Error("Push failed");
-            toast.success("Global Protocol Applied! Everyone will now see this format.", { icon: "🌎" });
+            
+            toast.success("Master Protocol Synchronized! Everyone is now locked to this format.", { icon: "🌎" });
             fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
         } catch (err) {
-            toast.error("Global protocols sync failed");
+            toast.error("Master protocol sync failed");
         } finally {
             setIsSyncing(false);
         }
@@ -1558,7 +1562,7 @@ export default function CRMSpreadsheetPage() {
         if (data?.form) {
             setColumnOrder(data.form.defaultColumnOrder || []);
             setHiddenColumns(data.form.defaultHiddenColumns || []);
-            toast.success("Synchronized with system global format");
+            toast.success("Synchronized with Master Global Protocol");
         }
     };
 
@@ -5192,7 +5196,7 @@ export default function CRMSpreadsheetPage() {
                                                                                 }}
                                                                             >
                                                                                 <option value="">Option Metric</option>
-                                                                                {field?.options?.map((opt: any) => {
+                                                                                {(field as any)?.options?.map((opt: any) => {
                                                                                     const label = typeof opt === 'string' ? opt : opt.label;
                                                                                     return <option key={label} value={label}>{label}</option>;
                                                                                 })}
