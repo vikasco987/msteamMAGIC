@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { processRemarkAutomation } from "@/lib/automation";
+import { emitMatrixUpdate } from "@/lib/socket-server";
 
 export async function GET(
     req: NextRequest,
@@ -10,14 +11,11 @@ export async function GET(
     try {
         const { id, responseId } = await params;
         const { userId } = await auth();
-
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
         const remarks = await (prisma as any).formRemark.findMany({
             where: { responseId },
             orderBy: { createdAt: 'desc' }
         });
-
         return NextResponse.json({ remarks });
     } catch (error: any) {
         console.error("Remarks API Error:", error); return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
@@ -60,7 +58,6 @@ export async function POST(
             });
         } catch (e: any) {
             if (e.message.includes("columnId")) {
-                console.warn("Retrying remark without columnId due to client sync issues...");
                 newRemark = await (prisma as any).formRemark.create({
                     data: {
                         responseId: cleanedResponseId,
@@ -72,173 +69,63 @@ export async function POST(
                         createdById: user.id
                     }
                 });
-            } else {
-                throw e;
-            }
+            } else { throw e; }
         }
 
-        // Log action in Activity
-        await prisma.formActivity.create({
-            data: {
-                responseId: cleanedResponseId,
-                userId: user.id,
-                userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.emailAddresses[0].emailAddress.split('@')[0],
-                type: "NOTE_ADDED",
-                newValue: remark,
-                columnName: columnId ? "Status Update" : "Remark"
-            }
-        });
-
-        const form = await prisma.dynamicForm.findUnique({
-            where: { id: cleanedFormId },
-            select: { title: true, visibleToUsers: true }
-        });
-
-        const responseObj = await prisma.formResponse.findUnique({
-            where: { id: cleanedResponseId },
-            select: { assignedTo: true } as any
-        });
-
-        const notifyIds = (responseObj as any)?.assignedTo?.length
-            ? (responseObj as any).assignedTo
-            : (form?.visibleToUsers || []);
-
-        const recipients = notifyIds.filter((uid: string) => uid !== user.id);
-
-        if (recipients.length > 0) {
-            // Sequential to avoid createMany issues on some MongoDB versions
-            for (const uid of recipients) {
-                await prisma.notification.create({
-                    data: {
-                        userId: uid,
-                        type: "CRM_FOLLOWUP",
-                        title: `New Follow-up: ${form?.title || 'Form'}`,
-                        content: `${user.firstName || 'Staff'} added a remark: "${remark.substring(0, 40)}..."`,
-                        formId: cleanedFormId,
-                        responseId: cleanedResponseId
-                    }
-                });
-            }
-        }
-
-        await processRemarkAutomation({
-            responseId: cleanedResponseId,
-            remark,
-            status: followUpStatus || null,
-            userId: user.id,
-            userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "Staff",
-            formId: cleanedFormId
-        });
-
-        // Sync to Internal Values (Manual Upsert for MongoDB robustness)
-        // 🧩 FUZZY-SCHEMA SYNC: Find the "Calling Date" using partial matching to ignore trailing spaces
-        const [remarkFields, remarkCols] = await Promise.all([
-            prisma.formField.findMany({
-                where: { formId: cleanedFormId, label: { contains: "Calling Date", mode: 'insensitive' } }
-            }),
-            prisma.internalColumn.findMany({
-                where: {
-                    formId: cleanedFormId,
-                    OR: [
-                        { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status", "Status", "STATUS"] } },
-                        { label: { contains: "Calling Date", mode: 'insensitive' } }
-                    ]
+        // Broad-Spectrum Sync (Automation + Lifecycle)
+        await Promise.all([
+            prisma.formActivity.create({
+                data: {
+                    responseId: cleanedResponseId, userId: user.id,
+                    userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "Staff",
+                    type: "NOTE_ADDED", newValue: remark, columnName: columnId ? "Status Update" : "Remark"
                 }
+            }),
+            processRemarkAutomation({
+                responseId: cleanedResponseId, remark, status: followUpStatus || null,
+                userId: user.id, userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : "Staff", formId: cleanedFormId
             })
         ]);
 
-        // 🛡️ DATA NORMALIZATION ENGINE (TRIM & UNIFY)
-        const normalize = (s: any) => (typeof s === 'string' ? s.trim() : s);
-        const normFollowUp = normalize(followUpStatus);
-        const normLead = normalize(leadStatus);
-        const masterStatus = normFollowUp || normLead || null;
+        // 🛡️ FINANCIAL & TAXONOMY SYNC (STAYING ACCURATE)
+        const remarkCols = await prisma.internalColumn.findMany({
+            where: {
+                formId: cleanedFormId,
+                OR: [
+                    { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status", "Status", "STATUS", "Calling Status"] } },
+                    { label: { contains: "Calling Date", mode: 'insensitive' } }
+                ]
+            }
+        });
 
         const syncToValue = async (colLabel: string, val: string) => {
             if (!val) return;
-            const normalizedVal = normalize(val);
             const col = remarkCols.find(c => c.label.toUpperCase().trim() === colLabel.toUpperCase().trim());
             if (!col) return;
-            
-            const existing = await (prisma as any).internalValue.findFirst({
-                where: { responseId: cleanedResponseId, columnId: col.id }
-            });
-
+            const existing = await (prisma as any).internalValue.findFirst({ where: { responseId: cleanedResponseId, columnId: col.id } });
             if (existing) {
-                await (prisma as any).internalValue.update({
-                    where: { id: existing.id },
-                    data: { value: normalizedVal, updatedByName: user.firstName || "System" }
-                });
+                await (prisma as any).internalValue.update({ where: { id: existing.id }, data: { value: val.trim(), updatedByName: user.firstName || "System" } });
             } else {
-                await (prisma as any).internalValue.create({
-                    data: { responseId: cleanedResponseId, columnId: col.id, value: normalizedVal, updatedByName: user.firstName || "System" }
-                });
+                await (prisma as any).internalValue.create({ data: { responseId: cleanedResponseId, columnId: col.id, value: val.trim(), updatedByName: user.firstName || "System" } });
             }
         };
 
-        // 🚀 MIRROR FIX (Universal Broadcast)
-        // Whenever status is hit, we update ALL variants to keep data identical
+        const masterStatus = followUpStatus || leadStatus || null;
         if (masterStatus) {
-            const statusVariants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Interaction Status", "Lead Status", "Interaction Result"];
-            for (const variant of statusVariants) {
-                await syncToValue(variant, masterStatus);
-            }
+            const variants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status"];
+            for (const v of variants) await syncToValue(v, masterStatus);
         }
 
         await syncToValue("Recent Remark", remark);
         if (nextFollowUpDate) await syncToValue("Next Follow-up Date", String(nextFollowUpDate));
-
-        // 📅 CLOCK SYNC: Automatically update ANY "Calling Date" variants found in Internal Columns
+        
+        // 📅 CLOCK SYNC
         const todayStr = new Date().toISOString().split('T')[0];
         const actualCallingCols = remarkCols.filter(c => c.label.toLowerCase().includes("calling date"));
-        for (const col of actualCallingCols) {
-            await syncToValue(col.label, todayStr);
-        }
+        for (const col of actualCallingCols) await syncToValue(col.label, todayStr);
 
-        // 🛡️ STATIC FIELD FALLBACK: Update ANY "Calling Date" variants found in Form Fields
-        const dateFields = remarkFields.filter(f => f.label.toLowerCase().includes("calling date"));
-        if (dateFields.length > 0) {
-            const response = await prisma.formResponse.findUnique({ where: { id: cleanedResponseId } });
-            if (response) {
-                const currentValues = (response as any).values || [];
-                let updated = false;
-                const newValues = currentValues.map((v: any) => {
-                    if (dateFields.some(f => f.id === v.fieldId)) {
-                        updated = true;
-                        return { ...v, value: todayStr };
-                    }
-                    return v;
-                });
-
-                // Add if missing
-                if (!updated) {
-                    dateFields.forEach(f => {
-                        newValues.push({ fieldId: f.id, value: todayStr });
-                    });
-                }
-
-                await prisma.formResponse.update({
-                    where: { id: cleanedResponseId },
-                    data: { values: newValues } as any
-                });
-            }
-        }
-
-        // Sync to specific custom column if provided
-        if (columnId && followUpStatus) {
-            const existingCustom = await (prisma as any).internalValue.findFirst({
-                where: { responseId: cleanedResponseId, columnId: columnId.trim() }
-            });
-            if (existingCustom) {
-                await (prisma as any).internalValue.update({
-                    where: { id: existingCustom.id },
-                    data: { value: followUpStatus, updatedByName: user.firstName || "System" }
-                });
-            } else {
-                await (prisma as any).internalValue.create({
-                    data: { responseId: cleanedResponseId, columnId: columnId.trim(), value: followUpStatus, updatedByName: user.firstName || "System" }
-                });
-            }
-        }
+        // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
+        emitMatrixUpdate(); // 🛰️ REAL-TIME EMISSION
 
         return NextResponse.json({ success: true, remark: newRemark });
     } catch (error: any) {
@@ -253,25 +140,16 @@ export async function DELETE(
     try {
         const { id, responseId } = await params;
         const { userId } = await auth();
-
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
         const url = new URL(req.url);
         const remarkId = url.searchParams.get("remarkId");
-
-        if (!remarkId) {
-            return NextResponse.json({ error: "Remark ID required" }, { status: 400 });
-        }
-
+        if (!remarkId) return NextResponse.json({ error: "Remark ID required" }, { status: 400 });
         const dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
         if (!dbUser || (dbUser.role !== 'MASTER' && dbUser.role !== 'ADMIN')) {
-            return NextResponse.json({ error: "Forbidden: Only Admins can delete remarks" }, { status: 403 });
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
-
-        await (prisma as any).formRemark.delete({
-            where: { id: remarkId }
-        });
-
+        await (prisma as any).formRemark.delete({ where: { id: remarkId } });
+        emitMatrixUpdate(); // Sync on delete too! 🛰️
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error("Remarks API Error:", error); return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
