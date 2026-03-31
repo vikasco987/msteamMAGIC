@@ -78,7 +78,7 @@ export async function GET(req: Request) {
 
             const userCreatedTodayCount = responsesData.filter(r => r.submittedBy === uid && r.submittedAt >= start && r.submittedAt <= end).length;
             
-            // 🛡️ PILLAR 2: DYNAMIC REVENUE FLOW
+            // 🛡️ PILLAR 2: REVENUE FLOW (DYNAMIC FINANCIAL RECTIFICATION)
             const userTasks = allTasks.filter(t => {
                 const matchID = t.createdByClerkId === uid;
                 const matchName = t.createdByName && (t.createdByName.toLowerCase() === uName || t.createdByName.toLowerCase().includes(uName));
@@ -103,21 +103,18 @@ export async function GET(req: Request) {
                 return isDone && ref >= start && ref <= end;
             }).length;
 
-            // 🛡️ PILLAR 3: INTERACTION LOGIC (DAILY SHARDS)
+            // 🛡️ PILLAR 3: INTERACTION LOGIC
             const ALL_VALID_STATUSES = [...connectedStatuses, "RNR", "SWITCH OFF", "INVALID NUMBER"].map(s => s.toUpperCase());
             const userRemarks = remarkStats.filter(r => r.createdById === uid);
-
             const filterInteracted = (r: any) => {
                 const statusRaw = (r.followUpStatus || "").trim().toUpperCase();
                 const hasStatus = ALL_VALID_STATUSES.includes(statusRaw);
                 const hasText = (r.remark || "").trim().length > 0;
                 return hasStatus || hasText;
             };
-
             const reachoutSet = new Set(userRemarks.filter(filterInteracted).map(r => r.responseId));
             const connSet = new Set(userRemarks.filter(r => connectedStatuses.map(s => s.toUpperCase()).includes((r.followUpStatus || "").trim().toUpperCase())).map(r => r.responseId));
 
-            // Sharding Interaction into New vs Followup
             const newRemarks = userRemarks.filter(r => r.columnId); 
             const newReachCount = new Set(newRemarks.filter(filterInteracted).map(r => r.responseId)).size;
             const newConnCount = new Set(newRemarks.filter(r => connectedStatuses.map(s => s.toUpperCase()).includes((r.followUpStatus || "").trim().toUpperCase())).map(r => r.responseId)).size;
@@ -126,8 +123,10 @@ export async function GET(req: Request) {
             const fuCallsCount = new Set(fuRemarks.filter(filterInteracted).map(r => r.responseId)).size;
             const fuConnCount = new Set(fuRemarks.filter(r => connectedStatuses.map(s => s.toUpperCase()).includes((r.followUpStatus || "").trim().toUpperCase())).map(r => r.responseId)).size;
 
-            // 🛡️ SYNC: Today ONB (Onboarding)
             const todayOnbCount = new Set(userRemarks.filter(r => onboardingStatusesLower.includes((r.followUpStatus || "").toLowerCase())).map(r => r.responseId)).size;
+
+            const todoTasksCount = userTasks.filter(t => (t.status || "").toLowerCase() === "todo").length;
+            const progressTasksCount = userTasks.filter(t => (t.status || "").toLowerCase() === "inprogress").length;
 
             return {
                 userId: uid,
@@ -143,17 +142,27 @@ export async function GET(req: Request) {
                 newConnected: newConnCount,
                 followupCalls: fuCallsCount,
                 followupConnected: fuConnCount,
-                todayOnb: todayOnbCount, // 🛡️ NEW SHARD
+                todayOnb: todayOnbCount,
                 sales: todaySalesCount, 
                 totalSales: mtdSalesTotal, 
-                todo: userTasks.filter(t => (t.status || "").toLowerCase() === "todo").length,
-                progress: userTasks.filter(t => (t.status || "").toLowerCase() === "inprogress").length,
+                todo: todoTasksCount,
+                progress: progressTasksCount,
                 paymentPending: mtdPendingTotal,
                 receivedAmount: mtdReceivedTotal
             };
         });
 
-        const sortedReport = report.sort((a, b) => b.reachout - a.reachout);
+        // 🛡️ RECHOUT-ONLY PROTOCOL: Filter out users with ZERO total activity
+        const activeReport = report.filter(u => 
+            u.reachout > 0 || 
+            u.todo > 0 || 
+            u.progress > 0 || 
+            u.totalSales > 0 || 
+            u.receivedAmount > 0 || 
+            u.submissionsFilled > 0
+        );
+
+        const sortedReport = activeReport.sort((a, b) => b.reachout - a.reachout);
         return NextResponse.json({ report: sortedReport });
 
     } catch (error: any) {
