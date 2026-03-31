@@ -125,7 +125,8 @@ export async function POST(
         for (const col of actualCallingCols) await syncToValue(col.label, todayStr);
 
         // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
-        emitMatrixUpdate(); // 🛰️ REAL-TIME EMISSION
+        console.log("Triggering Real-time Matrix Sync Shard... 🛰️");
+        await emitMatrixUpdate(); // 🛰️ REAL-TIME EMISSION (MUST AWAIT ON VERCEL)
 
         return NextResponse.json({ success: true, remark: newRemark });
     } catch (error: any) {
@@ -149,7 +150,8 @@ export async function DELETE(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
         await (prisma as any).formRemark.delete({ where: { id: remarkId } });
-        emitMatrixUpdate(); // Sync on delete too! 🛰️
+        console.log("Triggering Real-time Delete Sync Shard... 🛰️");
+        await emitMatrixUpdate(); // Sync on delete too! 🛰️ (MUST AWAIT ON VERCEL)
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error("Remarks API Error:", error); return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });

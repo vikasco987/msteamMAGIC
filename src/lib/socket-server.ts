@@ -18,14 +18,26 @@ export type NextApiResponseWithSocket = NextApiResponse & {
  * 2. SOCKET.IO (SECONDARY): Persistent singleton for local development.
  */
 
-// 🟢 Strategy 1: Pusher Construction (Backend Shard)
-const pusher = new Pusher({
-  appId: process.env.PUSHER_APP_ID || "",
-  key: process.env.NEXT_PUBLIC_PUSHER_KEY || process.env.PUSHER_KEY || "",
-  secret: process.env.PUSHER_SECRET || "",
-  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || process.env.PUSHER_CLUSTER || "ap2",
-  useTLS: true,
-});
+// 🟢 Strategy 1: Pusher Construction (Lazy Shard)
+let pusherInstance: Pusher | null = null;
+
+const getPusher = () => {
+    if (pusherInstance) return pusherInstance;
+    
+    // 🛡️ RECTIFICATION: MUST HAVE ALL KEYS FOR PRODUCTION SYNC
+    const appId = process.env.PUSHER_APP_ID;
+    const key = process.env.PUSHER_KEY || process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const secret = process.env.PUSHER_SECRET;
+    const cluster = process.env.PUSHER_CLUSTER || process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "ap2";
+
+    if (!appId || !key || !secret) {
+        console.warn("Real-time Broadcast Paused: Pusher Credentials Missing in Shard! 🛸");
+        return null;
+    }
+
+    pusherInstance = new Pusher({ appId, key, secret, cluster, useTLS: true });
+    return pusherInstance;
+};
 
 let globalIO: SocketIOServer | null = null;
 
@@ -56,12 +68,15 @@ export const emitMatrixUpdate = async () => {
     const EVENT_NAME = "matrix_update";
 
     // 🟠 MODE A: SaaS CLOUD RELAY (PUSHER)
-    if (process.env.PUSHER_APP_ID) {
+    const p = getPusher();
+    if (p) {
         try {
             console.log(`Broadcasting to [${CHANNEL_NAME}] via Pusher Cloud! ☁️`);
-            await pusher.trigger(CHANNEL_NAME, EVENT_NAME, { 
-                timestamp: Date.now() 
+            await p.trigger(CHANNEL_NAME, EVENT_NAME, { 
+                timestamp: Date.now(),
+                pulseType: "UI_REFETCH"
             });
+            console.log("Cloud Shard Dispatched: Pusher Handshake Successful! ✅");
         } catch (error) {
             console.error("Pusher Broadcast Failed:", error);
         }
@@ -73,7 +88,7 @@ export const emitMatrixUpdate = async () => {
         globalIO.emit(EVENT_NAME, { timestamp: Date.now() });
     }
 
-    if (!globalIO && !process.env.PUSHER_APP_ID) {
-        console.warn("Real-time Broadcast Pulsed 🛸 (No active provider detected)");
+    if (!globalIO && !p) {
+        console.warn("Real-time Broadcast Pulsed 🛸 (No active provider or credentials detected)");
     }
 };
