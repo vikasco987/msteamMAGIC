@@ -53,20 +53,23 @@ export default function GrandMatrixPage() {
         } finally { if (!silent) setLoading(false); }
     };
 
-    // ⚡ PRO-LEVEL SaaS SYNC PROTOCOL (STRICTLY CLIENT-SIDE)
+    // ⚡ ENTERPRISE REAL-TIME SYNC PROTOCOL
     useEffect(() => {
         fetchMatrix();
 
         // 🟠 STRATEGY 1: PUSHER CLOUD (SaaS/PRODUCTION)
         const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+        const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2';
+        
         let pusherChannel: any = null;
         let pusherInstance: any = null;
 
         if (pusherKey) {
-            pusherInstance = new Pusher(pusherKey, { cluster: 'ap2' });
+            console.log("SaaS PRODUCTION SYNC: Registering Pusher Listener Hub... ☁️");
+            pusherInstance = new Pusher(pusherKey, { cluster: pusherCluster });
             pusherChannel = pusherInstance.subscribe('operational-matrix');
             pusherChannel.bind('matrix_update', () => {
-                console.log("SaaS Shard Synchronized via Pusher Cloud! ☁️");
+                console.log("Cloud Shard Dispatched: Silent Matrix Update Triggered! 🛸");
                 fetchMatrix(true);
             });
         }
@@ -74,15 +77,17 @@ export default function GrandMatrixPage() {
         // 🟢 STRATEGY 2: LOCAL SOCKET.IO (DEV/LOCAL)
         const socket = io({ 
             path: "/api/socket",
-            addTrailingSlash: false
+            addTrailingSlash: false,
+            // 🛡️ RECONNECT LOGIC (FOR STABILITY)
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
         });
         
         socket.on("matrix_update", () => {
-             console.log("Local Heartbeat Synchronized via Socket Cluster! 🛰️");
+             console.log("Local Heartbeat Unified: Silent Matrix Update Triggered! 🛰️");
              fetchMatrix(true);
         });
 
-        // 📅 Visibility Focus Sync
         const handleFocus = () => fetchMatrix(true);
         window.addEventListener("focus", handleFocus);
 
@@ -121,7 +126,7 @@ export default function GrandMatrixPage() {
 
     return (
         <div className={`min-h-screen transition-all duration-700 ${isDark ? 'bg-[#0a0c10] text-slate-300' : 'bg-slate-50 text-slate-700'} font-sans`}>
-            {/* Header */}
+            {/* Header (Cyber-Audit Aesthetic) */}
             <div className={`border-b transition-all sticky top-0 z-40 ${isDark ? 'bg-[#12141a]/80 border-white/5 shadow-2xl shadow-black/80' : 'bg-white/90 border-slate-200 shadow-sm'} backdrop-blur-3xl`}>
                 <div className="max-w-full mx-auto px-8 py-6 flex flex-col lg:flex-row justify-between items-center gap-8">
                     <div className="flex items-center gap-6">
@@ -130,10 +135,10 @@ export default function GrandMatrixPage() {
                             <div className="flex items-center gap-1.5">
                                 <h1 className={`text-2xl font-black tracking-tighter uppercase italic ${isDark ? 'text-white' : 'text-slate-900'}`}>Operational Matrix</h1>
                                 <div className="p-1 px-2 mb-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg flex items-center gap-1.5 shadow-inner">
-                                    <Zap className="text-emerald-500 animate-pulse" size={10} /><span className="text-[8px] font-black tracking-[0.1em] text-emerald-500 uppercase">Hybrid Sync Active</span>
+                                    <Zap className="text-emerald-500 animate-pulse" size={10} /><span className="text-[8px] font-black tracking-[0.1em] text-emerald-500 uppercase">Live Pulse Hub</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5"><span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>SaaS Intelligence Engine • Phase 4 Operational Matrix</span></div>
+                            <div className="flex items-center gap-2 mt-0.5"><span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Enterprise SaaS Engine • Shard Fidelity Active</span></div>
                         </div>
                     </div>
 
@@ -151,15 +156,15 @@ export default function GrandMatrixPage() {
                             <button onClick={() => setViewMode("MASTER")} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === "MASTER" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : isDark ? "text-slate-500 hover:text-white" : "text-slate-400 hover:text-slate-900"}`}>Master Hub</button>
                             <button onClick={() => setViewMode("DEEP_DIVE")} className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === "DEEP_DIVE" ? "bg-rose-600 text-white shadow-lg shadow-rose-500/20" : isDark ? "text-slate-500 hover:text-white" : "text-slate-400 hover:text-slate-900"}`}>Deep Audit</button>
                         </div>
-                        <button onClick={() => fetchMatrix()} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:-translate-y-1 transition-all flex items-center gap-2 ${isDark ? 'bg-emerald-600 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white'}`}>
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Sync
+                        <button onClick={() => fetchMatrix()} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl hover:-translate-y-1 transition-all flex items-center gap-2 ${isDark ? 'bg-emerald-600 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white shadow-slate-900/10'}`}>
+                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Force Sync
                         </button>
                     </div>
                 </div>
             </div>
 
             <main className="max-w-full mx-auto p-4 md:p-8">
-                {/* 🛡️ DASHBOARD GRIDS (16 CARDS) */}
+                {/* Dashboard Shards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 mb-2 animate-in fade-in slide-in-from-top-6 duration-700">
                     {[
                         { label: "Reachout", val: stats?.reachout, icon: Target, color: "emerald" },
@@ -187,7 +192,8 @@ export default function GrandMatrixPage() {
                     ))}
                 </div>
 
-                <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
+                {/* Table Data Matrix */}
+                 <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
                     {loading && (
                         <div className={`absolute inset-0 z-30 backdrop-blur-md flex items-center justify-center ${isDark ? 'bg-[#0a0c10]/60' : 'bg-white/60'}`}>
                             <div className={`w-12 h-12 border-4 border-t-transparent rounded-full animate-spin border-indigo-500`} />
@@ -195,6 +201,7 @@ export default function GrandMatrixPage() {
                     )}
                     <div className="overflow-x-auto relative mt-8">
                         <table className="w-full border-collapse min-w-[3200px]">
+                            {/* MASTER Table Structure */}
                             {viewMode === "MASTER" ? (
                                 <>
                                     <thead>
