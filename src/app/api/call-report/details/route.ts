@@ -19,47 +19,20 @@ export async function GET(req: Request) {
         const start = startOfDay(targetDate);
         const end = endOfDay(targetDate);
 
-        // 🛡️ MANUAL DATE PARITY BOOST
-        // Fetch Internal Values for 'Calling Date' or 'Interaction Date' columns for today
-        const internalCols = await prisma.internalColumn.findMany({
-            where: { label: { contains: "Calling", mode: 'insensitive' } } // Target calling date columns
-        });
-        const colIds = internalCols.map(c => c.id);
-
-        const [remarks, manualDates] = await Promise.all([
+        // 🛡️ ANALYTICAL ISOLATION: Fetch only remarks logged by THIS specific staff member today
+        const [remarks] = await Promise.all([
             prisma.formRemark.findMany({ 
                 where: {
                     createdById: userId,
                     createdAt: { gte: start, lte: end }
                 }
-            }),
-            prisma.internalValue.findMany({
-                where: {
-                    columnId: { in: colIds },
-                    value: { gte: start.toISOString(), lte: end.toISOString() },
-                    response: { assignedTo: { has: userId } } // Leads assigned to THIS user
-                }
             })
         ]);
 
-        console.log(`Details API: Found ${remarks.length} remarks and ${manualDates.length} manual matches for ${userId}`);
-
-        // Target valid call statuses (EXHAUSTIVE LIST for JS Filtering)
-        const targetStatuses = [
-            "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER",
-            "CALLED", "NOT INTERESTED", "WALKED IN", "FOLLOW-UP DONE", "MISSED", "CLOSED", "WALK-IN SCHEDULED",
-            "INTERESTED", "BUSY", "CONNECTED", "ONBOARDED", "ONBOARDING", "PAYMENT PENDING", "FOLLOW UP", "SCHEDULED", "REJECTED"
-        ];
-
-        // 2. Identify Unique Leads (Response IDs) based on 'type'
         const responseIdInteractions = new Map<string, { type: 'NEW' | 'FOLLOWUP' }>();
-        const processedResponseIds = new Set<string>();
 
-        // 🟢 BRANCH 1: System Interactions
         for (const r of remarks) {
             const respId = r.responseId;
-            processedResponseIds.add(respId);
-
             if (!responseIdInteractions.has(respId)) {
                 responseIdInteractions.set(respId, { type: 'FOLLOWUP' });
             }
@@ -68,17 +41,6 @@ export async function GET(req: Request) {
             }
         }
 
-        // 🔵 BRANCH 2: Manual Schedules (only if not already remarked)
-        for (const m of manualDates) {
-            const respId = m.responseId;
-            if (processedResponseIds.has(respId)) continue;
-
-            if (!responseIdInteractions.has(respId)) {
-                responseIdInteractions.set(respId, { type: 'FOLLOWUP' });
-            }
-        }
-
-        // Filter based on requested type (NEW, FOLLOWUP, or COMBINED)
         const targetResponseIds = Array.from(responseIdInteractions.entries())
             .filter(([_, info]) => {
                 if (type === "COMBINED") return true;
@@ -91,6 +53,8 @@ export async function GET(req: Request) {
         }
 
         // 3. Fetch full Response details grouped by Form
+        // 🛡️ CRITICAL FIX: The 'remarks' sub-query MUST be filtered by createdById: userId
+        // This prevents re-assigned lead remarks from leaking into the wrong staff card.
         const responses = await prisma.formResponse.findMany({
             where: { id: { in: targetResponseIds } },
             include: {
@@ -103,7 +67,7 @@ export async function GET(req: Request) {
                 values: true,
                 internalValues: true,
                 remarks: {
-                    // Fetch LAST remark for context, preferring the one from today
+                    where: { createdById: userId, createdAt: { gte: start, lte: end } },
                     orderBy: { createdAt: 'desc' },
                     take: 1
                 }
@@ -120,14 +84,18 @@ export async function GET(req: Request) {
                     responses: []
                 };
             }
+            
+            // Preferred remark context
+            const relevantRemark = res.remarks[0];
+
             groupedByForm[res.formId].responses.push({
                 id: res.id,
                 submittedByName: res.submittedByName,
                 submittedAt: res.submittedAt,
-                lastStatus: res.remarks[0]?.followUpStatus || "N/A",
-                lastRemark: res.remarks[0]?.remark || "",
-                interactionDate: res.remarks[0]?.createdAt || res.submittedAt, 
-                interactedBy: res.remarks[0]?.authorName || "System", // WHO DID THIS?
+                lastStatus: relevantRemark?.followUpStatus || "N/A",
+                lastRemark: relevantRemark?.text || relevantRemark?.remark || "",
+                interactionDate: relevantRemark?.createdAt || res.submittedAt, 
+                interactedBy: relevantRemark?.authorName || "Staff Member", 
                 values: res.values.map(v => ({ fieldId: v.fieldId, value: v.value })),
                 internalValues: res.internalValues.map(v => ({ columnId: v.columnId, value: v.value }))
             });

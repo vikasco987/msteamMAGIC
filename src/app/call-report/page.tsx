@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { format, subDays, addDays } from "date-fns";
-import { PieChart, PhoneCall, Calendar, Activity, ChevronRight, Hash, CheckCircle2, XCircle, Database, Download } from "lucide-react";
+import { PieChart, PhoneCall, Calendar, Activity, ChevronRight, Hash, CheckCircle2, XCircle, Database, Download, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 
 type UserReport = {
@@ -12,9 +12,11 @@ type UserReport = {
     callCount: number;
     connectedCount: number;
     notConnectedCount: number;
+    rawRemarks?: number; // 🛡️ NEW METRIC
 };
 
 type ReportData = {
+    reports: any[]; // 🛡️ FULL DATA SOURCE
     followUpReport: UserReport[];
     newCallReport: UserReport[];
     combinedReport: UserReport[];
@@ -167,9 +169,7 @@ export default function CallReportPage() {
                                 "Global Team Performance"}
                     </h2>
                     <p className="text-white/80 font-bold uppercase tracking-widest text-[10px]">
-                        {activeTab === "NEW" ? "Tracking first interactions from 'Status' columns" :
-                            activeTab === "FOLLOWUP" ? "Tracking CRM follow-up interactions" :
-                                "Aggregated stats from all client touchpoints"}
+                         Aggregated stats from all client touchpoints
                     </p>
                 </div>
                 <div className="flex gap-10 relative z-10 shrink-0">
@@ -179,9 +179,9 @@ export default function CallReportPage() {
                     </div>
                     <div className="w-px h-12 bg-white/20 self-center" />
                     <div className="text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-60">Connected Rate</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-60">Total Remarks</p>
                         <p className="text-4xl font-black tracking-tighter">
-                            {totalLeads > 0 ? Math.round((totalConnected / totalLeads) * 100) : 0}%
+                            {data?.reports?.reduce((acc, curr) => acc + curr.stats.rawRemarks, 0) || 0}
                         </p>
                     </div>
                 </div>
@@ -200,14 +200,15 @@ export default function CallReportPage() {
                         <PhoneCall size={40} />
                     </div>
                     <h3 className="text-2xl font-black text-slate-700">No Activity Detected</h3>
-                    <p className="text-sm font-bold text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed uppercase tracking-widest space-y-2">
-                        <span>Zero interactions recorded in the</span><br />
-                        <span className="text-indigo-600 px-2 py-1 bg-indigo-50 rounded-lg">{activeTab} section</span>
-                    </p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {currentReport.map((user, idx) => (
+                    {currentReport.map((user, idx) => {
+                        // Find the raw remark count from the base report source
+                        const identity = data?.reports?.find(r => r.userId === user.userId);
+                        const remarkVolume = identity?.stats?.rawRemarks || 0;
+
+                        return (
                         <div
                             key={user.userId}
                             onClick={() => window.location.href = `/call-report/details?userId=${user.userId}&date=${format(date, "yyyy-MM-dd")}&type=${activeTab}&name=${encodeURIComponent(user.name)}`}
@@ -235,14 +236,17 @@ export default function CallReportPage() {
                             </div>
 
                             <h3 className="font-black text-slate-800 text-lg truncate mb-1 pr-4">{user.name}</h3>
-                            {user.email && <p className="text-[9px] font-black text-slate-400 truncate uppercase tracking-widest opacity-60">{user.email}</p>}
+                            <div className="flex items-center gap-2 mt-1">
+                                <MessageSquare size={10} className="text-indigo-500" />
+                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{remarkVolume} Total Remarks</span>
+                            </div>
 
                             <div className="mt-8 pt-6 border-t border-slate-50 flex flex-col gap-4">
                                 <div className="space-y-3">
                                     <div className="flex flex-col gap-1.5">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
                                             <span className="text-emerald-600">
-                                                {activeTab === "NEW" ? "Connected New" : activeTab === "FOLLOWUP" ? "Connected Follow-ups" : "Combined Connected"}
+                                                Connected Leads
                                             </span>
                                             <span className="text-slate-900">{user.connectedCount}</span>
                                         </div>
@@ -256,15 +260,13 @@ export default function CallReportPage() {
 
                                     <div className="flex flex-col gap-1.5">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
-                                            <span className="text-rose-500">
-                                                {activeTab === "NEW" ? "Not Connected New" : activeTab === "FOLLOWUP" ? "Not Connected Follow-ups" : "Combined Unconnected"}
-                                            </span>
-                                            <span className="text-slate-900">{user.notConnectedCount}</span>
+                                            <span className="text-indigo-500 font-black">Velocity Score</span>
+                                            <span className="text-indigo-600">{(remarkVolume / user.callCount).toFixed(1)}x</span>
                                         </div>
                                         <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
                                             <div
-                                                className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full transition-all duration-1000"
-                                                style={{ width: `${(user.notConnectedCount / user.callCount) * 100 || 0}%` }}
+                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000"
+                                                style={{ width: `${Math.min((remarkVolume / (user.callCount * 2)) * 100, 100) || 0}%` }}
                                             />
                                         </div>
                                     </div>
@@ -279,9 +281,10 @@ export default function CallReportPage() {
                                 </div>
                             </div>
                         </div>
-                    ))}
+                    );})}
                 </div>
-            )}
+            )
+            }
 
             {/* 🗺️ UNIVERSAL ANALYTICAL MATRIX (Gateway to dedicated page) */}
             <div className="mt-20 p-12 bg-white rounded-[48px] border border-slate-100 shadow-2xl shadow-indigo-100/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group">

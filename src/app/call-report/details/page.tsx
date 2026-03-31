@@ -15,7 +15,12 @@ import {
     ExternalLink,
     Filter,
     Activity,
-    CheckCircle2
+    CheckCircle2,
+    MessageSquare,
+    PhoneCall,
+    PhoneOff,
+    RotateCcw,
+    PowerOff
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -89,9 +94,19 @@ export default function CallReportDetailsPage() {
         return res.values.find((v: any) => v.fieldId === fieldId)?.value || "—";
     };
 
-    const getInternalValue = (res: any, columnId: string) => {
-        return res.internalValues.find((v: any) => v.columnId === columnId)?.value || "—";
-    };
+    const stats = useMemo(() => {
+        if (!data) return null;
+        const all = data.forms.flatMap(f => f.responses);
+        
+        return {
+            total: all.length,
+            remarks: all.filter(r => r.lastRemark).length,
+            rnr: all.filter(r => (r.lastStatus || "").toUpperCase().includes("RNR")).length,
+            callAgain: all.filter(r => (r.lastStatus || "").toUpperCase().includes("AGAIN")).length,
+            switchOff: all.filter(r => (r.lastStatus || "").toUpperCase().includes("OFF")).length,
+            connected: all.filter(r => ["CALL DONE", "CONNECTED", "INTERESTED", "CLOSED"].some(s => (r.lastStatus || "").toUpperCase().includes(s))).length,
+        };
+    }, [data]);
 
     if (loading) {
         return (
@@ -146,6 +161,59 @@ export default function CallReportDetailsPage() {
                 </div>
             </div>
 
+            {/* 🛡️ LIVE BREAKDOWN SHARDS */}
+            {stats && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center text-center group hover:shadow-lg transition-all duration-300">
+                        <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-3">
+                            <Layers size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Leads</p>
+                        <p className="text-2xl font-black text-slate-800 tracking-tighter">{stats.total}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center text-center group hover:shadow-lg transition-all duration-300">
+                        <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-3">
+                            <CheckCircle2 size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Connected</p>
+                        <p className="text-2xl font-black text-emerald-600 tracking-tighter">{stats.connected}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center text-center group hover:shadow-lg transition-all duration-300">
+                        <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-3">
+                            <RotateCcw size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Call Again</p>
+                        <p className="text-2xl font-black text-amber-600 tracking-tighter">{stats.callAgain}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center text-center group hover:shadow-lg transition-all duration-300">
+                        <div className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-3">
+                            <PhoneOff size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total RNR</p>
+                        <p className="text-2xl font-black text-rose-600 tracking-tighter">{stats.rnr}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm flex flex-col items-center text-center group hover:shadow-lg transition-all duration-300">
+                        <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center mb-3">
+                            <PowerOff size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Switch Off</p>
+                        <p className="text-2xl font-black text-slate-800 tracking-tighter">{stats.switchOff}</p>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[32px] border border-indigo-100 shadow-xl shadow-indigo-100/50 flex flex-col items-center text-center group hover:shadow-indigo-200 transition-all duration-300">
+                        <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center mb-3 shadow-lg shadow-indigo-200">
+                            <MessageSquare size={18} />
+                        </div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Remarks</p>
+                        <p className="text-2xl font-black text-indigo-600 tracking-tighter">{stats.remarks}</p>
+                    </div>
+                </div>
+            )}
+
             {/* Content Section */}
             {!data?.forms || data.forms.length === 0 ? (
                 <div className="bg-white rounded-[40px] p-24 text-center border border-slate-100 shadow-sm">
@@ -198,7 +266,6 @@ export default function CallReportDetailsPage() {
                                         </thead>
                                         <tbody>
                                             {filteredResponses.map((res, rIdx) => {
-                                                // Dynamic discovery of Phone and Services fields
                                                 const phoneField = formGroup.form.fields.find(f => 
                                                     f.label.toUpperCase().includes("PHONE") || 
                                                     f.label.toUpperCase().includes("MOBILE") ||
@@ -212,21 +279,17 @@ export default function CallReportDetailsPage() {
 
                                                 return (
                                                     <tr key={res.id} className="group/row hover:bg-slate-50/50 transition-colors border-b border-slate-50 last:border-0 min-h-[80px]">
-                                                        {/* 1. Row No */}
                                                         <td className="px-6 py-6 text-xs font-black text-slate-400">
                                                             {rIdx + 1}
                                                         </td>
-                                                        {/* 2. Phone Number */}
                                                         <td className="px-6 py-6 text-sm font-black text-indigo-600 tracking-tight">
                                                             {phoneField ? getFieldValue(res, phoneField.id) : "N/A"}
                                                         </td>
-                                                        {/* 3. Services */}
                                                         <td className="px-6 py-6">
                                                             <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200">
                                                                 {servicesField ? getFieldValue(res, servicesField.id) : "—"}
                                                             </span>
                                                         </td>
-                                                        {/* 4. Interaction Log - FULL SHOW */}
                                                         <td className="px-6 py-6">
                                                             <div className="flex flex-col gap-1.5">
                                                                 <p className="text-sm font-bold text-slate-700 leading-relaxed max-w-2xl whitespace-pre-wrap">{res.lastRemark || "No interaction notes recorded."}</p>
@@ -243,7 +306,6 @@ export default function CallReportDetailsPage() {
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        {/* 5. Contact Action */}
                                                         <td className="px-6 py-6">
                                                             <span className={`px-4 py-1.5 rounded-xl font-black text-[10px] uppercase tracking-widest border shadow-sm ${
                                                                 ['Closed', 'Call done', 'Follow-up Done', 'Walked In', 'CONNECTED', 'INTERESTED', 'ONBOARDED'].includes((res.lastStatus || "").toUpperCase()) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -253,12 +315,10 @@ export default function CallReportDetailsPage() {
                                                                 {res.lastStatus}
                                                             </span>
                                                         </td>
-                                                        {/* Raw Action */}
                                                         <td className="px-6 py-6 text-right">
                                                             <button 
-                                                                onClick={() => window.open(`/crm/forms/${formGroup.form.id}/responses?fullview=true`, '_blank')}
+                                                                onClick={() => window.open(`/crm/forms/${formGroup.form.id}/responses/${res.id}/remarks?fullview=true`, '_blank')}
                                                                 className="p-3 bg-slate-50 hover:bg-white text-slate-400 hover:text-indigo-600 border border-slate-100 hover:border-indigo-200 rounded-2xl transition-all shadow-sm group-hover/row:scale-110"
-                                                                title="Navigate to Form Context"
                                                             >
                                                                 <ExternalLink size={16} />
                                                             </button>
