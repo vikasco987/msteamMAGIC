@@ -53,11 +53,14 @@ export default function GrandMatrixPage() {
         } finally { if (!silent) setLoading(false); }
     };
 
-    // ⚡ ENTERPRISE REAL-TIME SYNC PROTOCOL
+    // ⚡ ENTERPRISE REAL-TIME SYNC HUB (STABILIZED)
     useEffect(() => {
         fetchMatrix();
 
-        // 🟠 STRATEGY 1: PUSHER CLOUD (SaaS/PRODUCTION)
+        const CHANNEL_NAME = "operational-matrix";
+        const EVENT_NAME = "matrix_update";
+
+        // 🟠 MODE A: SaaS CLOUD RELAY (PUSHER)
         const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
         const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2';
         
@@ -65,26 +68,26 @@ export default function GrandMatrixPage() {
         let pusherInstance: any = null;
 
         if (pusherKey) {
-            console.log("SaaS PRODUCTION SYNC: Registering Pusher Listener Hub... ☁️");
+            console.log(`Cloud Shard: Initializing [${CHANNEL_NAME}] Hub... ☁️`);
             pusherInstance = new Pusher(pusherKey, { cluster: pusherCluster });
-            pusherChannel = pusherInstance.subscribe('operational-matrix');
-            pusherChannel.bind('matrix_update', () => {
-                console.log("Cloud Shard Dispatched: Silent Matrix Update Triggered! 🛸");
+            pusherChannel = pusherInstance.subscribe(CHANNEL_NAME);
+            
+            pusherChannel.bind(EVENT_NAME, (data: any) => {
+                console.log(`Cloud Pulse Received: [${EVENT_NAME}] Shard Operational! 🛸`, data);
                 fetchMatrix(true);
             });
         }
 
-        // 🟢 STRATEGY 2: LOCAL SOCKET.IO (DEV/LOCAL)
+        // 🟢 MODE B: LOCAL CLUSTER (SOCKET.IO)
         const socket = io({ 
             path: "/api/socket",
             addTrailingSlash: false,
-            // 🛡️ RECONNECT LOGIC (FOR STABILITY)
-            reconnectionAttempts: 5,
+            reconnectionAttempts: 8,
             reconnectionDelay: 1000
         });
         
-        socket.on("matrix_update", () => {
-             console.log("Local Heartbeat Unified: Silent Matrix Update Triggered! 🛰️");
+        socket.on(EVENT_NAME, () => {
+             console.log(`Local Pulse Received: [${EVENT_NAME}] Sync Operational! 🛰️`);
              fetchMatrix(true);
         });
 
@@ -96,7 +99,7 @@ export default function GrandMatrixPage() {
                 pusherChannel?.unbind_all();
                 pusherInstance.disconnect();
             }
-            socket.off("matrix_update");
+            socket.off(EVENT_NAME);
             socket.disconnect();
             window.removeEventListener("focus", handleFocus);
         };

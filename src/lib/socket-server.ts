@@ -18,12 +18,12 @@ export type NextApiResponseWithSocket = NextApiResponse & {
  * 2. SOCKET.IO (SECONDARY): Persistent singleton for local development.
  */
 
-// 🟢 Strategy 1: Pusher Construction
+// 🟢 Strategy 1: Pusher Construction (Backend Shard)
 const pusher = new Pusher({
   appId: process.env.PUSHER_APP_ID || "",
-  key: process.env.PUSHER_KEY || "",
+  key: process.env.NEXT_PUBLIC_PUSHER_KEY || process.env.PUSHER_KEY || "",
   secret: process.env.PUSHER_SECRET || "",
-  cluster: process.env.PUSHER_CLUSTER || "ap2",
+  cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER || process.env.PUSHER_CLUSTER || "ap2",
   useTLS: true,
 });
 
@@ -52,11 +52,14 @@ export const initSocket = (res: NextApiResponseWithSocket) => {
  * Otherwise, it falls back to Local Socket.io (Dev Mode).
  */
 export const emitMatrixUpdate = async () => {
+    const CHANNEL_NAME = "operational-matrix";
+    const EVENT_NAME = "matrix_update";
+
     // 🟠 MODE A: SaaS CLOUD RELAY (PUSHER)
     if (process.env.PUSHER_APP_ID) {
         try {
-            console.log("Broadcasting to Operational Shards via Pusher Cloud! ☁️");
-            await pusher.trigger("operational-matrix", "matrix_update", { 
+            console.log(`Broadcasting to [${CHANNEL_NAME}] via Pusher Cloud! ☁️`);
+            await pusher.trigger(CHANNEL_NAME, EVENT_NAME, { 
                 timestamp: Date.now() 
             });
         } catch (error) {
@@ -66,8 +69,8 @@ export const emitMatrixUpdate = async () => {
 
     // 🟡 MODE B: LOCAL BROADCAST (SOCKET.IO)
     if (globalIO) {
-        console.log("Emitting local heartbeat via Socket Cluster! 🛰️");
-        globalIO.emit("matrix_update", { timestamp: Date.now() });
+        console.log(`Emitting local heartbeat [${EVENT_NAME}] via Socket Cluster! 🛰️`);
+        globalIO.emit(EVENT_NAME, { timestamp: Date.now() });
     }
 
     if (!globalIO && !process.env.PUSHER_APP_ID) {
