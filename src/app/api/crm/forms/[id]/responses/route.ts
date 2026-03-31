@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
+import { emitMatrixUpdate } from "@/lib/socket-server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +35,7 @@ export async function POST(
             }
         });
 
+        await emitMatrixUpdate({ formId, responseId: response.id, type: "NEW_SUBMISSION" });
         return NextResponse.json({ success: true, responseId: response.id, response });
     } catch (error) {
         console.error("Submit Response Error:", error);
@@ -114,6 +116,13 @@ export async function GET(
         }
 
         const conjunction = searchParams.get("conjunction") || "AND";
+        const includeIdsStr = searchParams.get("includeIds") || "";
+        let includeIds = includeIdsStr ? includeIdsStr.split(",").filter(id => !!id) : [];
+        
+        // 🛡️ INJECTION LIMIT: Only force-include the 20 most recent updates to prevent payload bloat
+        if (includeIds.length > 20) {
+            includeIds = includeIds.slice(-20); // Get the 20 freshest ones
+        }
 
         const gac: any = form.columnPermissions || { roles: {}, users: {} };
         const rolePerms = gac.roles?.[userRole] || {};
@@ -448,6 +457,19 @@ export async function GET(
             AND: finalAndFilters
         };
 
+        // 💎 MATRIX HUB PERSISTENCE: If we have specific IDs to include, we bypass filters but NOT permissions
+        if (includeIds.length > 0) {
+            console.log(`💎 [PRO-SYNC] Injecting Force-IDs: ${includeIds.length} into stream.`);
+            delete whereFilter.AND;
+            whereFilter.OR = [
+                { AND: finalAndFilters },
+                { AND: [
+                    { id: { in: includeIds } },
+                    isMaster ? {} : permissionWhere
+                ]}
+            ];
+        }
+
         // Resolve OrderBy
         let orderBy: any = { submittedAt: "desc" };
         if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
@@ -464,7 +486,7 @@ export async function GET(
         }, 2));
 
         const [totalResponses, responses, filteredTotalCount] = await Promise.all([
-            prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
+            prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } }),
             prisma.formResponse.findMany({
                 where: whereFilter,
                 include: {
@@ -480,6 +502,36 @@ export async function GET(
             }),
             prisma.formResponse.count({ where: whereFilter }),
         ]);
+
+        // 💎 MATRIX HUB PERSISTENCE: Ensure Forced-IDs are ALWAYS in the response
+        // regardless of pagination/limit results.
+        let allResponses = [...responses];
+        if (includeIds.length > 0) {
+            const returnedIds = new Set(responses.map(r => r.id));
+            const missingIds = includeIds.filter(id => !returnedIds.has(id));
+            
+            if (missingIds.length > 0) {
+                console.log(`💎 [PRO-SYNC] Manually fetching ${missingIds.length} paginated-out rows.`);
+                const manualRows = await prisma.formResponse.findMany({
+                    where: {
+                        id: { in: missingIds },
+                        formId,
+                        ...(isMaster ? {} : permissionWhere)
+                    },
+                    include: {
+                        values: true,
+                        // @ts-ignore
+                        remarks: { orderBy: { createdAt: "desc" } },
+                        // @ts-ignore
+                        payments: { orderBy: { paymentDate: "desc" } }
+                    }
+                });
+                
+                // 💎 Flag these rows so frontend can sort/highlight them
+                const flaggedRows = manualRows.map(r => ({ ...r, isPersistenceForced: true }));
+                allResponses = [...allResponses, ...flaggedRows];
+            }
+        }
 
         const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
 
@@ -525,12 +577,12 @@ export async function GET(
         const [internalValues, activities] = await Promise.all([
             prisma.internalValue.findMany({
                 where: {
-                    responseId: { in: responses.map(r => r.id) },
+                    responseId: { in: allResponses.map(r => r.id) },
                     columnId: { in: processedInternalColumns.map(c => c.id) }
                 }
             }),
             prisma.formActivity.findMany({
-                where: { responseId: { in: responses.map(r => r.id) } },
+                where: { responseId: { in: allResponses.map(r => r.id) } },
                 orderBy: { createdAt: "desc" }
             })
         ]);
@@ -568,7 +620,7 @@ export async function GET(
         };
 
         return NextResponse.json({
-            responses,
+            responses: allResponses,
             totalCount: totalResponses,
             filteredCount: filteredTotalCount,
             page,
@@ -749,6 +801,7 @@ export async function PATCH(
             });
         }
 
+        await emitMatrixUpdate({ formId, responseId, columnId, value, type: "CELL_UPDATE" });
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("PATCH Response Value Error:", error);
@@ -840,7 +893,8 @@ export async function PUT(
                 }
             }
         });
-
+        
+        await emitMatrixUpdate({ formId: params.id, type: "BULK_UPDATE", count: updates.length });
         return NextResponse.json({ success: true, count: updates.length });
     } catch (error) {
         console.error("PUT Bulk Update Error:", error);
@@ -903,6 +957,7 @@ export async function DELETE(
                     formId: formId
                 }
             });
+            await emitMatrixUpdate({ formId, type: "BULK_DELETE", deletedCount: ids.length });
             return NextResponse.json({ success: true, deleted: ids.length });
         }
 

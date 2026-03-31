@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { format, parseISO, addDays, subDays } from "date-fns";
-import { 
+import {
     Download, TrendingUp, Zap, Target, Award, User, Layers, Calendar, ExternalLink, Sun, Moon, UserPlus, PhoneCall, PhoneForwarded, Clock, AlertTriangle, FilePlus, Briefcase, RefreshCw, Activity
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -30,6 +30,7 @@ type MatrixUser = {
     progress: number;
     paymentPending: number;
     receivedAmount: number;
+    revenueGap: number;
 };
 
 export default function GrandMatrixPage() {
@@ -39,6 +40,7 @@ export default function GrandMatrixPage() {
     const [viewMode, setViewMode] = useState<"MASTER" | "DEEP_DIVE">("MASTER");
     const [auditData, setAuditData] = useState<any[]>([]);
     const [theme, setTheme] = useState<"DARK" | "LIGHT">("DARK");
+    const [monthlyGoals, setMonthlyGoals] = useState<any>(null);
 
     const fetchMatrix = async (silent = false) => {
         if (!silent) setLoading(true);
@@ -47,8 +49,10 @@ export default function GrandMatrixPage() {
             const res = await fetch(`/api/call-report/matrix?start=${format(date, 'yyyy-MM-dd')}&end=${format(date, 'yyyy-MM-dd')}&range=${range}`);
             const json = await res.json();
             if (res.ok) {
-                if (viewMode === "MASTER") setMatrixData(json.report);
-                else setAuditData(json.report);
+                if (viewMode === "MASTER") {
+                    setMatrixData(json.report);
+                    setMonthlyGoals(json.goals);
+                } else setAuditData(json.report);
             }
         } finally { if (!silent) setLoading(false); }
     };
@@ -63,7 +67,7 @@ export default function GrandMatrixPage() {
         // 🟠 MODE A: SaaS CLOUD RELAY (PUSHER)
         const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
         const pusherCluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap2';
-        
+
         let pusherChannel: any = null;
         let pusherInstance: any = null;
 
@@ -71,24 +75,24 @@ export default function GrandMatrixPage() {
             console.log(`Cloud Shard: Initializing [${CHANNEL_NAME}] Hub... ☁️`);
             pusherInstance = new Pusher(pusherKey, { cluster: pusherCluster });
             pusherChannel = pusherInstance.subscribe(CHANNEL_NAME);
-            
+
             pusherChannel.bind(EVENT_NAME, (data: any) => {
-                console.log(`Cloud Pulse Received: [${EVENT_NAME}] Shard Operational! 🛸`, data);
+                console.log("🔥 DATA MILA:", data); // Ground Truth Signal
                 fetchMatrix(true);
             });
         }
 
         // 🟢 MODE B: LOCAL CLUSTER (SOCKET.IO)
-        const socket = io({ 
+        const socket = io({
             path: "/api/socket",
             addTrailingSlash: false,
             reconnectionAttempts: 8,
             reconnectionDelay: 1000
         });
-        
+
         socket.on(EVENT_NAME, () => {
-             console.log(`Local Pulse Received: [${EVENT_NAME}] Sync Operational! 🛰️`);
-             fetchMatrix(true);
+            console.log(`Local Pulse Received: [${EVENT_NAME}] Sync Operational! 🛰️`);
+            fetchMatrix(true);
         });
 
         const handleFocus = () => fetchMatrix(true);
@@ -121,6 +125,7 @@ export default function GrandMatrixPage() {
             forms: matrixData.reduce((acc, u) => acc + u.submissionsFilled, 0),
             todo: matrixData.reduce((acc, u) => acc + u.todo, 0),
             progress: matrixData.reduce((acc, u) => acc + u.progress, 0),
+            revenueGap: matrixData.reduce((acc, u) => acc + u.revenueGap, 0),
             operators: matrixData.length, efficiency
         };
     }, [matrixData]);
@@ -181,6 +186,7 @@ export default function GrandMatrixPage() {
                         { label: "Forms Created", val: stats?.forms, icon: FilePlus, color: "blue" },
                         { label: "To-Do Task", val: stats?.todo, icon: Briefcase, color: "orange" },
                         { label: "Progress Task", val: stats?.progress, icon: Activity, color: "orange" },
+                        { label: "Revenue GAP", val: "₹" + (stats?.revenueGap || 0).toLocaleString(), icon: AlertTriangle, color: "rose", highlight: true },
                         { label: "Operators", val: stats?.operators, icon: User, color: "slate" },
                         { label: "Efficiency", val: stats?.efficiency + "%", icon: TrendingUp, color: "indigo" },
                         { label: "Daily Input", val: (stats?.reachout || 0) + (stats?.untouched || 0), icon: Layers, color: "slate" },
@@ -196,7 +202,7 @@ export default function GrandMatrixPage() {
                 </div>
 
                 {/* Table Data Matrix */}
-                 <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
+                <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
                     {loading && (
                         <div className={`absolute inset-0 z-30 backdrop-blur-md flex items-center justify-center ${isDark ? 'bg-[#0a0c10]/60' : 'bg-white/60'}`}>
                             <div className={`w-12 h-12 border-4 border-t-transparent rounded-full animate-spin border-indigo-500`} />
@@ -225,6 +231,7 @@ export default function GrandMatrixPage() {
                                             <th className={`px-4 py-8 text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-emerald-500/5' : 'border-emerald-100 bg-emerald-50'}`}>MTD Total Sales (Amt)</th>
                                             <th className={`px-4 py-8 text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-emerald-500/10' : 'border-emerald-200 bg-emerald-100'}`}>MTD Total Recv</th>
                                             <th className={`px-4 py-8 text-[10px] font-black text-rose-500 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-rose-500/5' : 'border-rose-100 bg-rose-50'}`}>MTD Payment Pend</th>
+                                            <th className={`px-4 py-8 text-[10px] font-black text-rose-600 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-rose-600/10 shadow-inner' : 'border-rose-200 bg-rose-100'}`}>True Revenue Gap</th>
                                             <th className={`px-4 py-8 text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-orange-500/5' : 'border-orange-100 bg-orange-50'}`}>To-Do</th>
                                             <th className={`px-4 py-8 text-[10px] font-black text-orange-600 uppercase tracking-[0.2em] border-b ${isDark ? 'border-white/5 bg-orange-500/5' : 'border-orange-100 bg-orange-50 shadow-inner'}`}>Progress</th>
                                             <th className={`px-6 py-8 text-right text-[10px] font-black uppercase tracking-[0.2em] border-b pr-12 ${isDark ? 'text-slate-500 border-white/5' : 'text-slate-400 border-slate-100'}`}>View</th>
@@ -249,6 +256,7 @@ export default function GrandMatrixPage() {
                                                 <td className={`px-4 py-6 text-center font-bold tabular-nums ${isDark ? 'text-white/40' : 'text-slate-400'}`}>₹{user.totalSales.toLocaleString()}</td>
                                                 <td className={`px-4 py-6 text-center font-black tabular-nums bg-emerald-500/5 ${isDark ? 'text-emerald-500' : 'text-emerald-700'}`}>₹{user.receivedAmount.toLocaleString()}</td>
                                                 <td className="px-4 py-6 text-center text-rose-500 font-bold tabular-nums">₹{user.paymentPending.toLocaleString()}</td>
+                                                <td className={`px-4 py-6 text-center font-black tabular-nums ${isDark ? 'bg-rose-500/10 text-rose-500' : 'bg-rose-50 text-rose-600'}`}>₹{user.revenueGap.toLocaleString()}</td>
                                                 <td className="px-4 py-6 text-center text-orange-500 font-bold tabular-nums bg-orange-500/5">{user.todo}</td>
                                                 <td className="px-4 py-6 text-center text-orange-600 font-bold tabular-nums bg-orange-500/5">{user.progress}</td>
                                                 <td className="px-6 py-6 text-right pr-12">
@@ -291,7 +299,7 @@ export default function GrandMatrixPage() {
                                                                 <span className={`text-lg font-black ${day.untouched > 0 ? "text-rose-500" : isDark ? "text-emerald-500/30" : "text-emerald-500/10"}`}>{day.untouched}</span>
                                                             </div>
                                                             <div className={`h-1.5 rounded-full overflow-hidden mt-1 shadow-inner ${isDark ? 'bg-white/5' : 'bg-slate-100'}`}>
-                                                                <div className={`h-full transition-all duration-1000 ${day.total > 0 && day.untouched === 0 ? 'bg-emerald-500' : 'bg-indigo-600'} shadow-[0_0_15px_rgba(79,70,229,0.5)]`} style={{ width: `${day.total > 0 ? ((day.total-day.untouched)/day.total)*100 : 0}%` }} />
+                                                                <div className={`h-full transition-all duration-1000 ${day.total > 0 && day.untouched === 0 ? 'bg-emerald-500' : 'bg-indigo-600'} shadow-[0_0_15px_rgba(79,70,229,0.5)]`} style={{ width: `${day.total > 0 ? ((day.total - day.untouched) / day.total) * 100 : 0}%` }} />
                                                             </div>
                                                         </div>
                                                     </td>

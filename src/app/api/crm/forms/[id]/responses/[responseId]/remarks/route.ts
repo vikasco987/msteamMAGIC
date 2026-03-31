@@ -125,7 +125,7 @@ export async function POST(
         for (const col of actualCallingCols) await syncToValue(col.label, todayStr);
 
         // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
-        console.log("Triggering Real-time Matrix Sync Shard... 🛰️");
+        console.log("🔥 API HIT HOI");
         await emitMatrixUpdate(); // 🛰️ REAL-TIME EMISSION (MUST AWAIT ON VERCEL)
 
         return NextResponse.json({ success: true, remark: newRemark });

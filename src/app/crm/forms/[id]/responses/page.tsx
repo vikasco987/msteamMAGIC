@@ -89,6 +89,8 @@ import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import Pusher from "pusher-js";
+import { io } from "socket.io-client";
 
 const CALL_STATUS_OPTIONS = [
     "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"
@@ -405,11 +407,15 @@ export default function CRMSpreadsheetPage() {
     const [activeStatusDropdown, setActiveStatusDropdown] = useState<string | null>(null);
     const [statusMatrixModal, setStatusMatrixModal] = useState<{ rowId: string, colId: string, label: string, options: any[], val: string, isInternal: boolean } | null>(null);
     const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
+    const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Record<string, number>>({});
+
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
     const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
     const [pendingUpdates, setPendingUpdates] = useState<Record<string, string>>({});
+    const [undoStack, setUndoStack] = useState<{ responseId: string, colId: string, val: string, isInternal: boolean }[]>([]);
+
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -722,6 +728,58 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
+    // ⚡ REAL-TIME COLLABORATION BRIDGE
+    useEffect(() => {
+        // 1. Pusher (Production Sync)
+        const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+        const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+        if (pusherKey && cluster) {
+            const pusher = new Pusher(pusherKey, { cluster });
+            const channel = pusher.subscribe("matrix-updates");
+            
+            channel.bind("matrix_update", (payload: any) => {
+                console.log("🔥 [Real-Time] Pusher update received:", payload);
+                fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            });
+
+            return () => {
+                pusher.unsubscribe("matrix-updates");
+                pusher.disconnect();
+            };
+        }
+
+        // 2. Socket.io (Local Dev Sync) - Only if NOT on Pusher
+        if (!pusherKey) {
+            const socket = io();
+            socket.on("matrix_update", (payload: any) => {
+                console.log("⚡ [Real-Time] Local socket update received:", payload);
+                fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+            });
+            return () => {
+                socket.off("matrix_update");
+                socket.disconnect();
+            };
+        }
+    }, [currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
+
+    // ⏪ UNDO SYSTEM: CTRL+Z LISTENER
+    useEffect(() => {
+        const handleUndoKey = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                if (editingCell) return; // Don't undo if actively typing
+                const last = undoStack[undoStack.length - 1];
+                if (last) {
+                    toast.loading(`Reverting change...`, { id: 'undo-toast', duration: 1000 });
+                    setUndoStack(prev => prev.slice(0, -1));
+                    handleUpdateValue(last.responseId, last.colId, last.val, last.isInternal, true);
+                }
+            }
+        };
+        window.addEventListener('keydown', handleUndoKey);
+        return () => window.removeEventListener('keydown', handleUndoKey);
+    }, [undoStack, editingCell]);
+
     const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
@@ -739,9 +797,9 @@ export default function CRMSpreadsheetPage() {
             setIsSyncing(true);
         }
 
-        // 1. FAST CACHE LOAD (Run before API Call)
+        // 1. FAST CACHE LOAD (Only on initial cold start)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
-        if (cachedDataStr) {
+        if (cachedDataStr && !data && !isSilent) {
             try {
                 const cachedJson = JSON.parse(cachedDataStr);
                 const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
@@ -784,8 +842,10 @@ export default function CRMSpreadsheetPage() {
             const effectiveLimit = limit;
             const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
+            const includeIdsParam = Object.keys(recentlyUpdatedIds).length > 0 ? `&includeIds=${Object.keys(recentlyUpdatedIds).join(",")}` : "";
+
             const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
+                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}${includeIdsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
                 fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
             ]);
@@ -816,38 +876,63 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            // 4. Update the state
+            // 4. Update the state with Matrix Hub Persistence
             setData(prev => {
                 if (!prev || !json.responses) return json;
 
+                const now = Date.now();
+                const jsonResponses = json.responses || [];
+                const responseMap = new Map();
+
+                // 1. Add new server responses to map
+                jsonResponses.forEach((res: any) => responseMap.set(res.id, res));
+
+                // 2. 💎 MATRIX HUB PERSISTENCE: Re-inject recently updated rows that were filtered out
+                Object.entries(recentlyUpdatedIds).forEach(([rid, timestamp]) => {
+                     const isWithinGrace = now - (timestamp as number) < 3000;
+                     if (isWithinGrace && !responseMap.has(rid)) {
+                         const existingRow = prev.responses?.find((r: any) => r.id === rid);
+                         if (existingRow) {
+                             console.log(`[Grace Period] Manually preserving row ${rid} filtered by server.`);
+                             responseMap.set(rid, existingRow);
+                         }
+                     }
+                });
+
+                const mergedList = Array.from(responseMap.values());
+                
                 // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
-                // even if the server just sent us old data. This prevents the "disappearing data" bug
-                // when fetchData races with a pending handleUpdateValue.
-                const updatedResponses = json.responses.map((res: any) => {
+                const updatedResponses = mergedList.map((res: any) => {
                     const existingRes = prev.responses?.find((r: any) => r.id === res.id);
                     if (!existingRes) return res;
 
                     const mergedResponse = { ...res };
-                    // If this row has any cells in 'savingCells', we should consider keeping the local version
-                    // for those specific columns.
+                    // If this row has any cells in 'savingCells' or was recentlyUpdated, we should favor the local state
+                    // for those specific columns until the sync is definitively confirmed by NEXT fetchData.
                     savingCells.forEach(cellKey => {
                         const [rowId, colId] = cellKey.split('-');
                         if (rowId === res.id) {
                             // Find the value from the previous local state (which was updated optimistically)
-                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
-                            if (localCol) {
-                                // Update mergedResponse with the local value
-                                if (!mergedResponse.responses) mergedResponse.responses = [];
-                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
-                                if (targetColIdx > -1) {
-                                    mergedResponse.responses[targetColIdx].value = localCol.value;
+                            const localVal = getCellValueByRow(existingRes, colId);
+                            if (localVal !== undefined) {
+                                // Update mergedResponse with the local value for both internal and field values
+                                if (colId.startsWith("__") || getColumns.find(c => c.id === colId)?.isInternal) {
+                                    if (!mergedResponse.values) mergedResponse.values = [];
+                                    const targetColIdx = mergedResponse.values.findIndex((c: any) => c.fieldId === colId);
+                                    if (targetColIdx > -1) {
+                                        mergedResponse.values[targetColIdx].value = localVal;
+                                    } else {
+                                        mergedResponse.values.push({ fieldId: colId, value: localVal });
+                                    }
                                 } else {
-                                    mergedResponse.responses.push({ ...localCol });
-                                }
-                            } else {
-                                // Check for regular fields (not internal columns)
-                                if ((existingRes as any)[colId] !== undefined) {
-                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
+                                    // Handle standard fields
+                                    if (!mergedResponse.values) mergedResponse.values = [];
+                                    const targetValIdx = mergedResponse.values.findIndex((v: any) => v.fieldId === colId);
+                                    if (targetValIdx > -1) {
+                                        mergedResponse.values[targetValIdx].value = localVal;
+                                    } else {
+                                        mergedResponse.values.push({ fieldId: colId, value: localVal });
+                                    }
                                 }
                             }
                         }
@@ -1558,6 +1643,35 @@ export default function CRMSpreadsheetPage() {
         return w;
     }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
 
+    const getCellValueByRow = (resp: any, colId: string) => {
+        if (!resp) return "";
+        
+        // 💎 PENDING OVERRIDE: If there's a local edit in flight, it wins
+        const cellKey = `${resp.id}-${colId}`;
+        if (pendingUpdates[cellKey] !== undefined) return pendingUpdates[cellKey];
+
+        if (colId === "__contributor") return resp.submittedByName || "";
+        if (colId === "__submittedAt") return resp.submittedAt || resp.createdAt || "";
+        
+        // 🟢 FOLLOW-UP BOARD SYSTEM COLUMNS
+        const remarks = (resp as any).remarks || [];
+        const latestRemark = remarks[0];
+        if (colId === "__nextFollowUpDate") return latestRemark?.nextFollowUpDate || "";
+        if (colId === "__followUpStatus") return latestRemark?.followUpStatus || "";
+        if (colId === "__recentRemark") return latestRemark?.remark || "";
+        if (colId === "__followup") return latestRemark?.remark || "";
+
+        // ⚡ Internal Mapping
+        if (data?.internalValues) {
+            const internalVal = data.internalValues.find(v => v.responseId === resp.id && v.columnId === colId)?.value;
+            if (internalVal !== undefined) return internalVal;
+        }
+
+        // ⚡ Field Mapping
+        const fieldVal = resp.values?.find((v: any) => v.fieldId === colId)?.value;
+        return fieldVal || (resp as any)[colId] || "";
+    };
+
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
         const cellKey = `${responseId}-${colId}`;
         if (pendingUpdates[cellKey] !== undefined) return pendingUpdates[cellKey];
@@ -1674,6 +1788,10 @@ export default function CRMSpreadsheetPage() {
         if (conditions.length > 0) {
             const before = results.length;
             results = results.filter(r => {
+                // 💎 SOFT FILTER: If row was JUST updated, keep it visible for 2 seconds
+                // regardless of what the new values are.
+                if (recentlyUpdatedIds[r.id]) return true;
+
                 // Group conditions by column ID so multiple selections on the same column work as OR
                 const groupedConditions = conditions.reduce((acc, cond) => {
                     if (!acc[cond.colId]) acc[cond.colId] = [];
@@ -1794,7 +1912,7 @@ export default function CRMSpreadsheetPage() {
             }
         }
         return results;
-    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns, recentlyUpdatedIds]);
 
     const columnMetrics = useMemo(() => {
         const columns = getColumns;
@@ -2122,7 +2240,20 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+    const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean, skipUndo = false) => {
+        // 💎 UX REVOLUTION: Graceful Filter Transition (Row doesn't vanish instantly)
+        setRecentlyUpdatedIds(prev => ({ ...prev, [responseId]: Date.now() }));
+        if (conditions.length > 0) {
+            toast.success("Row updated. Holding for review before filter sync...", { id: `preserve-${responseId}`, icon: '⏳' });
+        }
+        setTimeout(() => {
+            setRecentlyUpdatedIds(prev => {
+                const next = { ...prev };
+                delete next[responseId];
+                return next;
+            });
+        }, 2500); // Increased to 2.5s to allow for toast and review
+
         // 💎 REFRESH ENGINE: Instant Cell Closure
         setEditingCell(null);
 
@@ -2132,6 +2263,11 @@ export default function CRMSpreadsheetPage() {
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
         if (currentVal === value) return;
+
+        // ⏪ UNDO SYSTEM: Capture historical shard before mutation
+        if (!skipUndo) {
+            setUndoStack(prev => [...prev, { responseId, colId: columnId, val: currentVal, isInternal }].slice(-50));
+        }
 
         // 💎 REFRESH ENGINE: Local Sync State (Prevents 'Vanishing' Lag)
         setPendingUpdates(prev => ({ ...prev, [cellKey]: value }));
@@ -4005,7 +4141,9 @@ export default function CRMSpreadsheetPage() {
                                                     height: `${virtualRow.size}px`,
                                                     backgroundColor: res.rowColor || (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'transparent' : 'white')
                                                 }}
-                                                className={`group cursor-pointer transition-all relative border-b [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                className={`group cursor-pointer transition-all relative border-b [&>td]:border-r 
+                                                    ${recentlyUpdatedIds[res.id] ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-950/40 text-emerald-100' : 'bg-emerald-50 text-emerald-900 shadow-[inset_0_0_0_2px_#10b981]') : ''}
+                                                    ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
                                                     ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? '[&>td]:border-white/5' : '[&>td]:border-[#EAECF0]'}
                                                     ${density === 'compact' ? 'h-[36px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
                                                     ${(() => {
@@ -6604,7 +6742,20 @@ export default function CRMSpreadsheetPage() {
                                     columnId={openFollowUpModal.columnId}
                                     onClose={() => setOpenFollowUpModal(null)}
                                     userRole={userRole || 'GUEST'}
-                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                    onSave={() => {
+                                        if (openFollowUpModal?.responseId) {
+                                          setRecentlyUpdatedIds(prev => ({ ...prev, [openFollowUpModal.responseId]: Date.now() }));
+                                          // Clear grace period after review window
+                                          setTimeout(() => {
+                                              setRecentlyUpdatedIds(prev => {
+                                                  const next = { ...prev };
+                                                  if (openFollowUpModal?.responseId) delete next[openFollowUpModal.responseId];
+                                                  return next;
+                                              });
+                                          }, 2500);
+                                        }
+                                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                                    }}
                                 />
                             </div>
                         )}
@@ -6617,7 +6768,19 @@ export default function CRMSpreadsheetPage() {
                                     responseId={openPaymentModal.responseId}
                                     userRole={userRole || 'GUEST'}
                                     onClose={() => setOpenPaymentModal(null)}
-                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                    onSave={() => {
+                                        if (openPaymentModal?.responseId) {
+                                          setRecentlyUpdatedIds(prev => ({ ...prev, [openPaymentModal.responseId]: Date.now() }));
+                                          setTimeout(() => {
+                                              setRecentlyUpdatedIds(prev => {
+                                                  const next = { ...prev };
+                                                  if (openPaymentModal?.responseId) delete next[openPaymentModal.responseId];
+                                                  return next;
+                                              });
+                                          }, 2500);
+                                        }
+                                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                                    }}
                                 />
                             </div>
                         )}

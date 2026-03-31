@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
+import { emitMatrixUpdate } from "@/lib/socket-server";
 
 export const maxDuration = 300; // Allow 5 minutes for large bulk imports
 
@@ -147,6 +148,8 @@ export async function POST(
 
         // Helper to run batches
         const BATCH_SIZE = 500;
+        const allAffectedIds: string[] = [];
+        
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
             const batch = data.slice(i, i + BATCH_SIZE);
             
@@ -218,24 +221,29 @@ export async function POST(
                 // 3. Build Column Values
                 // Create a case-insensitive, trimmed lookup for row keys to prevent blank uploads due to Excel formatting
                 const rowKeyMap = new Map<string, string>();
-                Object.keys(item.row).forEach(k => rowKeyMap.set(k.trim().toLowerCase(), k));
+                Object.keys(item.row).forEach(k => {
+                    const norm = k.trim().toLowerCase();
+                    if (!rowKeyMap.has(norm)) rowKeyMap.set(norm, k);
+                });
 
-                for (const excelHeaderRaw in updateColumnMap) {
-                    if (importMode === 'update' && excelHeaderRaw === matchExcelHeader) continue;
-                    
+                for (let excelHeaderRaw in updateColumnMap) {
                     const mapping = updateColumnMap[excelHeaderRaw];
                     if (!mapping) continue;
 
                     // Support robust matching for headers with spaces/case differences
-                    const normalizedHeader = excelHeaderRaw.trim().toLowerCase();
-                    const actualKeyInRow = rowKeyMap.get(normalizedHeader) || excelHeaderRaw;
+                    const targetHeaderNorm = excelHeaderRaw.trim().toLowerCase();
+                    const actualKeyInRowRaw = rowKeyMap.get(targetHeaderNorm);
                     
-                    if (item.row[actualKeyInRow] === undefined) {
-                        console.warn(`[BulkImport] Missing key "${actualKeyInRow}" in row ${item.rowIndex + 1}`);
-                        continue;
+                    if (!actualKeyInRowRaw || item.row[actualKeyInRowRaw] === undefined) {
+                        // Fallback: try raw key if mapping key exactly matches Excel header
+                        if (item.row[excelHeaderRaw] === undefined) {
+                            console.warn(`[BulkImport] Missing key "${excelHeaderRaw}" in row ${item.rowIndex + 1}`);
+                            continue;
+                        }
                     }
 
-                    let valueToMap = item.row[actualKeyInRow]?.toString().trim() || "";
+                    const rowValueKey = actualKeyInRowRaw || excelHeaderRaw;
+                    let valueToMap = (item.row[rowValueKey] ?? "").toString().trim();
 
                     // 🛡️ SMART UPLOAD SHIELD: Prevent blank Excel cells from erasing existing database values
                     if (valueToMap === "" && !item.isNew && (importMode === 'update' || importMode === 'upsert')) {
@@ -267,8 +275,9 @@ export async function POST(
                         const latestRemark = existingRemarks[0];
 
                         const remarkData: any = {
-                            updatedBy: user.id,
-                            updatedByName: userName,
+                            createdById: user.id,
+                            authorName: userName,
+                            authorEmail: user.emailAddresses[0]?.emailAddress || null,
                             updatedAt: new Date(),
                         };
 
@@ -295,7 +304,7 @@ export async function POST(
                                 data: {
                                     ...remarkData,
                                     responseId: item.responseId,
-                                    remark: remarkData.remark || "Uploaded via Smart Update",
+                                    remark: remarkData.remark || valueToMap || "Uploaded via Smart Update",
                                     followUpStatus: remarkData.followUpStatus || "New"
                                 }
                             }));
@@ -398,6 +407,16 @@ export async function POST(
             }
 
             successCount += validItems.length;
+            allAffectedIds.push(...validItems.map(item => item.responseId));
+        }
+
+        // 🛰️ REAL-TIME SYNERGY: Trigger the Matrix Hub Pulse across the fleet
+        if (successCount > 0) {
+            await emitMatrixUpdate({ 
+                pulseType: "BULK_IMPORT", 
+                count: successCount,
+                responseIds: allAffectedIds
+            });
         }
 
         return NextResponse.json({

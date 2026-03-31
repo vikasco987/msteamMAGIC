@@ -18,25 +18,21 @@ export type NextApiResponseWithSocket = NextApiResponse & {
  * 2. SOCKET.IO (SECONDARY): Persistent singleton for local development.
  */
 
-// 🟢 Strategy 1: Pusher Construction (Lazy Shard)
-let pusherInstance: Pusher | null = null;
-
 const getPusher = () => {
-    if (pusherInstance) return pusherInstance;
-    
-    // 🛡️ RECTIFICATION: MUST HAVE ALL KEYS FOR PRODUCTION SYNC
+    // 🛡️ RECTIFICATION: Use PRIVATE keys in backend only.
     const appId = process.env.PUSHER_APP_ID;
-    const key = process.env.PUSHER_KEY || process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const key = process.env.PUSHER_KEY; // NO NEXT_PUBLIC_ FALLBACK HERE
     const secret = process.env.PUSHER_SECRET;
-    const cluster = process.env.PUSHER_CLUSTER || process.env.NEXT_PUBLIC_PUSHER_CLUSTER || "ap2";
+    const cluster = process.env.PUSHER_CLUSTER || "ap2";
 
     if (!appId || !key || !secret) {
-        console.warn("Real-time Broadcast Paused: Pusher Credentials Missing in Shard! 🛸");
+        console.warn("🔥 REAL-TIME PAUSED: Backend Pusher Keys Missing! [Check Vercel ENV] 🛸");
         return null;
     }
 
-    pusherInstance = new Pusher({ appId, key, secret, cluster, useTLS: true });
-    return pusherInstance;
+    // In Serverless, we instantiate per-run or use a singleton if we trust the context.
+    // The user suggested instantiating inside the request, so we'll do that via this helper.
+    return new Pusher({ appId, key, secret, cluster, useTLS: true });
 };
 
 let globalIO: SocketIOServer | null = null;
@@ -63,32 +59,38 @@ export const initSocket = (res: NextApiResponseWithSocket) => {
  * When PUSHER_APP_ID is present, it uses Pusher (SaaS/Serverless Mode).
  * Otherwise, it falls back to Local Socket.io (Dev Mode).
  */
-export const emitMatrixUpdate = async () => {
-    const CHANNEL_NAME = "operational-matrix";
+export const emitMatrixUpdate = async (payload: any = { timestamp: Date.now(), pulseType: "UI_REFETCH" }) => {
+    const CHANNEL_NAME = "matrix-updates";
     const EVENT_NAME = "matrix_update";
+    const isProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+
+    console.log(`🔥 [API DIAGNOSTIC] Shard Pulse: Triggered. (isProd=${isProd}) Payload:`, JSON.stringify(payload));
 
     // 🟠 MODE A: SaaS CLOUD RELAY (PUSHER)
     const p = getPusher();
     if (p) {
         try {
-            console.log(`Broadcasting to [${CHANNEL_NAME}] via Pusher Cloud! ☁️`);
+            console.log("🔥 PUSHER TRIGGER HO RAHA HAI");
             await p.trigger(CHANNEL_NAME, EVENT_NAME, { 
-                timestamp: Date.now(),
-                pulseType: "UI_REFETCH"
+                ...payload,
+                timestamp: payload.timestamp || Date.now()
             });
-            console.log("Cloud Shard Dispatched: Pusher Handshake Successful! ✅");
-        } catch (error) {
-            console.error("Pusher Broadcast Failed:", error);
+            console.log("🔥 PUSHER SENT SUCCESSFULLY! ✅");
+        } catch (error: any) {
+            console.error("❌ PUSHER ERROR:", error.message || error);
         }
     }
 
     // 🟡 MODE B: LOCAL BROADCAST (SOCKET.IO)
-    if (globalIO) {
-        console.log(`Emitting local heartbeat [${EVENT_NAME}] via Socket Cluster! 🛰️`);
-        globalIO.emit(EVENT_NAME, { timestamp: Date.now() });
+    if (globalIO && !isProd) {
+        console.log(`🛰️ LOCAL DISPATCH -> [${EVENT_NAME}] via Socket Cluster ...`);
+        globalIO.emit(EVENT_NAME, { 
+            ...payload, 
+            timestamp: payload.timestamp || Date.now() 
+        });
     }
 
     if (!globalIO && !p) {
-        console.warn("Real-time Broadcast Pulsed 🛸 (No active provider or credentials detected)");
+        console.warn("🛸 SHARD SILENT: No active Socket IO or Pusher Shard Detected!");
     }
 };
