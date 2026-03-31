@@ -53,7 +53,7 @@ export default function GrandMatrixPage() {
         } finally { if (!silent) setLoading(false); }
     };
 
-    // ⚡ PRO-LEVEL SaaS SYNC PROTOCOL
+    // ⚡ PRO-LEVEL SaaS SYNC PROTOCOL (STRICTLY CLIENT-SIDE)
     useEffect(() => {
         fetchMatrix();
 
@@ -72,7 +72,11 @@ export default function GrandMatrixPage() {
         }
 
         // 🟢 STRATEGY 2: LOCAL SOCKET.IO (DEV/LOCAL)
-        const socket = io({ path: "/api/socket" });
+        const socket = io({ 
+            path: "/api/socket",
+            addTrailingSlash: false
+        });
+        
         socket.on("matrix_update", () => {
              console.log("Local Heartbeat Synchronized via Socket Cluster! 🛰️");
              fetchMatrix(true);
@@ -83,7 +87,10 @@ export default function GrandMatrixPage() {
         window.addEventListener("focus", handleFocus);
 
         return () => {
-            if (pusherInstance) pusherInstance.disconnect();
+            if (pusherInstance) {
+                pusherChannel?.unbind_all();
+                pusherInstance.disconnect();
+            }
             socket.off("matrix_update");
             socket.disconnect();
             window.removeEventListener("focus", handleFocus);
@@ -110,14 +117,6 @@ export default function GrandMatrixPage() {
         };
     }, [matrixData]);
 
-    const downloadCSV = () => {
-        const headers = ["Rank", "Staff", "Reachout", "Conn", "ONB", "Sales"];
-        const rows = matrixData.map((u, i) => [i + 1, u.name, u.reachout, u.connected, u.todayOnb, u.sales ]);
-        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
-        const encodedUri = encodeURI(csvContent);
-        window.open(encodedUri);
-    };
-
     const isDark = theme === "DARK";
 
     return (
@@ -134,7 +133,7 @@ export default function GrandMatrixPage() {
                                     <Zap className="text-emerald-500 animate-pulse" size={10} /><span className="text-[8px] font-black tracking-[0.1em] text-emerald-500 uppercase">Hybrid Sync Active</span>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5"><span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>SaaS Intelligence Engine • Phase 4 Activated</span></div>
+                            <div className="flex items-center gap-2 mt-0.5"><span className={`text-[10px] font-black uppercase tracking-[0.2em] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>SaaS Intelligence Engine • Phase 4 Operational Matrix</span></div>
                         </div>
                     </div>
 
@@ -188,8 +187,7 @@ export default function GrandMatrixPage() {
                     ))}
                 </div>
 
-                {/* Table Context (Same Structure) */}
-                 <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
+                <div className={`border rounded-[48px] shadow-2xl relative overflow-hidden min-h-[600px] transition-all duration-700 ${isDark ? 'bg-white/[0.02] border-white/5 shadow-black/80' : 'bg-white border-slate-100 shadow-slate-200'}`}>
                     {loading && (
                         <div className={`absolute inset-0 z-30 backdrop-blur-md flex items-center justify-center ${isDark ? 'bg-[#0a0c10]/60' : 'bg-white/60'}`}>
                             <div className={`w-12 h-12 border-4 border-t-transparent rounded-full animate-spin border-indigo-500`} />
@@ -197,7 +195,6 @@ export default function GrandMatrixPage() {
                     )}
                     <div className="overflow-x-auto relative mt-8">
                         <table className="w-full border-collapse min-w-[3200px]">
-                            {/* MASTER Table Structure */}
                             {viewMode === "MASTER" ? (
                                 <>
                                     <thead>
@@ -237,7 +234,7 @@ export default function GrandMatrixPage() {
                                                 <td className="px-4 py-6 text-center text-emerald-600 font-bold tabular-nums">{user.newConnected}</td>
                                                 <td className={`px-4 py-6 text-center opacity-60 tabular-nums ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{user.followupCalls}</td>
                                                 <td className="px-4 py-6 text-center text-amber-500 font-bold tabular-nums">{user.followupConnected}</td>
-                                                <td className="px-4 py-6 text-center text-teal-400 font-black tabular-nums transition-all group-hover:scale-110 group-hover:bg-teal-500/5">{user.todayOnb}</td>
+                                                <td className="px-4 py-6 text-center text-teal-400 font-black tabular-nums transition-all group-hover:bg-teal-500/5">{user.todayOnb}</td>
                                                 <td className="px-4 py-6 text-center text-teal-600 font-black tabular-nums">{user.sales}</td>
                                                 <td className={`px-4 py-6 text-center font-bold tabular-nums ${isDark ? 'text-white/40' : 'text-slate-400'}`}>₹{user.totalSales.toLocaleString()}</td>
                                                 <td className={`px-4 py-6 text-center font-black tabular-nums bg-emerald-500/5 ${isDark ? 'text-emerald-500' : 'text-emerald-700'}`}>₹{user.receivedAmount.toLocaleString()}</td>
@@ -255,7 +252,6 @@ export default function GrandMatrixPage() {
                                 </>
                             ) : (
                                 <>
-                                    {/* DEEP DIVE (Adaptive) */}
                                     <thead>
                                         <tr className={isDark ? 'bg-white/5' : 'bg-slate-50'}>
                                             <th className={`px-8 py-8 text-left text-[11px] font-black uppercase tracking-[0.2em] border-b w-16 sticky left-0 z-30 ${isDark ? 'text-slate-500 border-white/5 bg-[#12141a]' : 'text-slate-400 border-slate-100 bg-white shadow-xl'}`}>No.</th>
