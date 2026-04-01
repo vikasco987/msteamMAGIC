@@ -359,6 +359,7 @@ export default function CRMSpreadsheetPage() {
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [isTL, setIsTL] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isDataSynced, setIsDataSynced] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -752,6 +753,7 @@ export default function CRMSpreadsheetPage() {
 
     const fetchData = async (page = currentPage, limit = rowsPerPage, search = debouncedSearchTerm, sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
         const fetchId = ++activeFetchIdRef.current;
+        setIsDataSynced(false);
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -897,11 +899,15 @@ export default function CRMSpreadsheetPage() {
                     page: json.page ?? prev.page, // critical for server mode detection
                 };
 
-                // Save sanitized cache (Merged state is better for offline/stale-while-revalidate)
-                localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(nextState));
-                
                 return nextState;
             });
+
+            // Save sanitized cache (Merged state is better for offline/stale-while-revalidate)
+            // 🚪 Move outside functional update to avoid React side-effect issues
+            const syncJson = { ...json, responses: json.responses }; // mini snapshot
+            localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(syncJson));
+            
+            setIsDataSynced(true);
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
