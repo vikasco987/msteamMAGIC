@@ -34,6 +34,7 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
     const [isBulkAssigning, setIsBulkAssigning] = useState<boolean>(false);
     const [allHubLeads, setAllHubLeads] = useState<any[] | null>(null);
     const [isLoadingFull, setIsLoadingFull] = useState(false);
+    const [customSelectCount, setCustomSelectCount] = useState<string>("");
 
     // Filter leads based on selection from main table
     const filteredLeads = useMemo(() => {
@@ -168,6 +169,17 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
         else setSelectedBulkIds(new Set(filteredLeads.map(l => l.id)));
     };
 
+    const handleSelectSpecificCount = () => {
+        const count = parseInt(customSelectCount);
+        if (isNaN(count) || count <= 0) {
+            toast.error("Please enter a valid count");
+            return;
+        }
+        const toSelect = filteredLeads.slice(0, count).map(l => l.id);
+        setSelectedBulkIds(new Set(toSelect));
+        toast.success(`Selected top ${toSelect.length} leads`);
+    };
+
     const toggleRowSelection = (id: string, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         setSelectedBulkIds(prev => {
@@ -261,6 +273,21 @@ export default function LeadAssignHub({ formId, onClose, responses, selectedIds 
                                     >
                                         Selected: {selectedBulkIds.size}
                                     </button>
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner">
+                                        <input
+                                            type="number"
+                                            placeholder="QTY"
+                                            value={customSelectCount}
+                                            onChange={(e) => setCustomSelectCount(e.target.value)}
+                                            className="w-16 px-3 py-1 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                        <button
+                                            onClick={handleSelectSpecificCount}
+                                            className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 active:scale-95 transition-all shadow-sm"
+                                        >
+                                            Select
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

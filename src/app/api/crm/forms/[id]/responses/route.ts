@@ -815,10 +815,8 @@ export async function PATCH(
         }
         
         // 🚀 SMART SYNC: Mark as touched only if a Status-related column is updated
-        const isStatusCol = colName.toUpperCase().includes("STATUS") || 
-                          colName.toUpperCase().includes("CALLING") || 
-                          colName.toUpperCase().includes("LEAD") || 
-                          colName.toUpperCase().includes("RESULT");
+        const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE", "FOLLOW", "FOLLOW-UP"];
+        const isStatusCol = statusIndicators.some(ind => colName.toUpperCase().includes(ind));
 
         if (isStatusCol && value && value.trim() !== "") {
             await prisma.formResponse.update({
@@ -917,6 +915,17 @@ export async function PUT(
                             data: { responseId, fieldId: columnId, value }
                         });
                     }
+                }
+
+                // 🚀 SMART SYNC: Mark as touched only if a Status-related column is updated in bulk
+                const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE", "FOLLOW", "FOLLOW-UP"];
+                const isStatusCol = statusIndicators.some(ind => colName.toUpperCase().includes(ind));
+
+                if (isStatusCol && value && value.trim() !== "") {
+                    await tx.formResponse.update({
+                        where: { id: responseId },
+                        data: { isTouched: true }
+                    });
                 }
 
                 // 🚀 SYNC: Mark as touched on ANY manual bulk interaction

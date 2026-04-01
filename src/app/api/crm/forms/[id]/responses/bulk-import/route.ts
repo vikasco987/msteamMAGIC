@@ -205,7 +205,7 @@ export async function POST(
                         submittedByName: userName,
                         submittedAt: new Date(),
                         assignedTo: [user.id],
-                        isTouched: true // 🚀 IMPORT PROTECTOR: If creating with data, it's touched
+                        isTouched: false // 🚀 NEW: Start as untouched, let data presence toggle it
                     });
                     createdCount++;
                     if (!disableActivityLogs) {
@@ -227,6 +227,10 @@ export async function POST(
                     if (!rowKeyMap.has(norm)) rowKeyMap.set(norm, k);
                 });
 
+                // 🚀 SMART TOUCH SYNC: Track if this row should be marked as touched
+                let shouldBeTouched = false;
+                const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE", "FOLLOW", "FOLLOW-UP"];
+
                 for (let excelHeaderRaw in updateColumnMap) {
                     const mapping = updateColumnMap[excelHeaderRaw];
                     if (!mapping) continue;
@@ -245,6 +249,13 @@ export async function POST(
 
                     const rowValueKey = actualKeyInRowRaw || excelHeaderRaw;
                     let valueToMap = (item.row[rowValueKey] ?? "").toString().trim();
+
+                    // Check if this column is a status indicator and has data
+                    const col = intColMap.get(mapping.id);
+                    const colLabel = col?.label?.toUpperCase() || mapping.id.toUpperCase();
+                    if (valueToMap !== "" && statusIndicators.some(ind => colLabel.includes(ind))) {
+                        shouldBeTouched = true;
+                    }
 
                     // 🛡️ SMART UPLOAD SHIELD: Prevent blank Excel cells from erasing existing database values
                     if (valueToMap === "" && !item.isNew && (importMode === 'update' || importMode === 'upsert')) {
@@ -268,6 +279,7 @@ export async function POST(
                     // 🎯 SPECIAL HANDLING FOR FOLLOW-UP SYSTEM COLUMNS
                     const followUpCols = ["__followUpStatus", "__nextFollowUpDate", "__recentRemark", "__followup"];
                     if (followUpCols.includes(colIdToUpdate)) {
+                        shouldBeTouched = true; // Any system follow-up update touches the lead
                         const existingRemarks = await prisma.formRemark.findMany({
                             where: { responseId: item.responseId },
                             orderBy: { updatedAt: 'desc' },
@@ -376,24 +388,7 @@ export async function POST(
                     }
                 }
 
-                // 🚀 SMART TOUCH SYNC: Only mark as touched if data actually exists in status columns
-                let hasStatusData = false;
-                const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE"];
-                
-                for (const mapping of Object.values(updateColumnMap)) {
-                    if (!mapping) continue;
-                    const col = intColMap.get(mapping.id);
-                    const colLabel = col?.label?.toUpperCase() || "";
-                    if (statusIndicators.some(ind => colLabel.includes(ind))) {
-                        const cellVal = (item.row[Object.keys(item.row).find(k => k.trim().toLowerCase() === colLabel.toLowerCase()) || ""] || "").toString().trim();
-                        if (cellVal && cellVal !== "") {
-                            hasStatusData = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (hasStatusData) {
+                if (shouldBeTouched) {
                     if (item.isNew) {
                         const respIndex = responsesToCreate.findIndex(r => r.id === item.responseId);
                         if (respIndex !== -1) responsesToCreate[respIndex].isTouched = true;
@@ -404,6 +399,7 @@ export async function POST(
                         }));
                     }
                 }
+            }
             }
 
             // 4. Batch Database Operations
