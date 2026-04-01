@@ -333,6 +333,7 @@ export default function CRMFormsList() {
                                         {/* Action Shelf */}
                                         <div className="flex items-center gap-2">
                                             <Link
+                                                prefetch={false}
                                                 href={`/crm/forms/${form.id}/responses`}
                                                 className="flex-1 py-4 bg-slate-900 text-white rounded-[20px] text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-all"
                                             >

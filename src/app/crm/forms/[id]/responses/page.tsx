@@ -1015,11 +1015,8 @@ export default function CRMSpreadsheetPage() {
             }
         } finally {
             if (!isSilent && !signal.aborted) {
-                const elapsed = Date.now() - syncStartTime;
-                if (elapsed < 800) {
-                    await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
-                }
                 setIsSyncing(false);
+                setLoading(false); // 🚀 Performance: Ensure loading is cleared immediately after sync
             }
         }
     };
@@ -1121,14 +1118,21 @@ export default function CRMSpreadsheetPage() {
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
     // Yeh performance release ke liye zaroori hai
+    // 💎 Performance Engine: Deferred Background Sync
+    // We prioritize the main table render, then fetch context data for filters/cards
     useEffect(() => {
-        if (!isLoaded || !user) return;
-        const fetchBackgroundData = async () => {
+        if (!isLoaded || !user || !data) return; // Only run after main data is ready
+        
+        const controller = new AbortController();
+        const syncBackground = async () => {
             try {
+                // Wait briefly to let main UI settle (1.5s)
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
                 // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
                 const followUpsRes = await fetch(
                     `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
-                    { cache: 'no-store' }
+                    { cache: 'no-store', signal: controller.signal }
                 );
                 if (followUpsRes.ok) {
                     const json = await followUpsRes.json();
@@ -1138,18 +1142,22 @@ export default function CRMSpreadsheetPage() {
                 // 2. Fetch Latest 500 records for Filter dropdowns and general data
                 const latestRes = await fetch(
                     `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
-                    { cache: 'no-store' }
+                    { cache: 'no-store', signal: controller.signal }
                 );
                 if (latestRes.ok) {
                     const json = await latestRes.json();
                     setAllResponsesForFollowUps(json.responses || []);
                 }
-            } catch (err) {
-                console.error('Background fetch failed:', err);
+            } catch (err: any) {
+                if (err.name !== 'AbortError') {
+                    console.error('Background fetch failed:', err);
+                }
             }
         };
-        fetchBackgroundData();
-    }, [params.id, isLoaded, user]);
+
+        syncBackground();
+        return () => controller.abort();
+    }, [params.id, isLoaded, user, !!data]);
 
     useEffect(() => {
         if (!isLoaded || !user) return;
