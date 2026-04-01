@@ -827,60 +827,47 @@ export default function CRMSpreadsheetPage() {
 
             if (fetchId !== activeFetchIdRef.current) return;
             setData(prev => {
-                // 🛡️ FIRST-LOAD SHIELD: If prev is missing, see if we have metadata in cache to "Hydrate"
-                if (!prev) {
-                    const cachedStr = localStorage.getItem(`matrix_cache_${params.id}`);
-                    if (cachedStr) {
-                        const cached = JSON.parse(cachedStr);
-                        return { 
-                            ...json, 
-                            totalCount: json.totalCount ?? cached.totalCount,
-                            filteredCount: json.filteredCount ?? cached.filteredCount,
-                            totalPages: json.totalPages ?? cached.totalPages,
-                        };
-                    }
-                    return json;
+                const serverResponses = json.responses || [];
+                if (!prev || !isSilent) {
+                    return {
+                        ...json,
+                        // Ensure counts are preserved from prev if server omitted them (resilience)
+                        totalCount: (json.totalCount !== undefined && json.totalCount !== null) ? json.totalCount : (prev?.totalCount ?? 0),
+                        filteredCount: (json.filteredCount !== undefined && json.filteredCount !== null) ? json.filteredCount : (prev?.filteredCount ?? 0),
+                        totalPages: (json.totalPages !== undefined && json.totalPages !== null) ? json.totalPages : (prev?.totalPages ?? 0),
+                        page: json.page ?? (prev?.page ?? 1),
+                    };
                 }
-                if (!json.responses) return json;
 
-                const updatedResponses = json.responses.map((res: any) => {
-                    const existingRes = prev.responses?.find((r: any) => r.id === res.id);
-                    if (!existingRes) return res;
-
-                    const mergedResponse = { ...res };
-                    savingCells.forEach(cellKey => {
-                        const [rowId, colId] = cellKey.split('-');
-                        if (rowId === res.id) {
-                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
-                            if (localCol) {
-                                if (!mergedResponse.responses) mergedResponse.responses = [];
-                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
-                                if (targetColIdx > -1) {
-                                    mergedResponse.responses[targetColIdx].value = localCol.value;
-                                } else {
-                                    mergedResponse.responses.push({ ...localCol });
-                                }
-                            } else {
-                                if ((existingRes as any)[colId] !== undefined) {
-                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
-                                }
-                            }
-                        }
-                    });
-                    return mergedResponse;
+                // 💎 ATOMIC MERGE (Background/Silent updates only)
+                // Use Map for O(1) row lookup to update/insert without losing existing in-memory rows
+                const existingResponses = prev.responses || [];
+                const responseMap = new Map(existingResponses.map(r => [r.id, r]));
+                
+                serverResponses.forEach((res: any) => {
+                    const existing = responseMap.get(res.id);
+                    if (existing) {
+                        responseMap.set(res.id, { 
+                            ...existing, 
+                            ...res,
+                            remarks: res.remarks ?? existing.remarks,
+                            values: res.values ?? existing.values,
+                            payments: res.payments ?? existing.payments,
+                            rowColor: res.rowColor ?? existing.rowColor
+                        });
+                    } else {
+                        // If it's a new row not in current view, we can still add it 
+                        // though usually background updates target visible IDs
+                        responseMap.set(res.id, res);
+                    }
                 });
 
-                // 💎 PERSISTENCE SHIELD: Merge Server Metadata (Keep counts if server skips them)
-                const nextState = { 
+                return { 
                     ...json, 
-                    responses: updatedResponses,
-                    totalCount: json.totalCount ?? prev.totalCount,
-                    filteredCount: json.filteredCount ?? prev.filteredCount,
-                    totalPages: json.totalPages ?? prev.totalPages,
-                    page: json.page ?? prev.page, // critical for server mode detection
+                    responses: Array.from(responseMap.values()),
+                    totalCount: (json.totalCount !== undefined && json.totalCount !== null) ? json.totalCount : prev.totalCount,
+                    filteredCount: (json.filteredCount !== undefined && json.filteredCount !== null) ? json.filteredCount : prev.filteredCount,
                 };
-
-                return nextState;
             });
 
             // Save sanitized cache (Merged state is better for offline/stale-while-revalidate)

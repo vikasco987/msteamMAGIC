@@ -465,9 +465,11 @@ export async function GET(
         }
 
         // Resolve OrderBy
+        // Resolve OrderBy
         let responses: any[] = [];
-        let filteredCount: number | undefined = undefined;
-        const shouldCount = page === 1;
+        let filteredCount: number = 0;
+        let totalResponses: number = 0;
+        const pageNum = Number(page);
 
         if (sortBy === "__mtv") {
             // 💎 O(1) PERFORMANCE OPTIMIZATION: Use single query segment sorting
@@ -485,9 +487,7 @@ export async function GET(
             });
             console.timeEnd("FetchMany");
             responses = items;
-            if (shouldCount) {
-                filteredCount = await prisma.formResponse.count({ where: whereFilter });
-            }
+            filteredCount = await prisma.formResponse.count({ where: whereFilter });
         } else {
             let orderBy: any = { submittedAt: "desc" };
             if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
@@ -505,16 +505,13 @@ export async function GET(
             });
             console.timeEnd("FetchManyElse");
             responses = items;
-            if (shouldCount) {
-                filteredCount = await prisma.formResponse.count({ where: whereFilter });
-            }
-        }
-
-        let totalResponses: number | undefined = undefined;
-        if (shouldCount) {
-            const [calculatedTotal] = await Promise.all([
-                prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } }),
+            
+            // 💎 NO-SKIP COUNTS: Always return counts to prevent UI reset on deep pages
+            const [calculatedFiltered, calculatedTotal] = await Promise.all([
+                prisma.formResponse.count({ where: whereFilter }),
+                prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } })
             ]);
+            filteredCount = calculatedFiltered;
             totalResponses = calculatedTotal;
         }
 
