@@ -671,27 +671,8 @@ export default function CRMSpreadsheetPage() {
 
     const prevFiltersRef = useRef({ conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id });
 
-    useEffect(() => {
-        const filtersChanged =
-            prevFiltersRef.current.conditions !== conditions ||
-            prevFiltersRef.current.filterConjunction !== filterConjunction ||
-            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
-            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
-            prevFiltersRef.current.sortBy !== sortBy ||
-            prevFiltersRef.current.sortOrder !== sortOrder ||
-            prevFiltersRef.current.paramsId !== params.id;
 
-        if (filtersChanged) {
-            prevFiltersRef.current = { conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id as string };
-            if (currentPage !== 1) setCurrentPage(1);
-        }
 
-        if (!isAddingRow) {
-            const pageToFetch = filtersChanged ? 1 : currentPage;
-            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
 
 
 
@@ -1079,12 +1060,23 @@ export default function CRMSpreadsheetPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        // 💎 AUTOMATIC RESET: If filters/search change, we MUST move back to page 1
-        // but we only trigger the fetch through the 'currentPage' dependency to avoid racing calls
-        if (currentPage !== 1) {
+        // 💎 SMART RESET: Only reset to page 1 if FILTERS have changed
+        const filtersChanged = 
+            prevFiltersRef.current.conditions !== conditions ||
+            prevFiltersRef.current.filterConjunction !== filterConjunction ||
+            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
+            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
+            prevFiltersRef.current.sortBy !== sortBy ||
+            prevFiltersRef.current.sortOrder !== sortOrder;
+
+        if (filtersChanged && currentPage !== 1) {
+            prevFiltersRef.current = { ...prevFiltersRef.current, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder };
             setCurrentPage(1);
-            return; // Exit and let the next effect cycle with currentPage=1 do the fetch
+            return;
         }
+
+        // Update ref if not changed but page moved
+        prevFiltersRef.current = { ...prevFiltersRef.current, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder };
         
         if (isLoaded && user) {
             fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
