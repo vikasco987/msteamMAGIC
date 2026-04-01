@@ -1099,23 +1099,23 @@ export default function CRMSpreadsheetPage() {
                     setTodayFollowUpsData(json.responses || []);
                 }
 
-                // 2. Fetch Latest 100 records for Filter dropdowns and general data
+                // 2. Disabled redundant full-matrix background fetch to save DB connections
+                // (The grid already handles current page results)
+                /* 
                 const latestRes = await fetch(
                     `/api/crm/forms/${params.id}/responses?page=1&limit=100&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
-                if (latestRes.ok) {
-                    const json = await latestRes.json();
-                    setAllResponsesForFollowUps(json.responses || []);
-                }
+                if (latestRes.ok) { ... }
+                */
             } catch (err) {
                 console.error('Background fetch failed:', err);
             }
         };
-        // 🚀 LAZY LOAD: Delay background stat fetches to clear network pipeline for the main grid
+        // 🚀 ULTRA LAZY LOAD: Delay background stat fetches to clear network pipeline for the main grid
         const timerId = setTimeout(() => {
             fetchBackgroundData();
-        }, 5000);
+        }, 10000); // 10s delay to ensure grid is 100% interactive first
         return () => clearTimeout(timerId);
     }, [params.id, isLoaded, user]);
 
