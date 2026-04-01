@@ -665,6 +665,8 @@ export default function CRMSpreadsheetPage() {
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const activeFetchIdRef = useRef<number>(0);
+    const tableRef = useRef<HTMLDivElement>(null);
 
     const prevFiltersRef = useRef({ conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id });
 
@@ -691,9 +693,6 @@ export default function CRMSpreadsheetPage() {
     }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
 
 
-
-
-    const tableRef = useRef<HTMLDivElement>(null);
 
 
 
@@ -752,6 +751,7 @@ export default function CRMSpreadsheetPage() {
     }, [data, isMaster, isPureMaster, userRole]);
 
     const fetchData = async (page = currentPage, limit = rowsPerPage, search = debouncedSearchTerm, sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        const fetchId = ++activeFetchIdRef.current;
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -842,7 +842,7 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            // 4. Update the state
+            if (fetchId !== activeFetchIdRef.current) return;
             setData(prev => {
                 // 🛡️ FIRST-LOAD SHIELD: If prev is missing, see if we have metadata in cache to "Hydrate"
                 if (!prev) {
@@ -1073,7 +1073,16 @@ export default function CRMSpreadsheetPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (isLoaded && user) fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        // 💎 AUTOMATIC RESET: If filters/search change, we MUST move back to page 1
+        // but we only trigger the fetch through the 'currentPage' dependency to avoid racing calls
+        if (currentPage !== 1) {
+            setCurrentPage(1);
+            return; // Exit and let the next effect cycle with currentPage=1 do the fetch
+        }
+        
+        if (isLoaded && user) {
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+        }
     }, [params.id, isLoaded, user, currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
@@ -2007,17 +2016,6 @@ export default function CRMSpreadsheetPage() {
             document.removeEventListener('touchstart', handleClickOutside);
         };
     }, []);
-
-    useEffect(() => {
-        // Conditions/filterConjunction change pe saara data refetch karo
-        // IMPORTANT: yeh rowsPerPage se independent hai
-        // Jab filter active hai to fetchData khud hi limit=99999 use karega (see fetchData)
-        setCurrentPage(1);
-        if (isLoaded && user) {
-            fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conditions, filterConjunction]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
