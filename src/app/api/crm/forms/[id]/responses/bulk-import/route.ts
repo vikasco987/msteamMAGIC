@@ -393,13 +393,9 @@ export async function POST(
                         const respIndex = responsesToCreate.findIndex(r => r.id === item.responseId);
                         if (respIndex !== -1) responsesToCreate[respIndex].isTouched = true;
                     } else {
-                        individualOpsMap.set(`touch_${item.responseId}`, prisma.formResponse.update({
-                            where: { id: item.responseId },
-                            data: { isTouched: true }
-                        }));
+                        individualOpsMap.set(`touch_${item.responseId}`, prisma.formResponse.update({ where: { id: item.responseId }, data: { isTouched: true } }));
                     }
                 }
-            }
             }
 
             // 4. Batch Database Operations

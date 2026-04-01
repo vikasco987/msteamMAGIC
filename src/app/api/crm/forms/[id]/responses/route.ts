@@ -9,7 +9,7 @@ export const revalidate = 0;
 // Submit a response (Public or Internal)
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id: formId } = await params;
@@ -46,7 +46,7 @@ export async function POST(
 // Get all responses + internal data (Admin/Master only)
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const perfStart = Date.now();
     try {
@@ -672,7 +672,7 @@ export async function GET(
 // Update a specific value (Cell Inline Edit)
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = await currentUser();
@@ -851,9 +851,10 @@ export async function PATCH(
 // Bulk update values (For Excel-like paste)
 export async function PUT(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await params;
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -950,7 +951,7 @@ export async function PUT(
             }
         });
         
-        await emitMatrixUpdate({ formId: params.id, type: "BULK_UPDATE", count: updates.length });
+        await emitMatrixUpdate({ formId, type: "BULK_UPDATE", count: updates.length });
         return NextResponse.json({ success: true, count: updates.length });
     } catch (error) {
         console.error("PUT Bulk Update Error:", error);
@@ -961,11 +962,11 @@ export async function PUT(
 // Delete response(s) (MASTER only)
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { userId } = await auth();
         const { id: formId } = await params;
+        const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const user = await currentUser();
