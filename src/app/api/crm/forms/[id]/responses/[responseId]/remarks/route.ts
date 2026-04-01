@@ -69,8 +69,14 @@ export async function POST(
                         createdById: user.id
                     }
                 });
-            } else { throw e; }
+            }
         }
+        
+        // 🚀 CRITICAL PERFORMANCE ENGINE: Mark response as touched
+        await prisma.formResponse.update({
+            where: { id: cleanedResponseId },
+            data: { isTouched: true }
+        });
 
         // Broad-Spectrum Sync (Automation + Lifecycle)
         await Promise.all([
@@ -111,35 +117,46 @@ export async function POST(
         };
 
         const masterStatus = followUpStatus || leadStatus || null;
+        const syncTasks: Promise<void>[] = [];
+
         if (masterStatus) {
             const variants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status"];
-            for (const v of variants) await syncToValue(v, masterStatus);
+            variants.forEach(v => syncTasks.push(syncToValue(v, masterStatus)));
         }
 
-        await syncToValue("Recent Remark", remark);
-        if (nextFollowUpDate) await syncToValue("Next Follow-up Date", String(nextFollowUpDate));
+        syncTasks.push(syncToValue("Recent Remark", remark));
+        if (nextFollowUpDate) syncTasks.push(syncToValue("Next Follow-up Date", String(nextFollowUpDate)));
         
         // 📅 CLOCK SYNC
         const todayStr = new Date().toISOString().split('T')[0];
         const actualCallingCols = remarkCols.filter(c => c.label.toLowerCase().includes("calling date"));
-        for (const col of actualCallingCols) await syncToValue(col.label, todayStr);
+        actualCallingCols.forEach(col => syncTasks.push(syncToValue(col.label, todayStr)));
+
+        // Execute all syncs in parallel
+        await Promise.all(syncTasks);
 
         // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
         console.log("🔥 API HIT HOI");
-        await emitMatrixUpdate(); // 🛰️ REAL-TIME EMISSION (MUST AWAIT ON VERCEL)
+        // Don't await matrix update if it's not critical for the response return
+        emitMatrixUpdate({ 
+            formId: cleanedFormId, 
+            responseId: cleanedResponseId, 
+            type: "REMARK_ADDED" 
+        }); 
 
         return NextResponse.json({ success: true, remark: newRemark });
     } catch (error: any) {
-        console.error("Remarks API Error:", error); return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+        console.error("Remarks API Error:", error);
+        return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
     }
 }
 
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string, responseId: string } }
+    context: { params: Promise<{ id: string; responseId: string }> }
 ) {
     try {
-        const { id, responseId } = await params;
+        const { id, responseId } = await context.params;
         const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         const url = new URL(req.url);
@@ -149,7 +166,18 @@ export async function DELETE(
         if (!dbUser || (dbUser.role !== 'MASTER' && dbUser.role !== 'ADMIN')) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
+        const cleanedResponseId = responseId.trim();
         await (prisma as any).formRemark.delete({ where: { id: remarkId } });
+        
+        // 🚀 SYNC BACK: Check if any remarks remain to reset touched state
+        const remainingRemarks = await (prisma as any).formRemark.count({ where: { responseId: cleanedResponseId } });
+        if (remainingRemarks === 0) {
+            await prisma.formResponse.update({
+                where: { id: cleanedResponseId },
+                data: { isTouched: false }
+            });
+        }
+
         console.log("Triggering Real-time Delete Sync Shard... 🛰️");
         await emitMatrixUpdate(); // Sync on delete too! 🛰️ (MUST AWAIT ON VERCEL)
         return NextResponse.json({ success: true });

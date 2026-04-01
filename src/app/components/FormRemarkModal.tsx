@@ -23,17 +23,19 @@ interface Props {
     userRole: string; // "MASTER", "ADMIN", etc.
     onClose: () => void;
     onSave?: () => void;
+    initialData?: { remark?: string, nextFollowUpDate?: string, followUpStatus?: string, leadStatus?: string };
 }
 
-export default function FormRemarkModal({ formId, responseId, columnId, userRole, onClose, onSave }: Props) {
+export default function FormRemarkModal({ formId, responseId, columnId, userRole, onClose, onSave, initialData }: Props) {
     const [loading, setLoading] = useState(false);
-    const [fetching, setFetching] = useState(true);
+    const [fetching, setFetching] = useState(false); // ⚡ Instant Launch Protocol
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
     const [remarks, setRemarks] = useState<FormRemark[]>([]);
     const [form, setForm] = useState({
-        remark: "",
-        nextFollowUpDate: "",
-        followUpStatus: "",
-        leadStatus: ""
+        remark: initialData?.remark || "",
+        nextFollowUpDate: initialData?.nextFollowUpDate || "",
+        followUpStatus: initialData?.followUpStatus || "",
+        leadStatus: initialData?.leadStatus || ""
     });
 
     const [isAdding, setIsAdding] = useState(false);
@@ -282,27 +284,39 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
     };
 
     const fetchRemarks = async () => {
-        setFetching(true);
         const cacheKey = `remarks_cache_${responseId}`;
         const cached = localStorage.getItem(cacheKey);
+        
+        // 🚀 PHASE 1: Populate instantly from cache
         if (cached) {
-            try { setRemarks(JSON.parse(cached)); } catch (e) { }
+            try { 
+                const cachedData = JSON.parse(cached);
+                setRemarks(cachedData);
+                setIsInitialLoad(false); // Immediately show UI if cache exists
+            } catch (e) { }
         }
+
+        // 🛰️ PHASE 2: Silent Background Refresh
+        setFetching(true);
         try {
             const res = await fetch(`/api/crm/forms/${formId}/responses/${responseId}/remarks?_t=${Date.now()}`);
             if (res.ok) {
                 const data = await res.json();
                 const fetchedRemarks = data.remarks || [];
+                
+                // Merge with offline queue if any
                 const queue = JSON.parse(localStorage.getItem("offline_remarks_queue") || "[]");
                 const currentOffline = queue.filter((item: any) => item.responseId === responseId);
                 const finalRemarks = [...currentOffline, ...fetchedRemarks];
+                
                 setRemarks(finalRemarks);
                 localStorage.setItem(cacheKey, JSON.stringify(fetchedRemarks));
             }
         } catch (error) {
-            if (navigator.onLine) toast.error("Failed to load follow-ups");
+            if (navigator.onLine) console.error("Silent sync failed");
         } finally {
             setFetching(false);
+            setIsInitialLoad(false);
         }
     };
 
@@ -427,9 +441,10 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 </div>
 
                 <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
-                    {fetching ? (
-                        <div className="flex justify-center p-8">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                    {fetching && remarks.length === 0 && isInitialLoad ? (
+                        <div className="flex flex-col items-center justify-center p-12 space-y-4">
+                            <div className="animate-spin rounded-full h-10 w-10 border-4 border-indigo-100 border-t-indigo-600"></div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">Syncing Matrix...</p>
                         </div>
                     ) : remarks.length === 0 && !isAdding ? (
                         <div className="text-center py-10 bg-white rounded-2xl border border-slate-100 border-dashed">

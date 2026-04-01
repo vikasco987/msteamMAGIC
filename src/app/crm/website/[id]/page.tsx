@@ -393,6 +393,9 @@ export default function CRMSpreadsheetPage() {
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
+    const [selectedResponseActivities, setSelectedResponseActivities] = useState<FormActivity[]>([]);
+    const [isFetchingActivities, setIsFetchingActivities] = useState(false);
+    const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Record<string, number>>({});
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
@@ -433,6 +436,28 @@ export default function CRMSpreadsheetPage() {
         api: formId ? `/api/crm/forms/${formId}/chat` : undefined,
         body: chatBody
     } as any) as any;
+
+    useEffect(() => {
+        const fetchActivities = async () => {
+            if (!selectedResponse) {
+                setSelectedResponseActivities([]);
+                return;
+            }
+            setIsFetchingActivities(true);
+            try {
+                const res = await fetch(`/api/crm/forms/${formId}/responses/${selectedResponse.id}/activities`);
+                if (!res.ok) throw new Error("Failed to fetch activities");
+                const result = await res.json();
+                setSelectedResponseActivities(result.activities || []);
+            } catch (err) {
+                console.error("Fetch activities error:", err);
+            } finally {
+                setIsFetchingActivities(false);
+            }
+        };
+
+        fetchActivities();
+    }, [selectedResponse?.id, formId]);
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         if (!(input || "").trim()) return;
@@ -819,25 +844,32 @@ export default function CRMSpreadsheetPage() {
 
             // 4. Update the state
             setData(prev => {
-                if (!prev || !json.responses) return json;
+                // 🛡️ FIRST-LOAD SHIELD: If prev is missing, see if we have metadata in cache to "Hydrate"
+                if (!prev) {
+                    const cachedStr = localStorage.getItem(`matrix_cache_${params.id}`);
+                    if (cachedStr) {
+                        const cached = JSON.parse(cachedStr);
+                        return { 
+                            ...json, 
+                            totalCount: json.totalCount ?? cached.totalCount,
+                            filteredCount: json.filteredCount ?? cached.filteredCount,
+                            totalPages: json.totalPages ?? cached.totalPages,
+                        };
+                    }
+                    return json;
+                }
+                if (!json.responses) return json;
 
-                // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
-                // even if the server just sent us old data. This prevents the "disappearing data" bug
-                // when fetchData races with a pending handleUpdateValue.
                 const updatedResponses = json.responses.map((res: any) => {
                     const existingRes = prev.responses?.find((r: any) => r.id === res.id);
                     if (!existingRes) return res;
 
                     const mergedResponse = { ...res };
-                    // If this row has any cells in 'savingCells', we should consider keeping the local version
-                    // for those specific columns.
                     savingCells.forEach(cellKey => {
                         const [rowId, colId] = cellKey.split('-');
                         if (rowId === res.id) {
-                            // Find the value from the previous local state (which was updated optimistically)
                             const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
                             if (localCol) {
-                                // Update mergedResponse with the local value
                                 if (!mergedResponse.responses) mergedResponse.responses = [];
                                 const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
                                 if (targetColIdx > -1) {
@@ -846,7 +878,6 @@ export default function CRMSpreadsheetPage() {
                                     mergedResponse.responses.push({ ...localCol });
                                 }
                             } else {
-                                // Check for regular fields (not internal columns)
                                 if ((existingRes as any)[colId] !== undefined) {
                                     (mergedResponse as any)[colId] = (existingRes as any)[colId];
                                 }
@@ -856,7 +887,20 @@ export default function CRMSpreadsheetPage() {
                     return mergedResponse;
                 });
 
-                return { ...json, responses: updatedResponses };
+                // 💎 PERSISTENCE SHIELD: Merge Server Metadata (Keep counts if server skips them)
+                const nextState = { 
+                    ...json, 
+                    responses: updatedResponses,
+                    totalCount: json.totalCount ?? prev.totalCount,
+                    filteredCount: json.filteredCount ?? prev.filteredCount,
+                    totalPages: json.totalPages ?? prev.totalPages,
+                    page: json.page ?? prev.page, // critical for server mode detection
+                };
+
+                // Save sanitized cache (Merged state is better for offline/stale-while-revalidate)
+                localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(nextState));
+                
+                return nextState;
             });
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
@@ -867,9 +911,6 @@ export default function CRMSpreadsheetPage() {
             if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
                 setIsPinned(json.form.pinnedBy.includes(json.clerkId));
             }
-
-            // Save safe cache
-            localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(json));
 
             if (viewsRes.ok) {
                 const viewsJson = await viewsRes.json();
@@ -1043,7 +1084,7 @@ export default function CRMSpreadsheetPage() {
             try {
                 // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
                 const followUpsRes = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=100&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
                 if (followUpsRes.ok) {
@@ -1051,9 +1092,9 @@ export default function CRMSpreadsheetPage() {
                     setTodayFollowUpsData(json.responses || []);
                 }
 
-                // 2. Fetch Latest 500 records for Filter dropdowns and general data
+                // 2. Fetch Latest 100 records for Filter dropdowns and general data
                 const latestRes = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=100&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
                 if (latestRes.ok) {
@@ -1064,7 +1105,11 @@ export default function CRMSpreadsheetPage() {
                 console.error('Background fetch failed:', err);
             }
         };
-        fetchBackgroundData();
+        // 🚀 LAZY LOAD: Delay background stat fetches to clear network pipeline for the main grid
+        const timerId = setTimeout(() => {
+            fetchBackgroundData();
+        }, 5000);
+        return () => clearTimeout(timerId);
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
@@ -1813,12 +1858,12 @@ export default function CRMSpreadsheetPage() {
     }, [getColumns, columnWidths, isPureMaster]);
 
     const paginatedResponses = useMemo(() => {
-        // If server provided pagination, it's already sliced
-        if (data?.responses && data.totalPages !== undefined) return filteredResponses;
+        // 💎 SERVER SLICE REDUNDANCY: If server already paginated, don't slice again on client
+        if (data?.responses && (data.page !== undefined || data.totalPages !== undefined)) return filteredResponses;
 
         const start = (currentPage - 1) * rowsPerPage;
         return filteredResponses.slice(start, start + rowsPerPage);
-    }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
+    }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages, data?.page]);
 
     const tbodyScrollRef = useRef<HTMLDivElement>(null);
     const rowVirtualizer = useVirtualizer({
@@ -3083,6 +3128,25 @@ export default function CRMSpreadsheetPage() {
                             </button>
 
                             <button
+                                onClick={() => {
+                                    if (sortBy === "__mtv") {
+                                        setSortBy("__submittedAt");
+                                        setSortOrder("desc");
+                                    } else {
+                                        setSortBy("__mtv");
+                                        setSortOrder("desc");
+                                    }
+                                }}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${sortBy === "__mtv"
+                                    ? 'bg-amber-100 text-amber-700 border-amber-200 animate-pulse ring-2 ring-amber-100'
+                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/10 text-white border-white/20 hover:bg-white/20' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')}`}
+                                title="Prioritize Untouched Leads"
+                            >
+                                <Zap size={12} className={sortBy === "__mtv" ? "fill-current" : ""} />
+                                Untouched
+                            </button>
+
+                            <button
                                 onClick={() => setIsLeadAssignHubOpen(true)}
                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
                                 title="Rapid Lead Distribution Hub"
@@ -3424,32 +3488,16 @@ export default function CRMSpreadsheetPage() {
                         >
                             <AnimatePresence>
                                 {isSyncing && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="fixed inset-0 z-[100000] flex flex-col items-center justify-center pointer-events-none transition-all duration-500"
-                                    >
-                                        <div className="flex flex-col items-center gap-6 p-12 rounded-[48px] bg-white/95 shadow-[0_32px_100px_rgba(0,0,0,0.25)] border border-slate-200/50 animate-pulse relative">
-                                            {/* Glow effect */}
-                                            <div className="absolute inset-0 bg-indigo-500/5 blur-3xl rounded-full" />
-
-                                            <div className="relative w-24 h-24">
-                                                <motion.div
-                                                    animate={{ rotate: 360, scale: [1, 1.05, 1] }}
-                                                    transition={{ rotate: { repeat: Infinity, duration: 3, ease: "linear" }, scale: { repeat: Infinity, duration: 2 } }}
-                                                    className="w-full h-full border-[6px] border-indigo-600/10 border-t-indigo-600 rounded-[32px] shadow-2xl shadow-indigo-200"
-                                                />
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <Bot size={40} className="text-indigo-600 animate-bounce" />
-                                                </div>
-                                            </div>
-                                            <div className="text-center space-y-2 relative z-10">
-                                                <h3 className="text-base font-black text-slate-900 uppercase tracking-[0.4em]">Intelligence Matrix</h3>
-                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Neural Stream active...</p>
-                                            </div>
+                                    <div className="absolute top-0 left-0 right-0 z-[100] pointer-events-none">
+                                        <div className="h-[3px] w-full bg-indigo-600/10 overflow-hidden">
+                                            <motion.div
+                                                initial={{ x: "-100%" }}
+                                                animate={{ x: "100%" }}
+                                                transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                                                className="h-full w-1/3 bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.5)]"
+                                            />
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 )}
                             </AnimatePresence>
                             <table
@@ -4662,7 +4710,7 @@ export default function CRMSpreadsheetPage() {
                                         </select>
                                     </div>
                                     <div className={`text-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400' : 'text-[#475467]'}`}>
-                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount || filteredResponses.length}</span> responses
+                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount ?? filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount ?? filteredResponses.length}</span> responses
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -4678,9 +4726,9 @@ export default function CRMSpreadsheetPage() {
                                     </button>
 
                                     <div className="flex items-center gap-1">
-                                        {Array.from({ length: data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
+                                        {Array.from({ length: data?.totalPages ?? Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
                                             const pageNum = i + 1;
-                                            const totalPages = data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage);
+                                            const totalPages = data?.totalPages ?? Math.ceil(filteredResponses.length / rowsPerPage);
 
                                             // Only show a few pages if too many
                                             if (Math.abs(pageNum - currentPage) > 2 && pageNum !== 1 && pageNum !== totalPages) {
@@ -6496,12 +6544,18 @@ export default function CRMSpreadsheetPage() {
                                                         <div className="flex flex-col gap-10">
                                                             <div className="flex items-center justify-between px-6">
                                                                 <h3 className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6">Audit Lifecycle <div className="h-[2px] w-24 bg-slate-100 rounded-full" /></h3>
-                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Total Actions</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{selectedResponseActivities.length} Total Actions</span>
                                                             </div>
 
-                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
-                                                                {(data?.activities?.filter((a: any) => a.responseId === selectedResponse.id).length || 0) > 0 ? (
-                                                                    data?.activities?.filter((a: any) => a.responseId === selectedResponse.id).map((act: any) => (
+                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative min-h-[200px]">
+                                                                {isFetchingActivities ? (
+                                                                    <div className="space-y-8 pl-12">
+                                                                        {[1, 2, 3].map(i => (
+                                                                            <div key={i} className="h-32 w-full bg-slate-100 animate-pulse rounded-[56px]" />
+                                                                        ))}
+                                                                    </div>
+                                                                ) : selectedResponseActivities.length > 0 ? (
+                                                                    selectedResponseActivities.map((act: any) => (
                                                                         <div key={act.id} className="relative pl-12 pb-12 group/audit">
                                                                             <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
                                                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />
@@ -6532,10 +6586,11 @@ export default function CRMSpreadsheetPage() {
                                                                     ))
                                                                 ) : (
                                                                     <div className="flex flex-col items-center justify-center py-24 bg-slate-50/50 rounded-[64px] border-2 border-dashed border-slate-200 ml-[-20px]">
-                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100 animate-pulse">
+                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100">
                                                                             <Clock size={50} className="text-slate-200" />
                                                                         </div>
-                                                                        <p className="text-[14px] font-black text-slate-300 uppercase tracking-[0.6em]">Timeline Deactivated</p>
+                                                                        <h4 className="text-[14px] font-black text-slate-950 uppercase tracking-[0.4em] mb-4">Silent Timeline</h4>
+                                                                        <p className="text-[11px] font-bold text-slate-400 text-center max-w-[280px] leading-relaxed">No activity logs recorded for this protocol yet. The matrix is silent.</p>
                                                                     </div>
                                                                 )}
                                                             </div>

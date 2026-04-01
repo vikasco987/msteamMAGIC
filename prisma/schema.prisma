@@ -308,10 +308,12 @@ model FormResponse {
   rowColor        String?     // Custom highlight color for the row
 
   submittedAt     DateTime    @default(now())
+  isTouched       Boolean     @default(false)
 
   @@index([formId])
   @@index([submittedAt])
   @@index([submittedBy])
+  @@index([isTouched])
 }
 
 model ResponseValue {
@@ -387,6 +389,8 @@ model FormActivity {
   oldValue        String?
   newValue        String?
   createdAt       DateTime    @default(now())
+
+  @@index([responseId])
 }
 
 model SavedView {
@@ -431,6 +435,7 @@ model FormRemark {
   
   columnId          String?   // Link to InternalColumn for specific status tracking
   
+  @@index([responseId])
   @@index([columnId])
 }
 

@@ -391,7 +391,7 @@ export default function CRMSpreadsheetPage() {
     const [canvasTheme, setCanvasTheme] = useState<string>("default");
     const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
-    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string } | null>(null);
+    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string, initialData?: any } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -4458,7 +4458,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 <button className="inline-flex items-center justify-center gap-1.5 px-2 py-1 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
@@ -4485,7 +4494,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 {latestRemark ? (
@@ -4524,7 +4542,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 {nextDate ? (
@@ -6750,6 +6777,7 @@ export default function CRMSpreadsheetPage() {
                                     columnId={openFollowUpModal.columnId}
                                     onClose={() => setOpenFollowUpModal(null)}
                                     userRole={userRole || 'GUEST'}
+                                    initialData={openFollowUpModal.initialData}
                                     onSave={() => {
                                         if (openFollowUpModal?.responseId) {
                                           setRecentlyUpdatedIds(prev => ({ ...prev, [openFollowUpModal.responseId]: Date.now() }));

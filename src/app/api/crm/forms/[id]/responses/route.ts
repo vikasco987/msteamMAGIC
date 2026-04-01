@@ -48,6 +48,7 @@ export async function GET(
     req: NextRequest,
     { params }: { params: { id: string } }
 ) {
+    const perfStart = Date.now();
     try {
         const { id: formId } = await params;
         const { userId } = await auth();
@@ -108,6 +109,7 @@ export async function GET(
         const sortBy = searchParams.get("sortBy") || "__submittedAt";
         const sortOrder = (searchParams.get("sortOrder") || "desc") as "asc" | "desc";
         const conditionsStr = searchParams.get("conditions") || "[]";
+        console.log(`[PERF TESTING API] Start Page: ${page}`);
         let conditions: any[] = [];
         try {
             conditions = JSON.parse(conditionsStr);
@@ -221,7 +223,9 @@ export async function GET(
                     }
                 };
 
-                if (colId === "__submittedAt") {
+                if (colId === "isTouched") {
+                    columnFilters.push({ isTouched: (val === "true" || val === true || val === 1) });
+                } else if (colId === "__submittedAt") {
                     if (op === "today") {
                         const dateFilters = perspectiveDates.map(pDate => {
                             const start = new Date(pDate); start.setHours(0, 0, 0, 0);
@@ -313,19 +317,9 @@ export async function GET(
                         }
                     } else if (colId === "__followUpStatus") {
                         if (op === "is_empty") {
-                            columnFilters.push({ 
-                                AND: [
-                                    { remarks: { none: {} } },
-                                    { internalValues: { none: { columnId: { in: statusColIds } } } }
-                                ] 
-                            });
+                            columnFilters.push({ isTouched: false });
                         } else if (op === "is_not_empty") {
-                            columnFilters.push({ 
-                                OR: [
-                                    { remarks: { some: {} } },
-                                    { internalValues: { some: { columnId: { in: statusColIds } } } }
-                                ] 
-                            });
+                            columnFilters.push({ isTouched: true });
                         } else {
                             const pOp = getPrismaOp(op, val, val2);
                             columnFilters.push({
@@ -471,37 +465,58 @@ export async function GET(
         }
 
         // Resolve OrderBy
-        let orderBy: any = { submittedAt: "desc" };
-        if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
-        else if (sortBy === "__contributor") orderBy = { submittedByName: sortOrder };
-        else {
-            // Sorting by dynamic values is extremely hard in Prisma (requires raw SQL or many-to-many join sorting)
-            // We'll keep default for now
-            orderBy = { submittedAt: sortOrder };
-        }
+        let responses: any[] = [];
+        let filteredCount: number | undefined = undefined;
+        const shouldCount = page === 1;
 
-        console.log("🧾 [PRO-LOG] [STEP 5 BACKEND] Final Where Query (Detailed):", JSON.stringify(whereFilter, (key, value) => {
-            if (value instanceof Date) return value.toISOString();
-            return value;
-        }, 2));
-
-        const [totalResponses, responses, filteredTotalCount] = await Promise.all([
-            prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } }),
-            prisma.formResponse.findMany({
+        if (sortBy === "__mtv") {
+            // 💎 O(1) PERFORMANCE OPTIMIZATION: Use single query segment sorting
+            // isTouched: false (0) comes before true (1), effectively pulling untouched to top.
+            // This natively supports pagination without manual count/skip logic.
+            console.time("FetchMany");
+            const items = await prisma.formResponse.findMany({
                 where: whereFilter,
-                include: {
-                    values: true,
-                    // @ts-ignore
-                    remarks: { orderBy: { createdAt: "desc" } },
-                    // @ts-ignore
-                    payments: { orderBy: { paymentDate: "desc" } }
-                },
+                orderBy: [
+                    { isTouched: "asc" },
+                    { submittedAt: sortOrder }
+                ],
+                skip,
+                take: limit
+            });
+            console.timeEnd("FetchMany");
+            responses = items;
+            if (shouldCount) {
+                filteredCount = await prisma.formResponse.count({ where: whereFilter });
+            }
+        } else {
+            let orderBy: any = { submittedAt: "desc" };
+            if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
+            else if (sortBy === "__contributor") orderBy = { submittedByName: sortOrder };
+            else {
+                orderBy = { submittedAt: sortOrder };
+            }
+
+            console.time("FetchManyElse");
+            const items = await prisma.formResponse.findMany({
+                where: whereFilter,
                 orderBy,
                 skip,
                 take: limit
-            }),
-            prisma.formResponse.count({ where: whereFilter }),
-        ]);
+            });
+            console.timeEnd("FetchManyElse");
+            responses = items;
+            if (shouldCount) {
+                filteredCount = await prisma.formResponse.count({ where: whereFilter });
+            }
+        }
+
+        let totalResponses: number | undefined = undefined;
+        if (shouldCount) {
+            const [calculatedTotal] = await Promise.all([
+                prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } }),
+            ]);
+            totalResponses = calculatedTotal;
+        }
 
         // 💎 MATRIX HUB PERSISTENCE: Ensure Forced-IDs are ALWAYS in the response
         // regardless of pagination/limit results.
@@ -517,13 +532,6 @@ export async function GET(
                         id: { in: missingIds },
                         formId,
                         ...(isMaster ? {} : permissionWhere)
-                    },
-                    include: {
-                        values: true,
-                        // @ts-ignore
-                        remarks: { orderBy: { createdAt: "desc" } },
-                        // @ts-ignore
-                        payments: { orderBy: { paymentDate: "desc" } }
                     }
                 });
                 
@@ -573,19 +581,29 @@ export async function GET(
             });
         }
 
-        // Parallelize all remaining data fetches
-        const [internalValues, activities] = await Promise.all([
+        // Parallelize all remaining data fetches (Internal Values AND Core Associations)
+        console.time("FetchAssociations");
+        const allResponseIds = allResponses.map(r => r.id);
+        const [internalValues, allValues, allRemarks, allPayments] = await Promise.all([
             prisma.internalValue.findMany({
                 where: {
-                    responseId: { in: allResponses.map(r => r.id) },
+                    responseId: { in: allResponseIds },
                     columnId: { in: processedInternalColumns.map(c => c.id) }
                 }
             }),
-            prisma.formActivity.findMany({
-                where: { responseId: { in: allResponses.map(r => r.id) } },
-                orderBy: { createdAt: "desc" }
-            })
+            prisma.responseValue.findMany({ where: { responseId: { in: allResponseIds } } }),
+            prisma.formRemark.findMany({ where: { responseId: { in: allResponseIds } }, orderBy: { createdAt: "desc" } } as any),
+            prisma.formPayment.findMany({ where: { responseId: { in: allResponseIds } }, orderBy: { paymentDate: "desc" } } as any)
         ]);
+        console.timeEnd("FetchAssociations");
+
+        // Stitch manual arrays (Fixes Prisma `$or` aggregation bug on large includes)
+        allResponses = allResponses.map(r => ({
+            ...r,
+            values: allValues.filter((v: any) => v.responseId === r.id),
+            remarks: allRemarks.filter((rm: any) => rm.responseId === r.id),
+            payments: allPayments.filter((p: any) => p.responseId === r.id)
+        }));
 
         // Resolve user data for UI mapping
         const allUserIds = form.visibleToUsers || [];
@@ -619,25 +637,38 @@ export async function GET(
                 }))
         };
 
+        const perfEnd = Date.now();
+        const latency = perfEnd - perfStart;
+        if (latency > 2500) {
+            console.warn(`[PERF WARNING] High Latency detected on GET responses: ${latency}ms for form ${formId} (Page: ${page}, Limit: ${limit})`);
+        }
+
         return NextResponse.json({
             responses: allResponses,
             totalCount: totalResponses,
-            filteredCount: filteredTotalCount,
+            filteredCount: filteredCount,
             page,
             limit,
-            totalPages: Math.ceil(filteredTotalCount / limit),
+            totalPages: filteredCount !== undefined ? Math.ceil(filteredCount / limit) : undefined,
             form: enrichedForm,
             internalColumns: processedInternalColumns,
             internalValues,
-            activities,
+            // activities: [], // 🔥 REMOVED: Load per response for performance
             userRole,
             isMaster: isMaster,
             isPureMaster: isMasterRole, // Specifically for deletion and absolute power
             clerkId: userId
         });
-    } catch (error) {
-        console.error("GET Responses Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    } catch (error: any) {
+        const perfEnd = Date.now();
+        console.error(`[CRITICAL GET ERROR] /api/crm/forms/[id]/responses - Failed after ${perfEnd - perfStart}ms`);
+        console.error("GET Responses Full Trace:", error);
+        
+        return NextResponse.json({ 
+            error: "Internal Server Error", 
+            message: process.env.NODE_ENV === "development" ? error.message : "Matrix synchronization failed.",
+            latency: `${perfEnd - perfStart}ms`
+        }, { status: 500 });
     }
 }
 
@@ -785,6 +816,19 @@ export async function PATCH(
                 });
             }
         }
+        
+        // 🚀 SMART SYNC: Mark as touched only if a Status-related column is updated
+        const isStatusCol = colName.toUpperCase().includes("STATUS") || 
+                          colName.toUpperCase().includes("CALLING") || 
+                          colName.toUpperCase().includes("LEAD") || 
+                          colName.toUpperCase().includes("RESULT");
+
+        if (isStatusCol && value && value.trim() !== "") {
+            await prisma.formResponse.update({
+                where: { id: responseId },
+                data: { isTouched: true }
+            });
+        }
 
         // 4️⃣ Create Activity Log
         if (oldValue !== value) {
@@ -877,6 +921,12 @@ export async function PUT(
                         });
                     }
                 }
+
+                // 🚀 SYNC: Mark as touched on ANY manual bulk interaction
+                await tx.formResponse.update({
+                    where: { id: responseId },
+                    data: { isTouched: true }
+                });
 
                 if (oldValue !== value) {
                     await tx.formActivity.create({

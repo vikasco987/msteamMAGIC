@@ -204,7 +204,8 @@ export async function POST(
                         submittedBy: user.id,
                         submittedByName: userName,
                         submittedAt: new Date(),
-                        assignedTo: [user.id]
+                        assignedTo: [user.id],
+                        isTouched: true // 🚀 IMPORT PROTECTOR: If creating with data, it's touched
                     });
                     createdCount++;
                     if (!disableActivityLogs) {
@@ -372,6 +373,35 @@ export async function POST(
                                 responseId: item.responseId, fieldId: colIdToUpdate, value: valueToMap
                             });
                         }
+                    }
+                }
+
+                // 🚀 SMART TOUCH SYNC: Only mark as touched if data actually exists in status columns
+                let hasStatusData = false;
+                const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE"];
+                
+                for (const mapping of Object.values(updateColumnMap)) {
+                    if (!mapping) continue;
+                    const col = intColMap.get(mapping.id);
+                    const colLabel = col?.label?.toUpperCase() || "";
+                    if (statusIndicators.some(ind => colLabel.includes(ind))) {
+                        const cellVal = (item.row[Object.keys(item.row).find(k => k.trim().toLowerCase() === colLabel.toLowerCase()) || ""] || "").toString().trim();
+                        if (cellVal && cellVal !== "") {
+                            hasStatusData = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasStatusData) {
+                    if (item.isNew) {
+                        const respIndex = responsesToCreate.findIndex(r => r.id === item.responseId);
+                        if (respIndex !== -1) responsesToCreate[respIndex].isTouched = true;
+                    } else {
+                        individualOpsMap.set(`touch_${item.responseId}`, prisma.formResponse.update({
+                            where: { id: item.responseId },
+                            data: { isTouched: true }
+                        }));
                     }
                 }
             }
