@@ -360,7 +360,8 @@ export default function CRMSpreadsheetPage() {
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [isTL, setIsTL] = useState(false);
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false); // 💎 PRO-CORE: Has data ever been fetched?
+    const [isSyncing, setIsSyncing] = useState(false); // 💎 Refreshing (Silent)
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -1033,9 +1034,10 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix. Retrying...");
             }
         } finally {
-            if (!isSilent && !signal.aborted) {
+            if (!signal.aborted) {
                 setIsSyncing(false);
-                setLoading(false); // 🚀 Performance: Ensure loading is cleared immediately after sync
+                setLoading(false); // 🚀 Performance: Always clear booting state
+                setIsLoaded(true); // 💎 PRO-CORE: Mark as first-fetch complete
             }
         }
     };
@@ -3043,10 +3045,23 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    if (loading) return (
+    // 💎 PRO-CORE: Only show full-page boot screen if we have NEVER loaded data
+    if (loading && !isLoaded) return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
-            <div className="w-16 h-16 border-4 border-slate-900 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-xl" />
-            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Booting Data Matrix v2.0</p>
+            <motion.div 
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="w-20 h-20 border-t-4 border-l-4 border-indigo-600 border-r-4 border-r-transparent border-b-4 border-b-transparent rounded-full animate-spin mb-8 shadow-[0_0_50px_rgba(79,70,229,0.3)]" 
+            />
+            <motion.p 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-[12px] font-black uppercase tracking-[0.4em] text-slate-800"
+            >
+                Booting Data Matrix v2.2
+            </motion.p>
+            <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Initializing Neural Stream...</p>
         </div>
     );
 
@@ -3060,6 +3075,19 @@ export default function CRMSpreadsheetPage() {
                                 canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
                                     'bg-[#f8fafc] text-slate-900'
             }`}>
+            
+            {/* 🚀 PRO-SYNC: YouTube Style Top Progress Bar */}
+            <AnimatePresence>
+                {isSyncing && (
+                    <motion.div
+                        initial={{ scaleX: 0, opacity: 0 }}
+                        animate={{ scaleX: 1, opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.5, ease: "easeInOut" }}
+                        className="fixed top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-[9999] origin-left shadow-[0_2px_10px_rgba(99,102,241,0.5)]"
+                    />
+                )}
+            </AnimatePresence>
             {/* Deletion Progress Overlay */}
             <AnimatePresence>
                 {deleteProgress && (
