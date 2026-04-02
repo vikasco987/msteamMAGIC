@@ -381,7 +381,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
         };
 
         toast.success("Update recorded!", { id: "save-interaction" });
-        setIsAdding(false);
+        // Removed premature setIsAdding(false) to keep button in 'Saving...' state
 
         if (!navigator.onLine) {
             const offlineItem = { id: `offline-${Date.now()}`, formId, responseId, data: payload, remark: payload.remark, authorName: "You (Offline)", createdAt: new Date().toISOString(), nextFollowUpDate: payload.nextFollowUpDate, followUpStatus: payload.followUpStatus, columnId: payload.columnId };
@@ -401,6 +401,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
+                setIsAdding(false); // Move closure here!
                 if (onSave) onSave();
                 if (columnId) onClose();
                 fetchRemarks(); // Silently refresh local history
