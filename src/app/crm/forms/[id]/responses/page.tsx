@@ -2431,7 +2431,6 @@ export default function CRMSpreadsheetPage() {
                     return { ...prev, activities: [newActivity, ...(prev.activities || [])] };
                 });
             }
-            }
         } catch (err) {
             if (!navigator.onLine || String(err).includes('Network') || String(err).includes('fetch') || String(err).includes('Server error')) {
                 const pendingUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
