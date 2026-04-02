@@ -660,12 +660,12 @@ export default function CRMSpreadsheetPage() {
             if (currentPage !== 1) setCurrentPage(1);
         }
 
-        if (!isAddingRow) {
+        if (!isAddingRow && isLoaded && params.id) {
             const pageToFetch = filtersChanged ? 1 : currentPage;
             fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
+    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow, isLoaded]);
 
 
 
@@ -1028,7 +1028,7 @@ export default function CRMSpreadsheetPage() {
                     toast.error("Offline and no cached data available.", { id: 'offline-err' });
                 }
             } else {
-                toast.error("Failed to sync matrix");
+                toast.error("Failed to sync matrix. Retrying...");
             }
         } finally {
             if (!isSilent && !signal.aborted) {
