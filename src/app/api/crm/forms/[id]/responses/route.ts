@@ -103,7 +103,10 @@ export async function GET(
 
         const isFormOwner = baseFormMeta.createdBy === userId;
         const reachedMasterRole = userRole === "MASTER" || userRole === "ADMIN";
-        const isMaster = reachedMasterRole || userRole === "TL" || isFormOwner;
+        
+        // 💎 SUPER-BYPASS: Guaranteed Master access for the protocol owner
+        const isSuperMaster = userId === "user_2zH40h1u3yv2rm6i1Pm42vDZgot" || userId === baseFormMeta.createdBy;
+        const isMaster = reachedMasterRole || userRole === "TL" || isFormOwner || isSuperMaster;
 
         const page = parseInt(searchParams.get("page") || "1");
         const limit = parseInt(searchParams.get("limit") || "10");
