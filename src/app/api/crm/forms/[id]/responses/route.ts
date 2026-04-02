@@ -213,8 +213,10 @@ export async function GET(
                 } else if (colId === "__submittedAt") {
                     if (op === "today") {
                         const dateFilters = perspectiveDates.map(pDate => {
-                            const start = new Date(pDate); start.setHours(0, 0, 0, 0);
-                            const end = new Date(pDate); end.setHours(23, 59, 59, 999);
+                            const start = new Date(pDate); 
+                            start.setHours(0, 0, 0, 0);
+                            const end = new Date(pDate); 
+                            end.setHours(23, 59, 59, 999);
                             return { submittedAt: { gte: start, lte: end } };
                         });
                         columnFilters.push({ OR: dateFilters });
