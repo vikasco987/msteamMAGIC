@@ -740,7 +740,17 @@ export default function CRMSpreadsheetPage() {
             
             channel.bind("matrix_update", (payload: any) => {
                 console.log("🔥 [Real-Time] Pusher update received:", payload);
-                fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                
+                // 💎 GLOBAL SYNC ENHANCEMENT: Add the updated ID to our grace period list
+                // so that the next fetchData call force-includes this row even if it would be filtered out.
+                if (payload.responseId) {
+                    setRecentlyUpdatedIds(prev => ({ ...prev, [payload.responseId]: Date.now() }));
+                }
+
+                // ⚡ Delay the refresh slightly to let the database catch up (prevents stale reads on other nodes)
+                setTimeout(() => {
+                    fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                }, 400);
             });
 
             return () => {
@@ -754,7 +764,14 @@ export default function CRMSpreadsheetPage() {
             const socket = io();
             socket.on("matrix_update", (payload: any) => {
                 console.log("⚡ [Real-Time] Local socket update received:", payload);
-                fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                
+                if (payload.responseId) {
+                    setRecentlyUpdatedIds(prev => ({ ...prev, [payload.responseId]: Date.now() }));
+                }
+
+                setTimeout(() => {
+                    fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                }, 400);
             });
             return () => {
                 socket.off("matrix_update");
@@ -889,7 +906,7 @@ export default function CRMSpreadsheetPage() {
 
                 // 2. 💎 MATRIX HUB PERSISTENCE: Re-inject recently updated rows that were filtered out
                 Object.entries(recentlyUpdatedIds).forEach(([rid, timestamp]) => {
-                     const isWithinGrace = now - (timestamp as number) < 3000;
+                     const isWithinGrace = now - (timestamp as number) < 10000;
                      if (isWithinGrace && !responseMap.has(rid)) {
                          const existingRow = prev.responses?.find((r: any) => r.id === rid);
                          if (existingRow) {
@@ -6788,9 +6805,9 @@ export default function CRMSpreadsheetPage() {
                                                   if (openFollowUpModal?.responseId) delete next[openFollowUpModal.responseId];
                                                   return next;
                                               });
-                                          }, 2500);
+                                          }, 10000);
                                         }
-                                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                                        fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
                                     }}
                                 />
                             </div>
