@@ -8,7 +8,8 @@ import {
   startOfWeek, 
   endOfWeek, 
   subWeeks, 
-  startOfMonth 
+  startOfMonth,
+  endOfMonth
 } from "date-fns";
 
 export async function GET(req: Request) {
@@ -21,6 +22,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const targetTlId = searchParams.get("tlId");
     const getTlList = searchParams.get("getTlList") === "true";
+    const selectedMonth = searchParams.get("month") ? parseInt(searchParams.get("month")!) : null; // 0-11
+    const selectedYear = searchParams.get("year") ? parseInt(searchParams.get("year")!) : null;
 
     const client = await clerkClient();
     const clerkUser = await client.users.getUser(userId);
@@ -114,7 +117,21 @@ export async function GET(req: Request) {
 
     // --- DATE RANGES ---
     const now = new Date();
-    const startOfCurrentMonth = startOfMonth(now);
+    
+    // Default to current month if not specified
+    let targetStart: Date;
+    let targetEnd: Date;
+    
+    if (selectedMonth !== null && selectedYear !== null) {
+        targetStart = new Date(selectedYear, selectedMonth, 1);
+        targetEnd = endOfMonth(targetStart);
+    } else {
+        targetStart = startOfMonth(now);
+        targetEnd = endOfMonth(now);
+    }
+
+    const startOfCurrentMonth = targetStart;
+    const endOfCurrentMonth = targetEnd;
     
     // Today
     const todayS = startOfDay(now);
@@ -137,7 +154,7 @@ export async function GET(req: Request) {
     // 2. Fetch Tasks for the whole team
     const tasks = await prisma.task.findMany({
       where: {
-        createdAt: { gte: earliestDate },
+        createdAt: { gte: earliestDate, lte: endOfCurrentMonth > endOfDay(now) ? endOfDay(now) : endOfCurrentMonth },
         OR: [
             { createdByClerkId: { in: teamUserIds } },
             { assigneeId: { in: teamUserIds } },
@@ -189,12 +206,14 @@ export async function GET(req: Request) {
         }
     });
 
-    // 4. Calculate Team Totals (Current Month)
+    // 4. Calculate Team Totals (Target Month)
     const teamStats = {
         leaderName,
-        totalRevenue: tasks.filter(t => t.createdAt >= startOfCurrentMonth).reduce((sum, t) => sum + (t.amount || 0), 0),
-        totalReceived: tasks.filter(t => t.createdAt >= startOfCurrentMonth).reduce((sum, t) => sum + (t.received || 0), 0),
-        totalSales: tasks.filter(t => t.createdAt >= startOfCurrentMonth).length,
+        targetMonth: selectedMonth !== null ? selectedMonth : now.getMonth(),
+        targetYear: selectedYear !== null ? selectedYear : now.getFullYear(),
+        totalRevenue: tasks.filter(t => t.createdAt >= startOfCurrentMonth && t.createdAt <= endOfCurrentMonth).reduce((sum, t) => sum + (t.amount || 0), 0),
+        totalReceived: tasks.filter(t => t.createdAt >= startOfCurrentMonth && t.createdAt <= endOfCurrentMonth).reduce((sum, t) => sum + (t.received || 0), 0),
+        totalSales: tasks.filter(t => t.createdAt >= startOfCurrentMonth && t.createdAt <= endOfCurrentMonth).length,
         memberPerformance: Object.values(memberMap).sort((a: any, b: any) => b.revenue - a.revenue)
     };
 
