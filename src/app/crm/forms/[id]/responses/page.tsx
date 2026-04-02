@@ -847,7 +847,9 @@ export default function CRMSpreadsheetPage() {
                 setUserRole(cachedJson.userRole);
                 setIsMaster(cachedJson.isMaster);
                 setIsPureMaster(cachedJson.isPureMaster);
-                setLoading(false); // Stop loading instantly so UI shows!
+                // 🚀 Performance: Clear ALL sync/loading indicators instantly if cache found
+                setIsSyncing(false); 
+                setLoading(false); 
             } catch (e) {
                 console.error("Cache parsing error", e);
             }
