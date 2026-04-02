@@ -4,16 +4,25 @@ const prisma = new PrismaClient();
 
 async function inspectUntouched() {
   const leads = await prisma.formResponse.findMany({
-    where: { isTouched: false },
-    take: 10,
+    where: { 
+      isTouched: false,
+      OR: [
+        { remarks: { some: {} } },
+        { internalValues: { some: { value: { notIn: ["", "null", "undefined"] } } } }
+      ]
+    },
     include: {
-      values: true,
-      internalValues: true,
-      remarks: true
+      remarks: true,
+      internalValues: true
     }
   });
   
-  console.log(JSON.stringify(leads, null, 2));
+  if (leads.length === 0) {
+    console.log("No inconsistencies found: All isTouched:false leads are truly untouched.");
+  } else {
+    console.log(`Found ${leads.length} inconsistencies:`);
+    console.log(JSON.stringify(leads, null, 2));
+  }
 }
 
 inspectUntouched().finally(() => prisma.$disconnect());

@@ -814,16 +814,11 @@ export async function PATCH(
             }
         }
         
-        // 🚀 SMART SYNC: Mark as touched only if a Status-related column is updated
-        const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE", "FOLLOW", "FOLLOW-UP"];
-        const isStatusCol = statusIndicators.some(ind => colName.toUpperCase().includes(ind));
-
-        if (isStatusCol && value && value.trim() !== "") {
-            await prisma.formResponse.update({
-                where: { id: responseId },
-                data: { isTouched: true }
-            });
-        }
+        // 🚀 SMART SYNC: Mark as touched on ANY manual cell interaction
+        await prisma.formResponse.update({
+            where: { id: responseId },
+            data: { isTouched: true }
+        });
 
         // 4️⃣ Create Activity Log
         if (oldValue !== value) {
