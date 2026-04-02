@@ -2336,7 +2336,7 @@ export default function CRMSpreadsheetPage() {
                     // Update remarks for audit trail
                     updatedRow.remarks = [{
                         id: 'temp-' + Date.now(),
-                        remark: `Status action: ${value}`,
+                        remark: ``,
                         followUpStatus: value,
                         createdAt: new Date().toISOString()
                     } as any, ...(r.remarks || [])];
@@ -2377,7 +2377,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2393,7 +2393,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     columnId: columnId
                 })
@@ -2425,7 +2425,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2784,7 +2784,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Instant status transition to ${newStatus}`,
+                    remark: ``,
                     followUpStatus: newStatus
                 })
             });
