@@ -166,7 +166,7 @@ export default function FollowUpBoard() {
             // 3. Tab Filtering
             const status = (latest.followUpStatus || "").toUpperCase();
             const leadStatus = (res.remarks[0]?.leadStatus || "").toUpperCase();
-            const isUninterested = status === "UNINTERESTED" || status === "REJECTED" || 
+            const isUninterested = status === "UNINTERESTED" || status === "NOT INTERESTED" || status === "REJECTED" || 
                                  leadStatus === "UNINTERESTED" || leadStatus === "NOT INTERESTED" || 
                                  leadStatus === "REJECTED";
 
@@ -200,7 +200,7 @@ export default function FollowUpBoard() {
 
             const status = (latest.followUpStatus || "").toUpperCase();
             const leadStatus = (res.remarks[0]?.leadStatus || "").toUpperCase();
-            const isUninterested = status === "UNINTERESTED" || status === "REJECTED" || 
+            const isUninterested = status === "UNINTERESTED" || status === "NOT INTERESTED" || status === "REJECTED" || 
                                  leadStatus === "UNINTERESTED" || leadStatus === "NOT INTERESTED" || 
                                  leadStatus === "REJECTED";
 

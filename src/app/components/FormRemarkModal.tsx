@@ -105,7 +105,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
             };
 
-            const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "UNINTERESTED", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
+            const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "NOT INTERESTED", "UNINTERESTED", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
 
             recognition.onresult = (event: any) => {
                 let fullFinal = "";
@@ -142,6 +142,12 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
                 const tClean = tWords.replace(/\bkarke\b|\bkar do\b|\bkardo\b/gi, '').trim();
                 const transcript = processTranscript(tClean);
+                
+                // ⚡ AUTO-STATUS ENGINE
+                if (transcript.toLowerCase().includes("not interested") || transcript.toLowerCase().includes("uninterested")) {
+                    setForm(prev => ({ ...prev, followUpStatus: "NOT INTERESTED", leadStatus: "NOT INTERESTED", nextFollowUpDate: "" }));
+                    speakResponse("Marking as not interested and clearing follow-up date.");
+                }
                 
                 // 📅 SMART DATE PRIORITY ENGINE
                 let detectedDateString = "";
@@ -323,7 +329,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
     // 🛑 REMOVED: Automatic date calculation (User wants manual control)
 
     const LEAD_STATUS_OPTIONS = [
-        "Will Share today", "Will let me know in 2 days", "UNINTERESTED", "Not Interested", "Onboarded", 
+        "Will Share today", "Will let me know in 2 days", "NOT INTERESTED", "UNINTERESTED", "Onboarded", 
         "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
         "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW"
     ];
@@ -506,21 +512,21 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                         <select
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
                                             value={form.followUpStatus}
-                                            onChange={(e) => setForm({ ...form, followUpStatus: e.target.value })}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setForm(prev => {
+                                                    const newState = { ...prev, followUpStatus: val };
+                                                    if (val === "NOT INTERESTED" || val === "UNINTERESTED") {
+                                                        newState.nextFollowUpDate = "";
+                                                    }
+                                                    return newState;
+                                                });
+                                            }}
                                         >
                                             <option value="">Select Calling Status</option>
-                                            <option>CALL AGAIN</option>
-                                            <option>CALL DONE</option>
-                                            <option>UNINTERESTED</option>
-                                            <option>RNR</option>
-                                            <option>INVALID NUMBER</option>
-                                            <option>SWITCH OFF</option>
-                                            <option>RNR 2</option>
-                                            <option>RNR3</option>
-                                            <option>INCOMING NOT AVAIABLE</option>
-                                            <option>MEETING</option>
-                                            <option>DUPLICATE</option>
-                                            <option>WRONG NUMBER</option>
+                                            {CALL_STATUS_OPTIONS.map(opt => (
+                                                <option key={opt} value={opt}>{opt}</option>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>
@@ -528,11 +534,20 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                         <select
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-slate-700 appearance-none cursor-pointer"
                                             value={form.leadStatus}
-                                            onChange={(e) => setForm({ ...form, leadStatus: e.target.value })}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setForm(prev => {
+                                                    const newState = { ...prev, leadStatus: val };
+                                                    if (val === "NOT INTERESTED" || val === "UNINTERESTED") {
+                                                        newState.nextFollowUpDate = "";
+                                                    }
+                                                    return newState;
+                                                });
+                                            }}
                                         >
                                             <option value="">Select Lead Status (None)</option>
                                             {LEAD_STATUS_OPTIONS.map(opt => (
-                                                <option key={opt}>{opt}</option>
+                                                <option key={opt} value={opt}>{opt}</option>
                                             ))}
                                         </select>
                                     </div>

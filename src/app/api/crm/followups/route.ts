@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
                     some: {
                         OR: [
                             { nextFollowUpDate: { not: null } },
-                            { followUpStatus: { in: ["UNINTERESTED", "REJECTED"] } },
+                            { followUpStatus: { in: ["UNINTERESTED", "NOT INTERESTED", "REJECTED"] } },
                             { leadStatus: { in: ["UNINTERESTED", "REJECTED", "NOT INTERESTED"] } }
                         ]
                     }
