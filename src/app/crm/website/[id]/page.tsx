@@ -231,6 +231,7 @@ interface FormResponse {
     values: ResponseValue[];
     submittedBy?: string; // Added for __assigned logic
     remarks?: any[]; // Added for __followup logic
+    payments?: any[]; // 🚀 PRO-CORE: Added for Payment Hub integration
     rowColor?: string; // Enhanced: custom highlight color
 }
 
@@ -358,8 +359,7 @@ export default function CRMSpreadsheetPage() {
     const [isMaster, setIsMaster] = useState(false);
     const [isPureMaster, setIsPureMaster] = useState(false);
     const [isTL, setIsTL] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [isLoaded, setIsLoaded] = useState(false); // 💎 PRO-CORE: Has data ever been fetched?
+    const [isMatrixLoaded, setIsMatrixLoaded] = useState(false); // 💎 PRO-CORE: Has data ever been fetched?
     const [isSyncing, setIsSyncing] = useState(false); // 💎 Refreshing (Silent)
     const [isDataSynced, setIsDataSynced] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -792,18 +792,29 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
-            // 🔑 Performance Fix: Removed 99999 limit hack. 
-            // The backend already handles filtering, so we should always paginate.
+            // 💎 PRO-CORE: Skip heavy structural data if already loaded
+            const includeMeta = !isMatrixLoaded;
             const effectiveLimit = limit;
             const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
-            const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
-            ]);
 
+            // 🚀 SYNC-OPTIMIZE: Only fetch metadata once. Subsequent syncs are lightweight.
+            const responsesUrl = `/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&meta=${includeMeta}&_t=${Date.now()}`;
+            
+            const fetchList: Promise<any>[] = [fetch(responsesUrl, { cache: 'no-store', signal })];
+            
+            // Only fetch views and extra perms during boot to save 2 requests per page-turn
+            if (includeMeta) {
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }));
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal }));
+            }
 
+            const results = await Promise.all(fetchList);
+            const dataRes = results[0];
+            const viewsRes = includeMeta ? results[1] : null;
+            const permRes = includeMeta ? results[2] : null;
+
+            if (!dataRes.ok) throw new Error("Sync engine failed");
             const json = await dataRes.json();
 
             // Inject offline edits before rendering
@@ -831,10 +842,18 @@ export default function CRMSpreadsheetPage() {
 
             if (fetchId !== activeFetchIdRef.current) return;
             setData(prev => {
+                // 💎 PRO-CORE: If JSON is lightweight (meta=false), preserve existing structural data
+                const mergedBase = (!prev || json.form) ? json : { 
+                    ...prev, 
+                    ...json, 
+                    responses: json.responses || prev.responses,
+                    internalValues: json.internalValues || prev.internalValues
+                };
+
                 const serverResponses = json.responses || [];
                 if (!prev || !isSilent) {
                     return {
-                        ...json,
+                        ...mergedBase,
                         // Ensure counts are preserved from prev if server omitted them (resilience)
                         totalCount: (json.totalCount !== undefined && json.totalCount !== null) ? json.totalCount : (prev?.totalCount ?? 0),
                         filteredCount: (json.filteredCount !== undefined && json.filteredCount !== null) ? json.filteredCount : (prev?.filteredCount ?? 0),
@@ -952,7 +971,7 @@ export default function CRMSpreadsheetPage() {
             if (!signal.aborted) {
                 setIsSyncing(false);
                 setLoading(false); // 🚀 Performance: Always clear booting state
-                setIsLoaded(true); // 💎 PRO-CORE: Mark as first-fetch complete
+                setIsMatrixLoaded(true); // 💎 PRO-CORE: Mark as first-fetch complete
             }
         }
     };
@@ -2155,7 +2174,7 @@ export default function CRMSpreadsheetPage() {
         setEditingCell(null);
 
         const cellKey = `${responseId}-${columnId}`;
-        const previousData = data;
+        const previousVal = getCellValue(responseId, columnId, isInternal); // 💎 PRO-CORE: Backup only the specific cell
 
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
@@ -2230,18 +2249,32 @@ export default function CRMSpreadsheetPage() {
             });
 
             if (!res.ok) {
-                // If it's a server error or timeout, treat as offline rather than rollback
-                if (res.status >= 500 || res.status === 408) {
-                    throw new Error(`Server error ${res.status}`);
-                }
-
+                // 💎 PRO-CORE: Atomic Rollback (Only revert the affected cell, preserving other concurrent edits)
                 if (res.status === 401 || res.status === 403) {
                     toast.error("Session expired. Please refresh.");
                     return;
                 }
 
-                toast.error("Sync failed");
-                setData(previousData); // Rollback for genuine validation/permission errors
+                toast.error("Sync failed: value rejected", { icon: '🛡️' });
+                // Target specifically this cell for rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             } else {
                 // 💎 Instant History Update
                 setData(prev => {
@@ -2284,8 +2317,26 @@ export default function CRMSpreadsheetPage() {
                 toast("Network error. Saved offline for later sync.", { icon: '📶' });
             } else {
                 console.error("Update error:", err);
-                toast.error("Matrix error");
-                setData(previousData); // Rollback
+                toast.error("Matrix sync error", { icon: '🛡️' });
+                // Atomic Rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             }
         } finally {
             setSavingCells(prev => {
