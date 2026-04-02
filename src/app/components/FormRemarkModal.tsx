@@ -278,7 +278,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                     toast.loading("AI Pulse: Saving...");
                     recognitionRef.current?.stop();
                     setIsListening(false);
-                    setTimeout(() => (document.querySelector('button[type="submit"]') as HTMLButtonElement)?.click(), 800);
+                    setTimeout(() => (document.getElementById('remark-modal-submit') as HTMLButtonElement)?.click(), 800);
                 } else if (ACTIONS.CLOSE) {
                     speakResponse("Terminating session.");
                     recognitionRef.current?.stop();
@@ -554,7 +554,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                     </div>
                                     <div className="flex gap-2 pt-2">
                                         <button type="button" onClick={() => setIsAdding(false)} className="flex-1 py-2.5 text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all">Cancel</button>
-                                        <button disabled={loading} type="submit" className="flex-[2] py-2.5 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-md transition-all flex items-center justify-center gap-2">
+                                        <button id="remark-modal-submit" disabled={loading} type="submit" className="flex-[2] py-2.5 bg-indigo-600 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-md transition-all flex items-center justify-center gap-2">
                                             {loading ? "Saving..." : (columnId ? "Update Status" : "Save Interaction")}
                                         </button>
                                     </div>

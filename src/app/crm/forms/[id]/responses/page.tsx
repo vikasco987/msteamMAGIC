@@ -662,7 +662,8 @@ export default function CRMSpreadsheetPage() {
 
         if (!isAddingRow && isLoaded && params.id) {
             const pageToFetch = filtersChanged ? 1 : currentPage;
-            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+            // 🛡️ Silent fetch to prevent full screen 'refresh' sensation during background sync
+            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow, isLoaded]);
