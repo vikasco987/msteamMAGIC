@@ -99,54 +99,72 @@ export async function POST(
             where: { formId: cleanedFormId }
         });
 
-        const syncToValue = async (colLabel: string, val: string) => {
+        const syncToLabelGroup = async (targetLabels: string[], val: string) => {
             if (!val) return;
-            // 🔎 Robust Case-Insensitive Search
-            const col = remarkCols.find(c => {
-                const label = c.label.toLowerCase().trim();
-                const target = colLabel.toLowerCase().trim();
-                return label === target || 
-                       (target === "status" && ["follow-up status", "calling status", "lead status", "status"].includes(label)) ||
-                       (target === "next follow-up date" && ["next follow-up date", "follow up date", "next update", "calling date"].includes(label));
-            });
+            const targetLower = targetLabels.map(l => l.toLowerCase().trim());
             
-            if (!col) return;
-            const existing = await (prisma as any).internalValue.findFirst({ where: { responseId: cleanedResponseId, columnId: col.id } });
-            if (existing) {
-                await (prisma as any).internalValue.update({ where: { id: existing.id }, data: { value: val.trim(), updatedByName: user.firstName || "System" } });
-            } else {
-                await (prisma as any).internalValue.create({ data: { responseId: cleanedResponseId, columnId: col.id, value: val.trim(), updatedByName: user.firstName || "System" } });
+            // Find all columns that match any of the target labels
+            const matchedCols = remarkCols.filter(c => {
+                const label = c.label.toLowerCase().trim();
+                return targetLower.includes(label);
+            });
+
+            for (const col of matchedCols) {
+                const existing = await (prisma as any).internalValue.findFirst({ where: { responseId: cleanedResponseId, columnId: col.id } });
+                if (existing) {
+                    await (prisma as any).internalValue.update({ where: { id: existing.id }, data: { value: val.trim(), updatedByName: user.firstName || "System" } });
+                } else {
+                    await (prisma as any).internalValue.create({ data: { responseId: cleanedResponseId, columnId: col.id, value: val.trim(), updatedByName: user.firstName || "System" } });
+                }
             }
         };
 
-        const masterStatus = followUpStatus || leadStatus || null;
+        const followUpStatusTrimmed = (followUpStatus || "").trim();
+        const leadStatusTrimmed = (leadStatus || "").trim();
         const syncTasks: Promise<void>[] = [];
 
-        // 🎯 Status Sync (Robust Variants)
-        if (masterStatus) {
-            const variants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status", "CALLING STATUS", "LEAD STATUS"];
-            variants.forEach(v => syncTasks.push(syncToValue(v, masterStatus)));
+        // 🎯 Calling/Follow-up Status Sync
+        if (followUpStatusTrimmed) {
+            syncTasks.push(syncToLabelGroup(
+                ["Calling Status", "CALLING STATUS", "Follow-up Status", "Follow up Status", "Followup Status", "Status", "STATUS"], 
+                followUpStatusTrimmed
+            ));
         }
 
-        // 🎯 Remark Sync (Only if actual text is provided)
-        if (remark && remark.trim()) {
-            syncTasks.push(syncToValue("Recent Remark", remark.trim()));
-            syncTasks.push(syncToValue("RECENT REMARK", remark.trim()));
+        // 🎯 Lead Status Sync
+        if (leadStatusTrimmed) {
+            syncTasks.push(syncToLabelGroup(
+                ["Lead Status", "LEAD STATUS", "Lead Stauts", "L_STATUS"], 
+                leadStatusTrimmed
+            ));
+        }
+
+        // 🎯 Remark Sync: Only actual notes go here, NO status info
+        const remarkToSync = (remark || "").replace(/Status interaction:\s*.*/gi, '').trim();
+        if (remarkToSync) {
+            syncTasks.push(syncToLabelGroup(
+                ["Recent Remark", "RECENT REMARK", "Remark", "Remarks", "Interaction Notes", "Note", "Notes"], 
+                remarkToSync
+            ));
         }
         
         // 🎯 Date Sync
         if (nextFollowUpDate) {
-            const dateVariants = ["Next Follow-up Date", "Next Interaction", "Follow up Date", "CALLING DATE", "NEXT DATE"];
-            dateVariants.forEach(v => syncTasks.push(syncToValue(v, String(nextFollowUpDate))));
+            syncTasks.push(syncToLabelGroup(
+                ["Next Follow-up Date", "Next Interaction", "Follow up Date", "CALLING DATE", "NEXT DATE", "Followup Date", "Next Follow up Date"], 
+                String(nextFollowUpDate)
+            ));
         }
         
         // 📅 CLOCK SYNC (Stamp TODAY's date for calling date columns)
         const todayStr = new Date().toISOString().split('T')[0];
         const callingDateCols = remarkCols.filter(c => {
             const l = c.label.toLowerCase();
-            return l.includes("calling date") || l.includes("today calling");
+            return l.includes("calling date") || l.includes("today calling") || l.includes("last called");
         });
-        callingDateCols.forEach(col => syncTasks.push(syncToValue(col.label, todayStr)));
+        callingDateCols.forEach(col => {
+            syncTasks.push(syncToLabelGroup([col.label], todayStr));
+        });
 
         // Execute all syncs in parallel
         await Promise.all(syncTasks);

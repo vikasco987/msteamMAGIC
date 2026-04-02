@@ -369,7 +369,8 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
-        const finalRemark = form.remark.trim();
+        // 🛡️ STRIP LEGACY AUTO-REMARKS
+        const finalRemark = form.remark.replace(/Status interaction:\s*.*/gi, '').trim();
         
         const payload = { 
             remark: finalRemark,
