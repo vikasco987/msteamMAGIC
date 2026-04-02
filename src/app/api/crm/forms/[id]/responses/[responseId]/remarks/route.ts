@@ -121,29 +121,22 @@ export async function POST(
 
         const followUpStatusTrimmed = (followUpStatus || "").trim();
         const leadStatusTrimmed = (leadStatus || "").trim();
+        const masterStatus = (followUpStatusTrimmed || leadStatusTrimmed || "").trim();
         const syncTasks: Promise<void>[] = [];
 
-        // 🎯 Calling/Follow-up Status Sync
-        if (followUpStatusTrimmed) {
+        // 🎯 Status Group Sync (Aggressive Fallback)
+        if (masterStatus) {
             syncTasks.push(syncToLabelGroup(
-                ["Calling Status", "CALLING STATUS", "Follow-up Status", "Follow up Status", "Followup Status", "Status", "STATUS"], 
-                followUpStatusTrimmed
+                ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status", "CALLING STATUS", "LEAD STATUS", "Follow up Status", "Lead Stauts", "L_STATUS", "Followup Status"], 
+                masterStatus
             ));
         }
 
-        // 🎯 Lead Status Sync
-        if (leadStatusTrimmed) {
-            syncTasks.push(syncToLabelGroup(
-                ["Lead Status", "LEAD STATUS", "Lead Stauts", "L_STATUS"], 
-                leadStatusTrimmed
-            ));
-        }
-
-        // 🎯 Remark Sync: Only actual notes go here, NO status info
-        const remarkToSync = (remark || "").replace(/Status interaction:\s*.*/gi, '').trim();
+        // 🎯 Remark Sync: Exhaustive Variants
+        const remarkToSync = (remark || "").replace(/Status (interaction|action|update):\s*.*/gi, '').trim();
         if (remarkToSync) {
             syncTasks.push(syncToLabelGroup(
-                ["Recent Remark", "RECENT REMARK", "Remark", "Remarks", "Interaction Notes", "Note", "Notes"], 
+                ["Recent Remark", "RECENT REMARK", "Remark", "Remarks", "Interaction Notes", "Note", "Notes", "Remark Entry", "Update", "Interaction Note", "Comments"], 
                 remarkToSync
             ));
         }
@@ -151,7 +144,7 @@ export async function POST(
         // 🎯 Date Sync
         if (nextFollowUpDate) {
             syncTasks.push(syncToLabelGroup(
-                ["Next Follow-up Date", "Next Interaction", "Follow up Date", "CALLING DATE", "NEXT DATE", "Followup Date", "Next Follow up Date"], 
+                ["Next Follow-up Date", "Next Interaction", "Follow up Date", "CALLING DATE", "NEXT DATE", "Followup Date", "Next Follow up Date", "Interact Date"], 
                 String(nextFollowUpDate)
             ));
         }
@@ -159,8 +152,8 @@ export async function POST(
         // 📅 CLOCK SYNC (Stamp TODAY's date for calling date columns)
         const todayStr = new Date().toISOString().split('T')[0];
         const callingDateCols = remarkCols.filter(c => {
-            const l = c.label.toLowerCase();
-            return l.includes("calling date") || l.includes("today calling") || l.includes("last called");
+            const l = c.label.toLowerCase().trim();
+            return l.includes("calling date") || l.includes("today calling") || l.includes("last called") || l.includes("updated on");
         });
         callingDateCols.forEach(col => {
             syncTasks.push(syncToLabelGroup([col.label], todayStr));
