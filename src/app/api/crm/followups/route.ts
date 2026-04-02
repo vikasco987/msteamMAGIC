@@ -30,7 +30,11 @@ export async function GET(req: NextRequest) {
             where: {
                 remarks: {
                     some: {
-                        nextFollowUpDate: { not: null }
+                        OR: [
+                            { nextFollowUpDate: { not: null } },
+                            { followUpStatus: { in: ["UNINTERESTED", "REJECTED"] } },
+                            { leadStatus: { in: ["UNINTERESTED", "REJECTED", "NOT INTERESTED"] } }
+                        ]
                     }
                 }
             },

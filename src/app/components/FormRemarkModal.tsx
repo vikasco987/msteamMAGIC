@@ -105,7 +105,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
             };
 
-            const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
+            const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "UNINTERESTED", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
 
             recognition.onresult = (event: any) => {
                 let fullFinal = "";
@@ -323,7 +323,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
     // 🛑 REMOVED: Automatic date calculation (User wants manual control)
 
     const LEAD_STATUS_OPTIONS = [
-        "Will Share today", "Will let me know in 2 days", "Not Intertested", "Onboarded", 
+        "Will Share today", "Will let me know in 2 days", "UNINTERESTED", "Not Interested", "Onboarded", 
         "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
         "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW"
     ];
@@ -511,6 +511,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                                             <option value="">Select Calling Status</option>
                                             <option>CALL AGAIN</option>
                                             <option>CALL DONE</option>
+                                            <option>UNINTERESTED</option>
                                             <option>RNR</option>
                                             <option>INVALID NUMBER</option>
                                             <option>SWITCH OFF</option>
