@@ -19,8 +19,12 @@ export async function GET() {
 
     const activeUserMap = new Map<string, string>();
     activeAttendanceLogs.forEach(log => {
+      // 🚀 EXCLUSION CRITERIA: Remove specific users from ticker monitoring if requested
+      const employeeName = log.employeeName || "Unknown User";
+      if (employeeName.toLowerCase().includes("vishal sood")) return;
+
       if (log.userId && !activeUserMap.has(log.userId)) {
-        activeUserMap.set(log.userId, log.employeeName || "Unknown User");
+        activeUserMap.set(log.userId, employeeName);
       }
     });
 
