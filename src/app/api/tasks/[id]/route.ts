@@ -21,6 +21,7 @@ interface PatchRequestBody {
   assigneeName?: string | null;
   assigneeId?: string | null;
   assigneeIds?: string[] | string | null;
+  isHidden?: boolean;
 }
 
 // --- GET Task ---
@@ -126,7 +127,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     const allowedFields = [
       "title", "status", "amount", "received", "description",
       "highlightColor", "assignerEmail", "assigneeEmail",
-      "assignerName", "assigneeName", "assigneeId", "assigneeIds", "assignerId"
+      "assignerName", "assigneeName", "assigneeId", "assigneeIds", "assignerId",
+      "isHidden"
     ];
 
     const logs: string[] = [];

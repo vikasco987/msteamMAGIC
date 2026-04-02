@@ -89,9 +89,11 @@ import toast from "react-hot-toast";
 import { useChat } from "@ai-sdk/react";
 import { useUser } from "@clerk/nextjs";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import Pusher from "pusher-js";
+import { io } from "socket.io-client";
 
 const CALL_STATUS_OPTIONS = [
-    "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
+    "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"
 ];
 
 const getExcelLabel = (index: number): string => {
@@ -242,6 +244,8 @@ interface MasterData {
         visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
         id?: string; // Added for FormRemarkModal
         columnPermissions?: any; // Added for GAC logic
+        defaultColumnOrder?: string[];
+        defaultHiddenColumns?: string[];
     };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
@@ -351,7 +355,13 @@ export default function CRMSpreadsheetPage() {
     const searchParams = useSearchParams();
     const [data, setData] = useState<MasterData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isSyncing, setIsSyncing] = useState(false);
+    const [userRole, setUserRole] = useState<string>("GUEST");
+    const [isMaster, setIsMaster] = useState(false);
+    const [isPureMaster, setIsPureMaster] = useState(false);
+    const [isTL, setIsTL] = useState(false);
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const [isMatrixLoaded, setIsMatrixLoaded] = useState(false); // 💎 PRO-CORE: Has data ever been fetched?
+    const [isSyncing, setIsSyncing] = useState(false); // 💎 Refreshing (Silent)
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -375,7 +385,6 @@ export default function CRMSpreadsheetPage() {
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
-    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
@@ -383,7 +392,7 @@ export default function CRMSpreadsheetPage() {
     const [canvasTheme, setCanvasTheme] = useState<string>("default");
     const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
     const [openAssignedCell, setOpenAssignedCell] = useState<string | null>(null);
-    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string } | null>(null);
+    const [openFollowUpModal, setOpenFollowUpModal] = useState<{ formId: string, responseId: string, columnId?: string, initialData?: any } | null>(null);
     const [openPaymentModal, setOpenPaymentModal] = useState<{ formId: string, responseId: string } | null>(null);
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -399,11 +408,15 @@ export default function CRMSpreadsheetPage() {
     const [activeStatusDropdown, setActiveStatusDropdown] = useState<string | null>(null);
     const [statusMatrixModal, setStatusMatrixModal] = useState<{ rowId: string, colId: string, label: string, options: any[], val: string, isInternal: boolean } | null>(null);
     const [activeColumnFilterSearch, setActiveColumnFilterSearch] = useState("");
+    const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Record<string, number>>({});
+
 
     // Offline Syncing States
     const [isOnline, setIsOnline] = useState(true);
     const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
     const [pendingUpdates, setPendingUpdates] = useState<Record<string, string>>({});
+    const [undoStack, setUndoStack] = useState<{ responseId: string, colId: string, val: string, isInternal: boolean }[]>([]);
+
 
     // AI Filter & Chat States
     const [isAIFilterOpen, setIsAIFilterOpen] = useState(false);
@@ -554,41 +567,63 @@ export default function CRMSpreadsheetPage() {
         }
     }, [columnWidths, params.id]);
 
-    // Hidden Columns Persistence
-    useEffect(() => {
-        const saved = localStorage.getItem(`matrix_hidden_${params.id}`);
-        if (saved) {
-            try { setHiddenColumns(JSON.parse(saved)); } catch (e) { console.error(e); }
-        }
-    }, [params.id]);
-
-    useEffect(() => {
-        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
-    }, [hiddenColumns, params.id]);
-
     const [columnOrder, setColumnOrder] = useState<string[]>([]);
 
     // Column Order Persistence
     useEffect(() => {
-        const saved = localStorage.getItem(`matrix_order_${params.id}`);
-        if (saved) {
-            try { setColumnOrder(JSON.parse(saved)); } catch (e) { console.error(e); }
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
+        
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
+        if (!isPrivileged && data?.form?.defaultColumnOrder) {
+            setColumnOrder(data.form.defaultColumnOrder);
+            return;
         }
-    }, [params.id]);
+
+        if (localOrder) {
+            try { setColumnOrder(JSON.parse(localOrder)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultColumnOrder) {
+            setColumnOrder(data.form.defaultColumnOrder);
+        }
+    }, [params.id, data?.form?.defaultColumnOrder, userRole, isMaster, isPureMaster]);
 
     useEffect(() => {
-        if (columnOrder.length > 0) {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (columnOrder.length > 0 && isPrivileged) {
             localStorage.setItem(`matrix_order_${params.id}`, JSON.stringify(columnOrder));
         }
-    }, [columnOrder, params.id]);
+    }, [columnOrder, params.id, userRole, isMaster, isPureMaster]);
+
+    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+    
+    // Hidden Columns Persistence
+    useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        const localHidden = localStorage.getItem(`matrix_hidden_${params.id}`);
+
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
+        if (!isPrivileged && data?.form?.defaultHiddenColumns) {
+            setHiddenColumns(data.form.defaultHiddenColumns);
+            return;
+        }
+
+        if (localHidden) {
+            try { setHiddenColumns(JSON.parse(localHidden)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultHiddenColumns) {
+            setHiddenColumns(data.form.defaultHiddenColumns);
+        }
+    }, [params.id, data?.form?.defaultHiddenColumns, userRole, isMaster, isPureMaster]);
+
+    useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (isPrivileged) {
+            localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
+        }
+    }, [hiddenColumns, params.id, userRole, isMaster, isPureMaster]);
 
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
-    const [userRole, setUserRole] = useState<string>("GUEST");
-    const [isMaster, setIsMaster] = useState(false);
-    const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
-    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -626,12 +661,14 @@ export default function CRMSpreadsheetPage() {
             if (currentPage !== 1) setCurrentPage(1);
         }
 
-        if (!isAddingRow) {
+        if (!isAddingRow && isLoaded && params.id) {
             const pageToFetch = filtersChanged ? 1 : currentPage;
-            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+            // 🛡️ Silent fetch ONLY if data is already present to prevent flicker, 
+            // but show loader on initial mount.
+            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, !!data);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
+    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow, isLoaded]);
 
 
 
@@ -694,6 +731,75 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
+    // ⚡ REAL-TIME COLLABORATION BRIDGE
+    useEffect(() => {
+        // 1. Pusher (Production Sync)
+        const pusherKey = process.env.NEXT_PUBLIC_PUSHER_KEY;
+        const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+        if (pusherKey && cluster) {
+            const pusher = new Pusher(pusherKey, { cluster });
+            const channel = pusher.subscribe("matrix-updates");
+            
+            channel.bind("matrix_update", (payload: any) => {
+                console.log("🔥 [Real-Time] Pusher update received:", payload);
+                
+                // 💎 GLOBAL SYNC ENHANCEMENT: Add the updated ID to our grace period list
+                // so that the next fetchData call force-includes this row even if it would be filtered out.
+                if (payload.responseId) {
+                    setRecentlyUpdatedIds(prev => ({ ...prev, [payload.responseId]: Date.now() }));
+                }
+
+                // ⚡ Delay the refresh slightly to let the database catch up (prevents stale reads on other nodes)
+                setTimeout(() => {
+                    fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                }, 400);
+            });
+
+            return () => {
+                pusher.unsubscribe("matrix-updates");
+                pusher.disconnect();
+            };
+        }
+
+        // 2. Socket.io (Local Dev Sync) - Only if NOT on Pusher
+        if (!pusherKey) {
+            const socket = io();
+            socket.on("matrix_update", (payload: any) => {
+                console.log("⚡ [Real-Time] Local socket update received:", payload);
+                
+                if (payload.responseId) {
+                    setRecentlyUpdatedIds(prev => ({ ...prev, [payload.responseId]: Date.now() }));
+                }
+
+                setTimeout(() => {
+                    fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                }, 400);
+            });
+            return () => {
+                socket.off("matrix_update");
+                socket.disconnect();
+            };
+        }
+    }, [currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
+
+    // ⏪ UNDO SYSTEM: CTRL+Z LISTENER
+    useEffect(() => {
+        const handleUndoKey = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                if (editingCell) return; // Don't undo if actively typing
+                const last = undoStack[undoStack.length - 1];
+                if (last) {
+                    toast.loading(`Reverting change...`, { id: 'undo-toast', duration: 1000 });
+                    setUndoStack(prev => prev.slice(0, -1));
+                    handleUpdateValue(last.responseId, last.colId, last.val, last.isInternal, true);
+                }
+            }
+        };
+        window.addEventListener('keydown', handleUndoKey);
+        return () => window.removeEventListener('keydown', handleUndoKey);
+    }, [undoStack, editingCell]);
+
     const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
@@ -702,15 +808,18 @@ export default function CRMSpreadsheetPage() {
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
 
-        console.log(`[FetchData] Syncing matrix with conditions:`, JSON.stringify(conds));
+        // 🛡️ [DEBUG] Trace Filter Pipeline
+        console.log("➡️ [PRO-LOG] UI Filter Selection:", JSON.stringify(conds));
+        console.log("➡️ [PRO-LOG] Fetching URL Params:", { page, limit, search, sBy, sOrder, conjunction });
+        
         const syncStartTime = Date.now();
         if (!isSilent) {
             setIsSyncing(true);
         }
 
-        // 1. FAST CACHE LOAD (Run before API Call)
+        // 1. FAST CACHE LOAD (Only on initial cold start)
         const cachedDataStr = localStorage.getItem(`matrix_cache_${params.id}`);
-        if (cachedDataStr) {
+        if (cachedDataStr && !data && !isSilent) {
             try {
                 const cachedJson = JSON.parse(cachedDataStr);
                 const offlineUpdates = JSON.parse(localStorage.getItem(`offlineUpdates-${params.id}`) || '[]');
@@ -738,7 +847,9 @@ export default function CRMSpreadsheetPage() {
                 setUserRole(cachedJson.userRole);
                 setIsMaster(cachedJson.isMaster);
                 setIsPureMaster(cachedJson.isPureMaster);
-                setLoading(false); // Stop loading instantly so UI shows!
+                // 🚀 Performance: Clear ALL sync/loading indicators instantly if cache found
+                setIsSyncing(false); 
+                setLoading(false); 
             } catch (e) {
                 console.error("Cache parsing error", e);
             }
@@ -748,18 +859,30 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
-            // 🔑 Performance Fix: Removed 99999 limit hack. 
-            // The backend already handles filtering, so we should always paginate.
+            // 💎 PRO-CORE: Skip heavy structural data if already loaded
+            const includeMeta = !isMatrixLoaded;
             const effectiveLimit = limit;
             const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
-            const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
-            ]);
+            const includeIdsParam = Object.keys(recentlyUpdatedIds).length > 0 ? `&includeIds=${Object.keys(recentlyUpdatedIds).join(",")}` : "";
 
+            // 🚀 SYNC-OPTIMIZE: Only fetch metadata once. Subsequent syncs are lightweight.
+            const responsesUrl = `/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}${includeIdsParam}&today=${localToday}&meta=${includeMeta}&_t=${Date.now()}`;
+            
+            const fetchList: Promise<any>[] = [fetch(responsesUrl, { cache: 'no-store', signal })];
+            
+            // Only fetch views and extra perms during boot to save 2 requests per page-turn
+            if (includeMeta) {
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }));
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal }));
+            }
 
+            const results = await Promise.all(fetchList);
+            const dataRes = results[0];
+            const viewsRes = includeMeta ? results[1] : null;
+            const permRes = includeMeta ? results[2] : null;
+
+            if (!dataRes.ok) throw new Error("Sync engine failed");
             const json = await dataRes.json();
 
             // Inject offline edits before rendering
@@ -785,38 +908,71 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            // 4. Update the state
+            // 4. Update the state with Matrix Hub Persistence
             setData(prev => {
-                if (!prev || !json.responses) return json;
+                // 💎 PRO-CORE: If JSON is lightweight (meta=false), preserve existing structural data
+                const mergedBase = (!prev || json.form) ? json : { 
+                    ...prev, 
+                    ...json, 
+                    responses: json.responses || prev.responses,
+                    internalValues: json.internalValues || prev.internalValues
+                };
 
+                if (!prev || !json.responses) return mergedBase;
+
+                const now = Date.now();
+                const jsonResponses = json.responses || [];
+                const responseMap = new Map();
+
+                // 1. Add new server responses to map
+                jsonResponses.forEach((res: any) => responseMap.set(res.id, res));
+
+                // 2. 💎 MATRIX HUB PERSISTENCE: Re-inject recently updated rows that were filtered out
+                Object.entries(recentlyUpdatedIds).forEach(([rid, timestamp]) => {
+                     const isWithinGrace = now - (timestamp as number) < 10000;
+                     if (isWithinGrace && !responseMap.has(rid)) {
+                         const existingRow = prev.responses?.find((r: any) => r.id === rid);
+                         if (existingRow) {
+                             console.log(`[Grace Period] Manually preserving row ${rid} filtered by server.`);
+                             responseMap.set(rid, existingRow);
+                         }
+                     }
+                });
+
+                const mergedList = Array.from(responseMap.values());
+                
                 // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
-                // even if the server just sent us old data. This prevents the "disappearing data" bug
-                // when fetchData races with a pending handleUpdateValue.
-                const updatedResponses = json.responses.map((res: any) => {
+                const updatedResponses = mergedList.map((res: any) => {
                     const existingRes = prev.responses?.find((r: any) => r.id === res.id);
                     if (!existingRes) return res;
 
                     const mergedResponse = { ...res };
-                    // If this row has any cells in 'savingCells', we should consider keeping the local version
-                    // for those specific columns.
+                    // If this row has any cells in 'savingCells' or was recentlyUpdated, we should favor the local state
+                    // for those specific columns until the sync is definitively confirmed by NEXT fetchData.
                     savingCells.forEach(cellKey => {
                         const [rowId, colId] = cellKey.split('-');
                         if (rowId === res.id) {
                             // Find the value from the previous local state (which was updated optimistically)
-                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
-                            if (localCol) {
-                                // Update mergedResponse with the local value
-                                if (!mergedResponse.responses) mergedResponse.responses = [];
-                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
-                                if (targetColIdx > -1) {
-                                    mergedResponse.responses[targetColIdx].value = localCol.value;
+                            const localVal = getCellValueByRow(existingRes, colId);
+                            if (localVal !== undefined) {
+                                // Update mergedResponse with the local value for both internal and field values
+                                if (colId.startsWith("__") || getColumns.find(c => c.id === colId)?.isInternal) {
+                                    if (!mergedResponse.values) mergedResponse.values = [];
+                                    const targetColIdx = mergedResponse.values.findIndex((c: any) => c.fieldId === colId);
+                                    if (targetColIdx > -1) {
+                                        mergedResponse.values[targetColIdx].value = localVal;
+                                    } else {
+                                        mergedResponse.values.push({ fieldId: colId, value: localVal });
+                                    }
                                 } else {
-                                    mergedResponse.responses.push({ ...localCol });
-                                }
-                            } else {
-                                // Check for regular fields (not internal columns)
-                                if ((existingRes as any)[colId] !== undefined) {
-                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
+                                    // Handle standard fields
+                                    if (!mergedResponse.values) mergedResponse.values = [];
+                                    const targetValIdx = mergedResponse.values.findIndex((v: any) => v.fieldId === colId);
+                                    if (targetValIdx > -1) {
+                                        mergedResponse.values[targetValIdx].value = localVal;
+                                    } else {
+                                        mergedResponse.values.push({ fieldId: colId, value: localVal });
+                                    }
                                 }
                             }
                         }
@@ -829,6 +985,7 @@ export default function CRMSpreadsheetPage() {
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
+            setIsTL(json.userRole === 'TL');
 
             // Set Pinned State
             if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
@@ -894,15 +1051,13 @@ export default function CRMSpreadsheetPage() {
                     toast.error("Offline and no cached data available.", { id: 'offline-err' });
                 }
             } else {
-                toast.error("Failed to sync matrix");
+                toast.error("Failed to sync matrix. Retrying...");
             }
         } finally {
-            if (!isSilent && !signal.aborted) {
-                const elapsed = Date.now() - syncStartTime;
-                if (elapsed < 800) {
-                    await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
-                }
+            if (!signal.aborted) {
                 setIsSyncing(false);
+                setLoading(false); // 🚀 Performance: Always clear booting state
+                setIsMatrixLoaded(true); // 💎 PRO-CORE: Mark as first-fetch complete
             }
         }
     };
@@ -1004,14 +1159,21 @@ export default function CRMSpreadsheetPage() {
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
     // Yeh performance release ke liye zaroori hai
+    // 💎 Performance Engine: Deferred Background Sync
+    // We prioritize the main table render, then fetch context data for filters/cards
     useEffect(() => {
-        if (!isLoaded || !user) return;
-        const fetchBackgroundData = async () => {
+        if (!isLoaded || !user || !data) return; // Only run after main data is ready
+        
+        const controller = new AbortController();
+        const syncBackground = async () => {
             try {
+                // Wait briefly to let main UI settle (1.5s)
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
                 // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
                 const followUpsRes = await fetch(
                     `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
-                    { cache: 'no-store' }
+                    { cache: 'no-store', signal: controller.signal }
                 );
                 if (followUpsRes.ok) {
                     const json = await followUpsRes.json();
@@ -1021,18 +1183,22 @@ export default function CRMSpreadsheetPage() {
                 // 2. Fetch Latest 500 records for Filter dropdowns and general data
                 const latestRes = await fetch(
                     `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
-                    { cache: 'no-store' }
+                    { cache: 'no-store', signal: controller.signal }
                 );
                 if (latestRes.ok) {
                     const json = await latestRes.json();
                     setAllResponsesForFollowUps(json.responses || []);
                 }
-            } catch (err) {
-                console.error('Background fetch failed:', err);
+            } catch (err: any) {
+                if (err.name !== 'AbortError') {
+                    console.error('Background fetch failed:', err);
+                }
             }
         };
-        fetchBackgroundData();
-    }, [params.id, isLoaded, user]);
+
+        syncBackground();
+        return () => controller.abort();
+    }, [params.id, isLoaded, user, !!data]);
 
     useEffect(() => {
         if (!isLoaded || !user) return;
@@ -1352,7 +1518,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1362,7 +1528,7 @@ export default function CRMSpreadsheetPage() {
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
         // Filter duplicate internal columns to avoid "extras"
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -1436,7 +1602,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1445,7 +1611,7 @@ export default function CRMSpreadsheetPage() {
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -1474,6 +1640,49 @@ export default function CRMSpreadsheetPage() {
         setColumnOrder(newOrder);
     };
 
+    const handleSaveGlobalLayout = async () => {
+        if (!isPureMaster) {
+            toast.error("Only Master Authority can push global protocols");
+            return;
+        }
+
+        const confirmPush = confirm("Push this layout as the GLOBAL MATRIX PROTOCOL? This will LOCK the format for all Sellers and Interns across the entire system.");
+        if (!confirmPush) return;
+
+        // CRITICAL: Calculate FULL current order to ensure ALL columns are explicitly synced
+        const fullCurrentOrder = allColumns.map(c => c.id);
+
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    defaultColumnOrder: fullCurrentOrder,
+                    defaultHiddenColumns: hiddenColumns
+                })
+            });
+            if (!res.ok) throw new Error("Push failed");
+            
+            toast.success("Master Protocol Synchronized! Everyone is now locked to this format.", { icon: "🌎" });
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+        } catch (err) {
+            toast.error("Master protocol sync failed");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleResetToSystemDefault = () => {
+        localStorage.removeItem(`matrix_order_${params.id}`);
+        localStorage.removeItem(`matrix_hidden_${params.id}`);
+        if (data?.form) {
+            setColumnOrder(data.form.defaultColumnOrder || []);
+            setHiddenColumns(data.form.defaultHiddenColumns || []);
+            toast.success("Synchronized with Master Global Protocol");
+        }
+    };
+
     const totalTableWidth = useMemo(() => {
         if (!data) return 1400;
         let w = isPureMaster ? 70 : 50; // 70px if master, 50px if normal for row selector column
@@ -1482,6 +1691,35 @@ export default function CRMSpreadsheetPage() {
         });
         return w;
     }, [columnWidths, data, isMaster, isPureMaster, getColumns]);
+
+    const getCellValueByRow = (resp: any, colId: string) => {
+        if (!resp) return "";
+        
+        // 💎 PENDING OVERRIDE: If there's a local edit in flight, it wins
+        const cellKey = `${resp.id}-${colId}`;
+        if (pendingUpdates[cellKey] !== undefined) return pendingUpdates[cellKey];
+
+        if (colId === "__contributor") return resp.submittedByName || "";
+        if (colId === "__submittedAt") return resp.submittedAt || resp.createdAt || "";
+        
+        // 🟢 FOLLOW-UP BOARD SYSTEM COLUMNS
+        const remarks = (resp as any).remarks || [];
+        const latestRemark = remarks[0];
+        if (colId === "__nextFollowUpDate") return latestRemark?.nextFollowUpDate || "";
+        if (colId === "__followUpStatus") return latestRemark?.followUpStatus || "";
+        if (colId === "__recentRemark") return latestRemark?.remark || "";
+        if (colId === "__followup") return latestRemark?.remark || "";
+
+        // ⚡ Internal Mapping
+        if (data?.internalValues) {
+            const internalVal = data.internalValues.find(v => v.responseId === resp.id && v.columnId === colId)?.value;
+            if (internalVal !== undefined) return internalVal;
+        }
+
+        // ⚡ Field Mapping
+        const fieldVal = resp.values?.find((v: any) => v.fieldId === colId)?.value;
+        return fieldVal || (resp as any)[colId] || "";
+    };
 
     const getCellValue = (responseId: string, colId: string, isInternal: boolean) => {
         const cellKey = `${responseId}-${colId}`;
@@ -1599,6 +1837,10 @@ export default function CRMSpreadsheetPage() {
         if (conditions.length > 0) {
             const before = results.length;
             results = results.filter(r => {
+                // 💎 SOFT FILTER: If row was JUST updated, keep it visible for 2 seconds
+                // regardless of what the new values are.
+                if (recentlyUpdatedIds[r.id]) return true;
+
                 // Group conditions by column ID so multiple selections on the same column work as OR
                 const groupedConditions = conditions.reduce((acc, cond) => {
                     if (!acc[cond.colId]) acc[cond.colId] = [];
@@ -1613,6 +1855,22 @@ export default function CRMSpreadsheetPage() {
                     if (colId === "__assigned") {
                         const result = (conds as any[]).some((cond: any) => {
                             const fullVal = (cond.val || "").toString();
+                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
+                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
+
+                            const currentUserId = data?.clerkId || "";
+
+                            // ✨ HANDLE SPECIAL POOL KEYWORDS
+                            if (fullVal === "__UNASSIGNED__" || (!fullVal && (cond.op === "equals" || cond.op === "contains"))) {
+                                return rawAssigned.length === 0;
+                            }
+                            if (fullVal === "__ONLY_ME__") {
+                                return rawAssigned.includes(currentUserId) || r.submittedBy === currentUserId || rawAssigned.length === 0;
+                            }
+                            if (fullVal === "__REASSIGNED_TO_ME__") {
+                                return rawAssigned.includes(currentUserId) && r.submittedBy !== currentUserId;
+                            }
+
                             let targetId = fullVal;
                             let isStrict = fullVal.startsWith("__STRICT_ASSIGNED__");
                             let isGlobal = fullVal.startsWith("__GLOBAL_OWNER__");
@@ -1620,32 +1878,23 @@ export default function CRMSpreadsheetPage() {
                             if (isStrict) targetId = fullVal.replace("__STRICT_ASSIGNED__", "");
                             if (isGlobal) targetId = fullVal.replace("__GLOBAL_OWNER__", "");
 
-                            const rawAssigned = (r.assignedTo || []).filter((id: any) => !!id);
-                            const rawVisible = (r.visibleToUsers || []).filter((id: any) => !!id);
-
                             const isUserAssigned = rawAssigned.includes(targetId) || rawVisible.includes(targetId);
                             const isSubmitter = r.submittedBy === targetId;
 
                             let match = false;
                             if (cond.op === "equals" || cond.op === "contains") {
-                                if (isStrict) {
-                                    match = isUserAssigned && !isSubmitter;
-                                } else if (isGlobal) {
-                                    match = isUserAssigned || isSubmitter;
-                                } else {
-                                    // Default behavior for standard IDs or names
-                                    match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
-                                }
+                                if (isStrict) match = isUserAssigned && !isSubmitter;
+                                else if (isGlobal) match = isUserAssigned || isSubmitter;
+                                else match = isUserAssigned || (rawAssigned.length === 0 && isSubmitter);
                             } else if (cond.op === "is_empty") {
-                                match = rawAssigned.length === 0 && !r.submittedBy;
+                                match = rawAssigned.length === 0;
                             } else if (cond.op === "is_not_empty") {
-                                match = rawAssigned.length > 0 || !!r.submittedBy;
+                                match = rawAssigned.length > 0;
                             } else if (cond.op === "not_equals") {
                                 if (isStrict) match = !isUserAssigned || isSubmitter;
                                 else if (isGlobal) match = !isUserAssigned && !isSubmitter;
                                 else match = !isUserAssigned && !(rawAssigned.length === 0 && isSubmitter);
                             }
-
                             return match;
                         });
                         return result;
@@ -1712,7 +1961,7 @@ export default function CRMSpreadsheetPage() {
             }
         }
         return results;
-    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns]);
+    }, [data, debouncedSearchTerm, conditions, getCellValue, filterConjunction, getColumns, recentlyUpdatedIds]);
 
     const columnMetrics = useMemo(() => {
         const columns = getColumns;
@@ -2040,16 +2289,34 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean) => {
+    const handleUpdateValue = async (responseId: string, columnId: string, value: string, isInternal: boolean, skipUndo = false) => {
+        // 💎 UX REVOLUTION: Graceful Filter Transition (Row doesn't vanish instantly)
+        setRecentlyUpdatedIds(prev => ({ ...prev, [responseId]: Date.now() }));
+        if (conditions.length > 0) {
+            toast.success("Row updated. Holding for review before filter sync...", { id: `preserve-${responseId}`, icon: '⏳' });
+        }
+        setTimeout(() => {
+            setRecentlyUpdatedIds(prev => {
+                const next = { ...prev };
+                delete next[responseId];
+                return next;
+            });
+        }, 2500); // Increased to 2.5s to allow for toast and review
+
         // 💎 REFRESH ENGINE: Instant Cell Closure
         setEditingCell(null);
 
         const cellKey = `${responseId}-${columnId}`;
-        const previousData = data;
+        const previousVal = getCellValue(responseId, columnId, isInternal); // 💎 PRO-CORE: Backup only the specific cell
 
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
         if (currentVal === value) return;
+
+        // ⏪ UNDO SYSTEM: Capture historical shard before mutation
+        if (!skipUndo) {
+            setUndoStack(prev => [...prev, { responseId, colId: columnId, val: currentVal, isInternal }].slice(-50));
+        }
 
         // 💎 REFRESH ENGINE: Local Sync State (Prevents 'Vanishing' Lag)
         setPendingUpdates(prev => ({ ...prev, [cellKey]: value }));
@@ -2120,18 +2387,32 @@ export default function CRMSpreadsheetPage() {
             });
 
             if (!res.ok) {
-                // If it's a server error or timeout, treat as offline rather than rollback
-                if (res.status >= 500 || res.status === 408) {
-                    throw new Error(`Server error ${res.status}`);
-                }
-
+                // 💎 PRO-CORE: Atomic Rollback (Only revert the affected cell, preserving other concurrent edits)
                 if (res.status === 401 || res.status === 403) {
                     toast.error("Session expired. Please refresh.");
                     return;
                 }
 
-                toast.error("Sync failed");
-                setData(previousData); // Rollback for genuine validation/permission errors
+                toast.error("Sync failed: value rejected", { icon: '🛡️' });
+                // Target specifically this cell for rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             } else {
                 // 💎 Instant History Update
                 setData(prev => {
@@ -2174,8 +2455,26 @@ export default function CRMSpreadsheetPage() {
                 toast("Network error. Saved offline for later sync.", { icon: '📶' });
             } else {
                 console.error("Update error:", err);
-                toast.error("Matrix error");
-                setData(previousData); // Rollback
+                toast.error("Matrix sync error", { icon: '🛡️' });
+                // Atomic Rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             }
         } finally {
             setSavingCells(prev => {
@@ -2220,7 +2519,7 @@ export default function CRMSpreadsheetPage() {
                     // Update remarks for audit trail
                     updatedRow.remarks = [{
                         id: 'temp-' + Date.now(),
-                        remark: `Status action: ${value}`,
+                        remark: "",
                         followUpStatus: value,
                         createdAt: new Date().toISOString()
                     } as any, ...(r.remarks || [])];
@@ -2261,7 +2560,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: "",
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2277,7 +2576,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Status action: ${value}`,
+                    remark: "",
                     followUpStatus: value,
                     columnId: columnId
                 })
@@ -2309,7 +2608,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: "",
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2668,7 +2967,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Instant status transition to ${newStatus}`,
+                    remark: "",
                     followUpStatus: newStatus
                 })
             });
@@ -2798,10 +3097,23 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    if (loading) return (
+    // 💎 PRO-CORE: Only show full-page boot screen if we have NEVER loaded data
+    if (loading && !isLoaded) return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
-            <div className="w-16 h-16 border-4 border-slate-900 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-xl" />
-            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Booting Data Matrix v2.0</p>
+            <motion.div 
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="w-20 h-20 border-t-4 border-l-4 border-indigo-600 border-r-4 border-r-transparent border-b-4 border-b-transparent rounded-full animate-spin mb-8 shadow-[0_0_50px_rgba(79,70,229,0.3)]" 
+            />
+            <motion.p 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-[12px] font-black uppercase tracking-[0.4em] text-slate-800"
+            >
+                Booting Data Matrix v2.2
+            </motion.p>
+            <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Initializing Neural Stream...</p>
         </div>
     );
 
@@ -2815,6 +3127,19 @@ export default function CRMSpreadsheetPage() {
                                 canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
                                     'bg-[#f8fafc] text-slate-900'
             }`}>
+            
+            {/* 🚀 PRO-SYNC: YouTube Style Top Progress Bar */}
+            <AnimatePresence>
+                {isSyncing && (
+                    <motion.div
+                        initial={{ scaleX: 0, opacity: 0 }}
+                        animate={{ scaleX: 1, opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.5, ease: "easeInOut" }}
+                        className="fixed top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-[9999] origin-left shadow-[0_2px_10px_rgba(99,102,241,0.5)]"
+                    />
+                )}
+            </AnimatePresence>
             {/* Deletion Progress Overlay */}
             <AnimatePresence>
                 {deleteProgress && (
@@ -3304,96 +3629,7 @@ export default function CRMSpreadsheetPage() {
                     </div>
                 )}
 
-                {/* FLOATING ACCESS DOCK (Mac OS / Premium SaaS Style) */}
-                {(() => {
-                    const visibleUsers = data?.form?.visibleToUsers || [];
-                    const visibleRoles = data?.form?.visibleToRoles || [];
 
-                    const explicitUsers = (data?.form?.visibleToUsersData || []).map((u: any) => ({
-                        clerkId: u.id,
-                        firstName: u.name,
-                        lastName: "",
-                        email: u.email,
-                        role: visibleUsers.includes(u.id) ? "Specially Added User" : "",
-                        imageUrl: u.imageUrl
-                    }));
-
-                    const roleUsers = teamMembers.filter(m =>
-                        (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
-                        m.role === 'ADMIN' || m.role === 'MASTER' ||
-                        (visibleUsers.length === 0 && visibleRoles.length === 0)
-                    ).filter(m => !explicitUsers.some((eu: any) => eu.clerkId === m.clerkId));
-
-                    const allWithAccess = [...explicitUsers, ...roleUsers];
-
-                    if (allWithAccess.length === 0) return null;
-
-                    return (
-                        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2 bg-slate-900/95 backdrop-blur shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] rounded-full border border-slate-700/50 group/team cursor-pointer hover:bg-slate-900 transition-all hover:scale-[1.02]">
-                            <div className="flex items-center gap-2 border-r border-slate-700/50 pr-4">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Shared With</span>
-                            </div>
-                            <div className="flex -space-x-1.5 overflow-visible pl-1">
-                                {allWithAccess.slice(0, 5).map((m) => {
-                                    const initial = (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?');
-                                    return (
-                                        <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                            <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
-                                        </div>
-                                    );
-                                })}
-                                {allWithAccess.length > 5 && (
-                                    <div className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-indigo-600 items-center justify-center text-[9px] font-black text-white shadow-sm border border-indigo-500 shrink-0 transition-transform group-hover/team:-translate-y-1">
-                                        +{allWithAccess.length - 5}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Center-Bottom Tooltip */}
-                            <div className="absolute bottom-[120%] left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom after:content-[''] after:absolute after:top-full after:left-0 after:w-full after:h-8">
-                                <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                    {allWithAccess.map(m => {
-                                        return (
-                                            <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900 overflow-hidden">
-                                                    <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{(m.firstName && m.firstName !== "Unknown User") ? `${m.firstName} ${m.lastName || ''}` : m.email.split('@')[0]}</p>
-                                                        {m.role && <span className="text-[6px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block border border-indigo-500/30 font-black tracking-widest">{m.role}</span>}
-                                                    </div>
-                                                    <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m.email || 'No email'}</p>
-                                                </div>
-                                                {(isMaster || isPureMaster) && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (window.confirm(`Are you sure you want to remove access for ${m.firstName || m.email}?`)) {
-                                                                const isExplicit = explicitUsers.some((eu: any) => eu.clerkId === m.clerkId);
-                                                                const roleMatch = m.role && visibleRoles.includes(m.role.toUpperCase()) ? m.role.toUpperCase() : null;
-
-                                                                if (isExplicit) handleRemoveFormAccess(m.clerkId, null);
-                                                                else if (roleMatch) handleRemoveFormAccess(null, roleMatch);
-                                                            }
-                                                        }}
-                                                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                                                        title="Revoke Access"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                                {/* Triangle arrow indicating down */}
-                                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 border-b border-r border-slate-700 rotate-45" />
-                            </div>
-                        </div>
-                    );
-                })()}
                 <AnimatePresence mode="wait">
                     {currentView === "table" ? (
                         <motion.div
@@ -3782,8 +4018,56 @@ export default function CRMSpreadsheetPage() {
                                                                                         availableValues = [...availableValues, ...ownerOptions, ...strictOptions];
                                                                                     }
 
-                                                                                    availableValues.unshift({ label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" });
-                                                                                    availableValues.unshift({ label: "Unassigned", value: "" });
+                                                                                    availableValues.unshift(
+                                                                                        { label: "Unassigned Leads Only ⭕", value: "__UNASSIGNED__" },
+                                                                                        { label: "Only Me (My Leads + Pool) 👤", value: "__ONLY_ME__" },
+                                                                                        { label: "Reassigned to Me 🎯", value: "__REASSIGNED_TO_ME__" }
+                                                                                    );
+
+                                                                                } else if (
+                                                                                    col.id === "__followUpStatus" || 
+                                                                                    col.id === "__followup" || 
+                                                                                    col.id === "__recentRemark" || 
+                                                                                    col.id === "__nextFollowUpDate" ||
+                                                                                    (col.label && (
+                                                                                        col.label.toUpperCase().includes("STATUS") || 
+                                                                                        col.label.toUpperCase().includes("CALLING") ||
+                                                                                        col.label.toUpperCase().includes("LEAD") ||
+                                                                                        col.label.toUpperCase().includes("RESULT")
+                                                                                    ))
+                                                                                ) {
+                                                                                    // 🛡️ Standardized Interaction Hierarchy (Trimmed & Unified)
+                                                                                    const MASTER_STATUS_LIST = [
+                                                                                        "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "SWITCHED OFF", "RNR 2", "RNR3", 
+                                                                                        "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER", "BUSY", "AGENT BUSY", 
+                                                                                        "NOT ANSWERED", "NOT PICKED", "NOT REACHABLE", "OUT OF SERVICE",
+                                                                                        "Will Share today", "Will let me know in 2 days", "Not Interested", "INTERESTED", "Onboarded", 
+                                                                                        "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
+                                                                                        "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW", "FOLLOW UP", "REJECTED", "CONNECTED",
+                                                                                        "CLOSED", "ONBOARDING", "SCHEDULED", "PAID WORK", "PAYMENT PENDING"
+                                                                                    ];
+                                                                                    
+                                                                                    const statusMap = new Map<string, string>(); // Normalized Upper -> Display Case
+                                                                                    
+                                                                                    // Feed from Master List
+                                                                                    MASTER_STATUS_LIST.forEach(s => {
+                                                                                        const norm = s.trim();
+                                                                                        if (norm) statusMap.set(norm.toUpperCase(), norm);
+                                                                                    });
+                                                                                    
+                                                                                    // Feed from existing data (Auto-normalize)
+                                                                                    const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
+                                                                                    dataSource.forEach(res => {
+                                                                                        const v = getCellValue(res.id, col.id, col.isInternal);
+                                                                                        if (v) {
+                                                                                            const norm = v.toString().trim();
+                                                                                            if (norm) statusMap.set(norm.toUpperCase(), norm);
+                                                                                        }
+                                                                                    });
+                                                                                    
+                                                                                    availableValues = Array.from(statusMap.values())
+                                                                                        .sort((a, b) => a.localeCompare(b))
+                                                                                        .map(s => ({ label: s, value: s }));
 
                                                                                 } else if ((col.type === "dropdown" || col.type === "multi_select" || col.type === "user") && Array.isArray(col.options) && col.options.length > 0) {
                                                                                     availableValues = col.options.map((o: any) => {
@@ -3820,7 +4104,10 @@ export default function CRMSpreadsheetPage() {
                                                                                     const dataSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
                                                                                     dataSource.forEach(res => {
                                                                                         const v = getCellValue(res.id, col.id, col.isInternal);
-                                                                                        if (v) vals.add(v.toString());
+                                                                                        if (v) {
+                                                                                            const norm = v.toString().trim();
+                                                                                            if (norm) vals.add(norm);
+                                                                                        }
                                                                                     });
                                                                                     availableValues = Array.from(vals)
                                                                                         .filter(Boolean)
@@ -3843,7 +4130,8 @@ export default function CRMSpreadsheetPage() {
                                                                                     if (!isUserCol) return true;
                                                                                     if (opt.value === "" || opt.value === "unassigned") return true;
 
-                                                                                    const isInternalOp = opt.value.startsWith("__REASSIGNED") || opt.value.startsWith("__STRICT_ASSIGNED");
+                                                                                    const valStr = String(opt.value || "");
+                                                                                    const isInternalOp = valStr.startsWith("__REASSIGNED") || valStr.startsWith("__STRICT_ASSIGNED") || valStr.startsWith("__ONLY_ME") || valStr.startsWith("__UNASSIGNED") || valStr.startsWith("__GLOBAL_OWNER");
                                                                                     if (isInternalOp) return true;
 
                                                                                     // Only show users who are active in teamMembers
@@ -3878,7 +4166,10 @@ export default function CRMSpreadsheetPage() {
                                                                                 }
 
                                                                                 return finalDisplayOptions.map(opt => {
-                                                                                    const isSelected = conditions.some(c => c.colId === col.id && c.val === opt.value);
+                                                                                    const isSelected = conditions.some(c => 
+                                                                                        c.colId === col.id && 
+                                                                                        c.val.toString().trim().toUpperCase() === opt.value.toString().trim().toUpperCase()
+                                                                                    );
                                                                                     return (
                                                                                         <button
                                                                                             key={opt.value}
@@ -3886,11 +4177,16 @@ export default function CRMSpreadsheetPage() {
                                                                                                 if (autoApply) setIsSyncing(true); // 🔥 Immediate feedback for Status and other filters
                                                                                                 setCurrentPage(1); // Reset to first page on filter change
                                                                                                 if (isSelected) {
-                                                                                                    setConditions(prev => prev.filter(c => !(c.colId === col.id && c.val === opt.value)));
+                                                                                                    setConditions(prev => prev.filter(c => 
+                                                                                                        !(c.colId === col.id && c.val.toString().trim().toUpperCase() === opt.value.toString().trim().toUpperCase())
+                                                                                                    ));
                                                                                                 } else {
                                                                                                     let autoOp = 'equals';
                                                                                                     if (col.type === "multi_select" || col.type === "user") autoOp = 'contains';
-                                                                                                    setConditions(prev => [...prev.filter(c => c.colId !== col.id || c.val !== opt.value), { colId: col.id, op: autoOp, val: opt.value }]);
+                                                                                                    setConditions(prev => [
+                                                                                                        ...prev.filter(c => c.colId !== col.id || c.val.toString().trim().toUpperCase() !== opt.value.toString().trim().toUpperCase()), 
+                                                                                                        { colId: col.id, op: autoOp, val: opt.value }
+                                                                                                    ]);
                                                                                                 }
                                                                                             }}
                                                                                             className={`w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 flex items-center gap-2 group/btn transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}
@@ -3952,7 +4248,9 @@ export default function CRMSpreadsheetPage() {
                                                     height: `${virtualRow.size}px`,
                                                     backgroundColor: res.rowColor || (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'transparent' : 'white')
                                                 }}
-                                                className={`group cursor-pointer transition-all relative border-b [&>td]:border-r ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
+                                                className={`group cursor-pointer transition-all relative border-b [&>td]:border-r 
+                                                    ${recentlyUpdatedIds[res.id] ? (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-emerald-950/40 text-emerald-100' : 'bg-emerald-50 text-emerald-900 shadow-[inset_0_0_0_2px_#10b981]') : ''}
+                                                    ${(res as any).isOptimistic ? 'opacity-50' : ''} ${(openColorPicker === res.id || openAssignedCell === res.id) ? 'z-[100]' : 'z-10'} 
                                                     ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? '[&>td]:border-white/5' : '[&>td]:border-[#EAECF0]'}
                                                     ${density === 'compact' ? 'h-[36px] text-[13px] font-medium tracking-tight [&>td]:!py-0 [&>td]:!px-2' : density === 'comfortable' ? 'h-[80px] text-base' : 'h-[50px] text-[14px] [&>td]:!py-2'} 
                                                     ${(() => {
@@ -4259,7 +4557,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 <button className="inline-flex items-center justify-center gap-1.5 px-2 py-1 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded shadow-sm text-[10px] font-black uppercase tracking-widest transition-all">
@@ -4286,7 +4593,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 {latestRemark ? (
@@ -4325,7 +4641,16 @@ export default function CRMSpreadsheetPage() {
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     setFocusedCell({ rowId: res.id, colId: col.id });
-                                                                    setOpenFollowUpModal({ formId: data?.form?.id || '', responseId: res.id });
+                                                                    setOpenFollowUpModal({ 
+                                                                        formId: data?.form?.id || '', 
+                                                                        responseId: res.id,
+                                                                        initialData: {
+                                                                            remark: res.remarks?.[0]?.remark || '',
+                                                                            nextFollowUpDate: res.remarks?.[0]?.nextFollowUpDate || '',
+                                                                            followUpStatus: res.remarks?.[0]?.followUpStatus || '',
+                                                                            leadStatus: res.remarks?.[0]?.leadStatus || ''
+                                                                        }
+                                                                    });
                                                                 }}
                                                             >
                                                                 {nextDate ? (
@@ -4623,7 +4948,7 @@ export default function CRMSpreadsheetPage() {
                                                                                             </span>
                                                                                         );
                                                                                     }
-                                                                                    if (col.label === "Follow-up Status") {
+                                                                                    if (col.label === "Calling Status") {
                                                                                         return (
                                                                                             <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                                 ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
@@ -4979,7 +5304,9 @@ export default function CRMSpreadsheetPage() {
                                                                                 }}
                                                                             >
                                                                                 <option value="">Assignee Agent</option>
-                                                                                <option value="reassigned">🎯 Reassigned to Me</option>
+                                                                                 <option value="__ONLY_ME__">👤 Only Me (My Leads + Pool)</option>
+                                                                                 <option value="__UNASSIGNED__">⭕ Unassigned Only</option>
+                                                                                 <option value="__REASSIGNED_TO_ME__">🎯 Reassigned to Me</option>
                                                                                 {teamMembers.map(tm => (
                                                                                     <option key={tm.clerkId} value={tm.clerkId}>{tm.firstName ? `${tm.firstName} ${tm.lastName || ''}` : tm.email}</option>
                                                                                 ))}
@@ -5420,8 +5747,8 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-[#F9FAFB]">
                                     <div>
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Manage Columns</h3>
-                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Select columns to display in the matrix</p>
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Matrix Column Protocol</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Configure global layout & visibility</p>
                                     </div>
                                     <button onClick={() => setIsColumnManagerOpen(false)} className="p-2 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200">
                                         <X size={16} className="text-slate-400" />
@@ -5485,25 +5812,45 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
-                                    {isMaster && (
-                                        <div className="flex gap-2">
+                                    {(isMaster || isPureMaster) && (
+                                        <div className="flex flex-col gap-2 p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Sparkles size={12} className="text-indigo-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Master Authority</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => addHubColumns('sales')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                >
+                                                    + Sales Hub
+                                                </button>
+                                                <button
+                                                    onClick={() => addHubColumns('remarks')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
+                                                >
+                                                    + Remark Hub
+                                                </button>
+                                            </div>
                                             <button
-                                                onClick={() => addHubColumns('sales')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                onClick={handleSaveGlobalLayout}
+                                                className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
                                             >
-                                                + Sales Hub
-                                            </button>
-                                            <button
-                                                onClick={() => addHubColumns('remarks')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
-                                            >
-                                                + Remark Hub
+                                                <ShieldCheck size={14} /> Push Global Format for All
                                             </button>
                                         </div>
                                     )}
-                                    <div className="flex justify-end">
+                                    <div className="flex justify-between items-center gap-2">
+                                        {isTL && (
+                                            <button
+                                                onClick={handleResetToSystemDefault}
+                                                className="px-4 py-2 text-slate-400 hover:text-slate-900 text-[10px] font-black uppercase tracking-widest transition-all"
+                                            >
+                                                Reset to Default
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setIsColumnManagerOpen(false)}
                                             className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
@@ -6529,7 +6876,21 @@ export default function CRMSpreadsheetPage() {
                                     columnId={openFollowUpModal.columnId}
                                     onClose={() => setOpenFollowUpModal(null)}
                                     userRole={userRole || 'GUEST'}
-                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                    initialData={openFollowUpModal.initialData}
+                                    onSave={() => {
+                                        if (openFollowUpModal?.responseId) {
+                                          setRecentlyUpdatedIds(prev => ({ ...prev, [openFollowUpModal.responseId]: Date.now() }));
+                                          // Clear grace period after review window
+                                          setTimeout(() => {
+                                              setRecentlyUpdatedIds(prev => {
+                                                  const next = { ...prev };
+                                                  if (openFollowUpModal?.responseId) delete next[openFollowUpModal.responseId];
+                                                  return next;
+                                              });
+                                          }, 10000);
+                                        }
+                                        fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                                    }}
                                 />
                             </div>
                         )}
@@ -6542,7 +6903,19 @@ export default function CRMSpreadsheetPage() {
                                     responseId={openPaymentModal.responseId}
                                     userRole={userRole || 'GUEST'}
                                     onClose={() => setOpenPaymentModal(null)}
-                                    onSave={() => fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true)}
+                                    onSave={() => {
+                                        if (openPaymentModal?.responseId) {
+                                          setRecentlyUpdatedIds(prev => ({ ...prev, [openPaymentModal.responseId]: Date.now() }));
+                                          setTimeout(() => {
+                                              setRecentlyUpdatedIds(prev => {
+                                                  const next = { ...prev };
+                                                  if (openPaymentModal?.responseId) delete next[openPaymentModal.responseId];
+                                                  return next;
+                                              });
+                                          }, 2500);
+                                        }
+                                        fetchData(currentPage, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+                                    }}
                                 />
                             </div>
                         )}
@@ -6570,7 +6943,7 @@ export default function CRMSpreadsheetPage() {
                     }}
                     availableColumns={[
                         { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
-                        { id: "__followUpStatus", label: "Follow-up Status", isInternal: false, type: "text" },
+                        { id: "__followUpStatus", label: "Calling Status", isInternal: false, type: "text" },
                         { id: "__nextFollowUpDate", label: "Next Follow-up Date", isInternal: false, type: "date" },
                         { id: "__recentRemark", label: "Recent Remark", isInternal: false, type: "text" },
                         ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),

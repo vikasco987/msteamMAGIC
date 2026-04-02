@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { format, subDays, addDays } from "date-fns";
-import { PieChart, PhoneCall, Calendar, Activity, ChevronRight, Hash, CheckCircle2, XCircle } from "lucide-react";
+import { PieChart, PhoneCall, Calendar, Activity, ChevronRight, Hash, CheckCircle2, XCircle, Database, Download, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 
 type UserReport = {
@@ -12,9 +12,11 @@ type UserReport = {
     callCount: number;
     connectedCount: number;
     notConnectedCount: number;
+    rawRemarks?: number; // 🛡️ NEW METRIC
 };
 
 type ReportData = {
+    reports: any[]; // 🛡️ FULL DATA SOURCE
     followUpReport: UserReport[];
     newCallReport: UserReport[];
     combinedReport: UserReport[];
@@ -25,7 +27,9 @@ export default function CallReportPage() {
     const [date, setDate] = useState<Date>(new Date());
     const [data, setData] = useState<ReportData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [matrixLoading, setMatrixLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<"NEW" | "FOLLOWUP" | "COMBINED">("COMBINED");
+    const [matrixData, setMatrixData] = useState<any[]>([]);
 
     const fetchReport = async (targetDate: Date) => {
         setLoading(true);
@@ -45,13 +49,57 @@ export default function CallReportPage() {
         }
     };
 
+    const fetchMatrix = async (targetDate: Date) => {
+        setMatrixLoading(true);
+        try {
+            const dateStr = format(targetDate, "yyyy-MM-dd");
+            const res = await fetch(`/api/call-report/matrix?start=${dateStr}&end=${dateStr}&range=CUSTOM`);
+            const json = await res.json();
+            if (res.ok) setMatrixData(json.report);
+        } catch (error) { toast.error("Failed to fetch User Matrix"); }
+        finally { setMatrixLoading(false); }
+    };
+
+    const downloadCSV = () => {
+        if (!matrixData || matrixData.length === 0) return;
+        
+        const headers = [
+            "Staff Identity", "Untouched Leads", "Pending F/U", "Today Created", "Total Reachout", 
+            "Total Connected", "New Reachout", "New Connected", "F/U Calls", "F/U Connected", 
+            "Today ONB", "Today Sales", "To-Do Tasks", "In Progress", "Paid Work Done", "Payment Pending"
+        ];
+
+        const rows = matrixData.map(u => [
+            u.name, u.untouched, u.pending, u.created, u.reachout, 
+            u.connected, u.newReachout, u.newConnected, u.followupCalls, u.followupConnected, 
+            u.onboarding, u.sales, u.todo, u.progress, u.paymentDone, u.paymentPending
+        ]);
+
+        const csvContent = [
+            headers.join(","),
+            ...rows.map(row => row.join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Analytical_Matrix_${format(date, "yyyy-MM-dd")}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Analytical Report Extracted!");
+    };
+
     useEffect(() => {
         fetchReport(date);
+        fetchMatrix(date);
     }, [date]);
 
-    const currentReport = activeTab === "NEW" ? data?.newCallReport : 
-                         activeTab === "FOLLOWUP" ? data?.followUpReport : 
-                         data?.combinedReport;
+    const currentReport = activeTab === "NEW" ? data?.newCallReport :
+        activeTab === "FOLLOWUP" ? data?.followUpReport :
+            data?.combinedReport;
 
     const totalLeads = currentReport?.reduce((acc, curr) => acc + curr.callCount, 0) || 0;
     const totalConnected = currentReport?.reduce((acc, curr) => acc + curr.connectedCount, 0) || 0;
@@ -69,23 +117,23 @@ export default function CallReportPage() {
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest text-[10px]">Tiered Reporting System</p>
                     </div>
                 </div>
-                
+
                 <div className="flex flex-col md:flex-row gap-4 items-center self-stretch md:self-auto">
                     {/* Tier Selector */}
                     <div className="flex p-1.5 bg-slate-100 rounded-2xl border border-slate-200 shadow-inner w-full md:w-auto">
-                        <button 
+                        <button
                             onClick={() => setActiveTab("COMBINED")}
                             className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === "COMBINED" ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             Total Activity
                         </button>
-                        <button 
+                        <button
                             onClick={() => setActiveTab("NEW")}
                             className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === "NEW" ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
                             New Calls
                         </button>
-                        <button 
+                        <button
                             onClick={() => setActiveTab("FOLLOWUP")}
                             className={`flex-1 md:flex-none px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === "FOLLOWUP" ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
@@ -109,22 +157,19 @@ export default function CallReportPage() {
             </div>
 
             {/* Header Stats Summary */}
-            <div className={`p-8 rounded-[40px] shadow-2xl flex flex-col md:flex-row justify-between items-center text-white gap-8 overflow-hidden relative transition-all duration-500 ${
-                activeTab === "NEW" ? 'bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-emerald-200' :
-                activeTab === "FOLLOWUP" ? 'bg-gradient-to-br from-amber-500 to-amber-700 shadow-amber-200' :
-                'bg-gradient-to-br from-indigo-600 to-indigo-800 shadow-indigo-200'
-            }`}>
+            <div className={`p-8 rounded-[40px] shadow-2xl flex flex-col md:flex-row justify-between items-center text-white gap-8 overflow-hidden relative transition-all duration-500 ${activeTab === "NEW" ? 'bg-gradient-to-br from-emerald-600 to-emerald-800 shadow-emerald-200' :
+                    activeTab === "FOLLOWUP" ? 'bg-gradient-to-br from-amber-500 to-amber-700 shadow-amber-200' :
+                        'bg-gradient-to-br from-indigo-600 to-indigo-800 shadow-indigo-200'
+                }`}>
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 blur-[100px] rounded-full -mr-32 -mt-32" />
                 <div className="relative z-10">
                     <h2 className="text-4xl font-black tracking-tighter mb-1">
-                        {activeTab === "NEW" ? "New Acquisition Report" : 
-                         activeTab === "FOLLOWUP" ? "Secondary Follow-ups" : 
-                         "Global Team Performance"}
+                        {activeTab === "NEW" ? "New Acquisition Report" :
+                            activeTab === "FOLLOWUP" ? "Secondary Follow-ups" :
+                                "Global Team Performance"}
                     </h2>
                     <p className="text-white/80 font-bold uppercase tracking-widest text-[10px]">
-                        {activeTab === "NEW" ? "Tracking first interactions from 'Status' columns" :
-                         activeTab === "FOLLOWUP" ? "Tracking CRM follow-up interactions" :
-                         "Aggregated stats from all client touchpoints"}
+                         Aggregated stats from all client touchpoints
                     </p>
                 </div>
                 <div className="flex gap-10 relative z-10 shrink-0">
@@ -134,9 +179,9 @@ export default function CallReportPage() {
                     </div>
                     <div className="w-px h-12 bg-white/20 self-center" />
                     <div className="text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-60">Connected Rate</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-60">Total Remarks</p>
                         <p className="text-4xl font-black tracking-tighter">
-                            {totalLeads > 0 ? Math.round((totalConnected / totalLeads) * 100) : 0}%
+                            {data?.reports?.reduce((acc, curr) => acc + curr.stats.rawRemarks, 0) || 0}
                         </p>
                     </div>
                 </div>
@@ -155,16 +200,17 @@ export default function CallReportPage() {
                         <PhoneCall size={40} />
                     </div>
                     <h3 className="text-2xl font-black text-slate-700">No Activity Detected</h3>
-                    <p className="text-sm font-bold text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed uppercase tracking-widest space-y-2">
-                        <span>Zero interactions recorded in the</span><br/>
-                        <span className="text-indigo-600 px-2 py-1 bg-indigo-50 rounded-lg">{activeTab} section</span>
-                    </p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {currentReport.map((user, idx) => (
-                        <div 
-                            key={user.userId} 
+                    {currentReport.map((user, idx) => {
+                        // Find the raw remark count from the base report source
+                        const identity = data?.reports?.find(r => r.userId === user.userId);
+                        const remarkVolume = identity?.stats?.rawRemarks || 0;
+
+                        return (
+                        <div
+                            key={user.userId}
                             onClick={() => window.location.href = `/call-report/details?userId=${user.userId}&date=${format(date, "yyyy-MM-dd")}&type=${activeTab}&name=${encodeURIComponent(user.name)}`}
                             className={`bg-white rounded-[40px] p-8 border cursor-pointer ${idx === 0 ? 'border-2 border-indigo-500 shadow-2xl shadow-indigo-100' : 'border-slate-100 shadow-sm'} relative group hover:-translate-y-2 transition-all duration-500 overflow-hidden`}
                         >
@@ -173,37 +219,39 @@ export default function CallReportPage() {
                                     Leader
                                 </div>
                             )}
-                            
+
                             <div className="flex items-start justify-between mb-8">
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner border transition-all group-hover:rotate-6 ${
-                                    idx === 0 ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-slate-50 text-slate-400 border-slate-100'
-                                }`}>
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner border transition-all group-hover:rotate-6 ${idx === 0 ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-slate-50 text-slate-400 border-slate-100'
+                                    }`}>
                                     {user.name.charAt(0) || "?"}
                                 </div>
                                 <div className="text-right">
                                     <div className="text-[24px] font-black text-slate-800 tracking-tighter leading-none">{user.callCount}</div>
                                     <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">
-                                        {activeTab === "NEW" ? "New Calls Logged" : 
-                                         activeTab === "FOLLOWUP" ? "Follow-ups Logged" : 
-                                         "Total Leads Logged"}
+                                        {activeTab === "NEW" ? "New Calls Logged" :
+                                            activeTab === "FOLLOWUP" ? "Follow-ups Logged" :
+                                                "Total Leads Logged"}
                                     </div>
                                 </div>
                             </div>
 
                             <h3 className="font-black text-slate-800 text-lg truncate mb-1 pr-4">{user.name}</h3>
-                            {user.email && <p className="text-[9px] font-black text-slate-400 truncate uppercase tracking-widest opacity-60">{user.email}</p>}
-                            
+                            <div className="flex items-center gap-2 mt-1">
+                                <MessageSquare size={10} className="text-indigo-500" />
+                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{remarkVolume} Total Remarks</span>
+                            </div>
+
                             <div className="mt-8 pt-6 border-t border-slate-50 flex flex-col gap-4">
                                 <div className="space-y-3">
                                     <div className="flex flex-col gap-1.5">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
                                             <span className="text-emerald-600">
-                                                {activeTab === "NEW" ? "Connected New" : activeTab === "FOLLOWUP" ? "Connected Follow-ups" : "Combined Connected"}
+                                                Connected Leads
                                             </span>
                                             <span className="text-slate-900">{user.connectedCount}</span>
                                         </div>
                                         <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                            <div 
+                                            <div
                                                 className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-1000"
                                                 style={{ width: `${(user.connectedCount / user.callCount) * 100 || 0}%` }}
                                             />
@@ -212,33 +260,58 @@ export default function CallReportPage() {
 
                                     <div className="flex flex-col gap-1.5">
                                         <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-1">
-                                            <span className="text-rose-500">
-                                                {activeTab === "NEW" ? "Not Connected New" : activeTab === "FOLLOWUP" ? "Not Connected Follow-ups" : "Combined Unconnected"}
-                                            </span>
-                                            <span className="text-slate-900">{user.notConnectedCount}</span>
+                                            <span className="text-indigo-500 font-black">Velocity Score</span>
+                                            <span className="text-indigo-600">{(remarkVolume / user.callCount).toFixed(1)}x</span>
                                         </div>
                                         <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                            <div 
-                                                className="h-full bg-gradient-to-r from-rose-400 to-rose-600 rounded-full transition-all duration-1000"
-                                                style={{ width: `${(user.notConnectedCount / user.callCount) * 100 || 0}%` }}
+                                            <div
+                                                className="h-full bg-indigo-500 rounded-full transition-all duration-1000"
+                                                style={{ width: `${Math.min((remarkVolume / (user.callCount * 2)) * 100, 100) || 0}%` }}
                                             />
                                         </div>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-2 mt-2">
-                                    <div className={`flex-1 h-8 rounded-xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest border transition-all ${
-                                        idx === 0 ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400'
-                                    }`}>
+                                    <div className={`flex-1 h-8 rounded-xl flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-widest border transition-all ${idx === 0 ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400'
+                                        }`}>
                                         <CheckCircle2 size={12} />
                                         Efficiency: {Math.round((user.connectedCount / user.callCount) * 100) || 0}%
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    ))}
+                    );})}
                 </div>
-            )}
+            )
+            }
+
+            {/* 🗺️ UNIVERSAL ANALYTICAL MATRIX (Gateway to dedicated page) */}
+            <div className="mt-20 p-12 bg-white rounded-[48px] border border-slate-100 shadow-2xl shadow-indigo-100/50 flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-[100px] -mr-32 -mt-32 transition-all group-hover:scale-150 duration-700" />
+                
+                <div className="flex items-center gap-8 relative z-10">
+                    <div className="w-20 h-20 bg-slate-900 rounded-[32px] flex items-center justify-center text-white shadow-2xl shadow-slate-200 border-4 border-white transition-transform group-hover:scale-110">
+                        <Activity size={36} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                        <h3 className="text-3xl font-black text-slate-800 tracking-tighter leading-none mb-3">Grand Analysis Matrix</h3>
+                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
+                             Full-screen Audit • Historical Sharding • Zero-Activity Filter
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex flex-col items-center gap-4 relative z-10 w-full md:w-auto">
+                    <button 
+                        onClick={() => window.location.href = '/call-report/matrix'}
+                        className="w-full md:w-auto px-10 py-5 bg-indigo-600 text-white rounded-[24px] text-[12px] font-black uppercase tracking-[0.3em] shadow-[0_20px_50px_rgba(79,70,229,0.3)] hover:-translate-y-2 transition-all flex items-center justify-center gap-3 active:scale-95 hover:shadow-[0_30px_70px_rgba(79,70,229,0.4)]"
+                    >
+                         Enter Grand Matrix <ChevronRight size={18} />
+                    </button>
+                    <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">Optimized Administrative Layer Active</p>
+                </div>
+            </div>
         </div>
     );
 }

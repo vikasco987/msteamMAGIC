@@ -101,6 +101,7 @@ export default function Board() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+  const [selectedAssigners, setSelectedAssigners] = useState<string[]>([]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -113,24 +114,10 @@ export default function Board() {
   const hasFetchedInitially = useRef(false);
   const seenTaskIdsRef = useRef<Set<string>>(new Set());
 
-  const [hiddenCardIds, setHiddenCardIds] = useState<Set<string>>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("hiddenCardIds");
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    }
-    return new Set();
-  });
-
-  const saveHiddenCardIds = (newSet: Set<string>) => {
-    localStorage.setItem("hiddenCardIds", JSON.stringify(Array.from(newSet)));
-    setHiddenCardIds(newSet);
-  };
-
   const handleToggleHideUnhide = (taskId: string) => {
-    const newSet = new Set(hiddenCardIds);
-    if (newSet.has(taskId)) newSet.delete(taskId);
-    else newSet.add(taskId);
-    saveHiddenCardIds(newSet);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    handleFieldUpdate(taskId, { isHidden: !task.isHidden });
   };
 
   const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
@@ -364,16 +351,19 @@ export default function Board() {
         selectedStatuses.includes((task.status || "").toLowerCase()) ||
         !!pendingChanges[task.id]; // Always show if we just moved it locally
 
-      const isHidden = !showAllTasksMode && hiddenCardIds.has(task.id);
+      const matchesAssigner = selectedAssigners.length === 0 ||
+        (task as any).assignerName && selectedAssigners.includes((task as any).assignerName);
 
-      return matchesSearch && matchesCategory && matchesDate && matchesStatus && !isHidden;
+      const isHidden = !showAllTasksMode && task.isHidden;
+
+      return matchesSearch && matchesCategory && matchesDate && matchesStatus && matchesAssigner && !isHidden;
     }).sort((a, b) => {
       const valA = a[sortBy] || "";
       const valB = b[sortBy] || "";
       const dir = sortDirection === "asc" ? 1 : -1;
       return valA < valB ? -1 * dir : valA > valB ? 1 * dir : 0;
     });
-  }, [tasks, filterText, selectedCategories, selectedDates, sortBy, sortDirection, showAllTasksMode, hiddenCardIds, pendingChanges]);
+  }, [tasks, filterText, selectedCategories, selectedDates, selectedAssigners, sortBy, sortDirection, showAllTasksMode, pendingChanges]);
 
   const allStatuses = useMemo(() => Array.from(new Set(tasks.map(t => t.status))), [tasks]);
   const allAssignees = useMemo(() => {
@@ -383,6 +373,14 @@ export default function Board() {
       t.assignees?.forEach(a => { if (a.name) assignees.add(a.name); });
     });
     return Array.from(assignees);
+  }, [tasks]);
+
+  const allAssigners = useMemo(() => {
+    const assigners = new Set<string>();
+    tasks.forEach(t => {
+      if ((t as any).assignerName) assigners.add((t as any).assignerName);
+    });
+    return Array.from(assigners);
   }, [tasks]);
 
   if (loading) return (
@@ -434,11 +432,14 @@ export default function Board() {
         setSelectedStatuses={setSelectedStatuses}
         selectedAssignees={selectedAssignees}
         setSelectedAssignees={setSelectedAssignees}
+        selectedAssigners={selectedAssigners}
+        setSelectedAssigners={setSelectedAssigners}
         selectedDates={selectedDates}
         setSelectedDates={setSelectedDates}
         allCategories={TASK_CATEGORIES}
         allStatuses={allStatuses}
         allAssignees={allAssignees}
+        allAssigners={allAssigners}
       />
 
       <DragDropContext onDragEnd={onDragEnd}>
@@ -476,7 +477,7 @@ export default function Board() {
 
                             <div className="flex gap-2 mt-4 pt-3 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button onClick={() => handleToggleHideUnhide(task.id)} className="text-[9px] font-black uppercase text-slate-400 hover:text-indigo-600">
-                                {hiddenCardIds.has(task.id) ? "Show" : "Hide"}
+                                {task.isHidden ? "Show" : "Hide"}
                               </button>
                               <button onClick={() => setEditingTask(task)} className="text-[9px] font-black uppercase text-slate-400 hover:text-indigo-600">Edit</button>
                             </div>

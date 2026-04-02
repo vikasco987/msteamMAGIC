@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
+import { emitMatrixUpdate } from "@/lib/socket-server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,7 +9,7 @@ export const revalidate = 0;
 // Submit a response (Public or Internal)
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id: formId } = await params;
@@ -34,6 +35,7 @@ export async function POST(
             }
         });
 
+        await emitMatrixUpdate({ formId, responseId: response.id, type: "NEW_SUBMISSION" });
         return NextResponse.json({ success: true, responseId: response.id, response });
     } catch (error) {
         console.error("Submit Response Error:", error);
@@ -44,15 +46,18 @@ export async function POST(
 // Get all responses + internal data (Admin/Master only)
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
+    const perfStart = Date.now();
     try {
         const { id: formId } = await params;
         const { userId } = await auth();
-        console.log(`[API] Fetching responses for ${formId}, user: ${userId}`);
+        const { searchParams } = new URL(req.url);
+
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const user = await currentUser();
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
 
         const dbUser = await prisma.user.findUnique({
@@ -62,38 +67,46 @@ export async function GET(
         const dbRole = (dbUser?.role || "").toUpperCase();
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
 
-        console.log(`[API] Resolved Role: ${userRole} (Clerk: ${metaRole}, DB: ${dbRole})`);
-        const rawFormResult: any = await (prisma as any).$runCommandRaw({
-            find: "DynamicForm",
-            filter: { _id: { $oid: formId } },
-            limit: 1
-        });
+        // 💎 PRO-CORE: Meta-Data Split Strategy
+        const includeMeta = searchParams.get("meta") === "true" || !searchParams.get("page");
 
-        const rawForm = rawFormResult.cursor?.firstBatch?.[0];
-        if (!rawForm) return NextResponse.json({ error: "Form not found" }, { status: 404 });
+        // 🚀 THE PARALLEL ENGINE: Core Meta & Perms
+        const [form, teamData, internalColumns, colPermissions] = includeMeta ? await Promise.all([
+            prisma.dynamicForm.findUnique({
+                where: { id: formId },
+                include: { fields: true }
+            }),
+            prisma.user.findMany({
+                where: { 
+                    OR: [
+                        { publicMetadata: { path: ["role"], equals: "STAFF" } },
+                        { publicMetadata: { path: ["role"], equals: "TL" } },
+                        { publicMetadata: { path: ["role"], equals: "ADMIN" } },
+                        { publicMetadata: { path: ["role"], equals: "MASTER" } }
+                    ]
+                }
+            }),
+            prisma.internalColumn.findMany({ where: { formId }, orderBy: { order: "asc" } }),
+            prisma.columnPermission.findMany({ where: { formId } })
+        ]) : [null, null, null, null];
 
-        const [fields, internalColumns] = await Promise.all([
-            prisma.formField.findMany({ where: { formId }, orderBy: { order: "asc" } }),
-            prisma.internalColumn.findMany({ where: { formId }, orderBy: { order: "asc" } })
-        ]);
+        // Fetch basic form details for permission logic if meta was skipped
+        let baseFormMeta = form;
+        if (!includeMeta) {
+            baseFormMeta = await prisma.dynamicForm.findUnique({
+                where: { id: formId },
+                select: { id: true, createdBy: true, visibleToRoles: true, visibleToUsers: true, columnPermissions: true }
+            }) as any;
+        }
 
-        const colMap: Record<string, string> = {};
-        fields.forEach(f => colMap[f.id] = f.type);
-        internalColumns.forEach(c => colMap[c.id] = c.type);
+        if (!baseFormMeta) return NextResponse.json({ error: "Form not found" }, { status: 404 });
 
-        const form = {
-            ...rawForm,
-            id: rawForm._id.$oid || rawForm._id,
-            fields
-        };
+        const isFormOwner = baseFormMeta.createdBy === userId;
+        const reachedMasterRole = userRole === "MASTER" || userRole === "ADMIN";
+        const isMaster = reachedMasterRole || userRole === "TL" || isFormOwner;
 
-        const isFormOwner = form.createdBy === userId;
-        const isMasterRole = userRole === "MASTER"; // Ultimate Authority
-        const isMaster = isMasterRole || userRole === "ADMIN" || userRole === "TL" || isFormOwner;
-
-        const { searchParams } = new URL(req.url);
         const page = parseInt(searchParams.get("page") || "1");
-        const limit = parseInt(searchParams.get("limit") || "20");
+        const limit = parseInt(searchParams.get("limit") || "10");
         const skip = (page - 1) * limit;
         const search = searchParams.get("search") || "";
         const sortBy = searchParams.get("sortBy") || "__submittedAt";
@@ -107,13 +120,10 @@ export async function GET(
         }
 
         const conjunction = searchParams.get("conjunction") || "AND";
-
-        const gac: any = form.columnPermissions || { roles: {}, users: {} };
-        const rolePerms = gac.roles?.[userRole] || {};
-        const userPerms = gac.users?.[userId] || {};
-        const colAccess = { ...rolePerms, ...userPerms };
-
-        // Team Leader Logic: If user is TL, they can see their team's data
+        const includeIdsStr = searchParams.get("includeIds") || "";
+        const includeIds = includeIdsStr ? includeIdsStr.split(",").filter(id => !!id) : [];
+        
+        // Team Leader Logic
         const isTL = dbUser?.isTeamLeader || userRole?.toUpperCase() === 'TL';
         let teamMemberIds: string[] = [];
         if (isTL) {
@@ -124,10 +134,22 @@ export async function GET(
             teamMemberIds = members.map(m => m.clerkId);
         }
 
+        // Define permissions filter
         const permissionWhere: any = isMaster ? {} : {
             OR: [
                 { assignedTo: { has: userId } },
-                { AND: [{ assignedTo: { isEmpty: true } }, { submittedBy: userId }] },
+                {
+                    AND: [
+                        { submittedBy: userId },
+                        {
+                            OR: [
+                                { assignedTo: { has: userId } },
+                                { assignedTo: { isEmpty: true } },
+                                { assignedTo: { equals: [] } }
+                            ]
+                        }
+                    ]
+                },
                 { visibleToRoles: { has: userRole } },
                 { visibleToUsers: { has: userId } },
                 ...(isTL && teamMemberIds.length > 0 ? [
@@ -137,16 +159,45 @@ export async function GET(
             ]
         };
 
-        // Group conditions by colId for OR logic within columns
+        const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
+            switch (operator) {
+                case "equals":
+                case "equals_date":
+                    return { equals: value, mode: 'insensitive' };
+                case "contains":
+                    return { contains: value, mode: 'insensitive' };
+                case "greater_than":
+                case "after":
+                    return { gt: value };
+                case "less_than":
+                case "before":
+                    return { lt: value };
+                case "greater_than_or_equal":
+                case "gte":
+                    return { gte: value };
+                case "less_than_or_equal":
+                case "lte":
+                    return { lte: value };
+                default:
+                    return { equals: value, mode: 'insensitive' };
+            }
+        };
+
+        const fields = form?.fields || [];
+        const colMap: Record<string, string> = {};
+        fields.forEach((f: any) => colMap[f.id] = f.type);
+        (internalColumns || []).forEach((c: any) => colMap[c.id] = c.type);
+
+        // Advanced Filter Logic
         const groupedConditions = (conditions as any[]).reduce((acc: any, cond: any) => {
             if (!acc[cond.colId]) acc[cond.colId] = [];
             acc[cond.colId].push(cond);
             return acc;
         }, {});
 
-        // Localized Date Reference to handle timezone shifts
-        const todayRef = searchParams.get("today") || new Date().toISOString().split('T')[0];
-        const now = new Date(todayRef);
+        const nowParam = searchParams.get("today") || new Date().toISOString().split('T')[0];
+        const perspectiveDates = nowParam.split(",").map(d => new Date(d));
+        const now = perspectiveDates[0];
 
         const advancedFilters: any[] = [];
         Object.entries(groupedConditions).forEach(([colId, conds]: [string, any]) => {
@@ -157,337 +208,146 @@ export async function GET(
                 const { op, val, val2 } = cond;
                 if (!op) return;
 
-                const getPrismaOp = (operator: string, value: any, secondValue?: any) => {
-                    const isNum = colType === "number" || colType === "currency";
-                    const isDate = colType === "date";
-
-                    const castVal = (v: any) => {
-                        if (isNum && !isNaN(Number(v))) return String(v);
-                        // 🔥 Important: Do NOT trim strings globally here, 
-                        // as some legacy statuses or internal values may rely on exact match including spaces
-                        return v;
-                    };
-
-                    switch (operator) {
-                        case "equals": return isNum ? { equals: castVal(value) } : { equals: castVal(value), mode: 'insensitive' as const };
-                        case "not_equals": return isNum ? { not: castVal(value) } : { not: castVal(value), mode: 'insensitive' as const };
-                        case "contains": return { contains: value, mode: 'insensitive' as const };
-                        case "starts_with": return { startsWith: value, mode: 'insensitive' as const };
-                        case "ends_with": return { endsWith: value, mode: 'insensitive' as const };
-                        case "one_of": return { in: (value || "").split(",").map((t: string) => t.trim()).filter(Boolean), mode: 'insensitive' as const };
-                        case "is_empty": return { equals: "" };
-                        case "is_not_empty": return { not: "" };
-                        case "is_true": return { equals: "true" };
-                        case "is_false": return { equals: "false" };
-                        case "gt": return { gt: castVal(value) };
-                        case "lt": return { lt: castVal(value) };
-                        case "gte": return { gte: castVal(value) };
-                        case "lte": return { lte: castVal(value) };
-                        case "between": return { gte: castVal(value), lte: castVal(secondValue) };
-                        default: return { contains: value, mode: 'insensitive' as const };
-                    }
-                };
-
-                if (colId === "__submittedAt") {
+                if (colId === "isTouched") {
+                    columnFilters.push({ isTouched: (val === "true" || val === true || val === 1) });
+                } else if (colId === "__submittedAt") {
                     if (op === "today") {
-                        const start = new Date(); start.setHours(0, 0, 0, 0);
-                        const end = new Date(); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ submittedAt: { gte: start, lte: end } });
-                    } else if (op === "this_week") {
-                        const now = new Date();
-                        const start = new Date(now.setDate(now.getDate() - now.getDay()));
-                        start.setHours(0, 0, 0, 0);
-                        columnFilters.push({ submittedAt: { gte: start } });
+                        const dateFilters = perspectiveDates.map(pDate => {
+                            const start = new Date(pDate); start.setHours(0, 0, 0, 0);
+                            const end = new Date(pDate); end.setHours(23, 59, 59, 999);
+                            return { submittedAt: { gte: start, lte: end } };
+                        });
+                        columnFilters.push({ OR: dateFilters });
                     } else if (op === "before" && val) {
                         columnFilters.push({ submittedAt: { lt: new Date(val) } });
                     } else if (op === "after" && val) {
                         columnFilters.push({ submittedAt: { gt: new Date(val) } });
-                    } else if (op === "exact_date" && val) {
-                        const start = new Date(val); start.setHours(0, 0, 0, 0);
-                        const end = new Date(val); end.setHours(23, 59, 59, 999);
-                        columnFilters.push({ submittedAt: { gte: start, lte: end } });
                     }
-                } else if (colId === "__contributor") {
-                    columnFilters.push({ submittedByName: getPrismaOp(op, val, val2) });
                 } else if (colId === "__assigned") {
-                    if (op === "is_empty" || (op === "equals" && !val)) {
-                        columnFilters.push({ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({ AND: [{ NOT: { assignedTo: { isEmpty: true } } }, { NOT: { assignedTo: null } }] });
-                    } else if (val === "__REASSIGNED_TO_ME__") {
-                        columnFilters.push({ AND: [{ assignedTo: { has: userId } }, { NOT: { submittedBy: userId } }] });
-                    } else if (typeof val === 'string' && val.startsWith("__GLOBAL_OWNER__")) {
-                        const targetId = val.replace("__GLOBAL_OWNER__", "");
-                        // 🔥 MODIFIED: "Raw" owner leads = submitted by you AND not yet reassigned
-                        columnFilters.push({ 
-                            AND: [
-                                { submittedBy: targetId }, 
-                                { OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: null }] } 
-                            ] 
-                        });
-                    } else if (typeof val === 'string' && val.startsWith("__STRICT_ASSIGNED__")) {
-                        const targetId = val.replace("__STRICT_ASSIGNED__", "");
-                        columnFilters.push({ AND: [{ assignedTo: { has: targetId } }, { NOT: { submittedBy: targetId } }] });
+                    if (val === "__UNASSIGNED__" || !val || op === "is_empty") {
+                        columnFilters.push({ OR: [{ assignedTo: { isEmpty: true } }, { assignedTo: { equals: [] } }] });
+                    } else if (val === "__ONLY_ME__") {
+                         columnFilters.push({ OR: [{ assignedTo: { has: userId } }, { submittedBy: userId }] });
                     } else {
-                        columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }, { submittedByName: { contains: val, mode: 'insensitive' } }] });
-                    }
-                } else if (colId === "__nextFollowUpDate" || colId === "__followup" || colId === "__followUpStatus" || colId === "__recentRemark") {
-                    // Remarks logic
-                    if (colId === "__nextFollowUpDate") {
-                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { nextFollowUpDate: null } } }] });
-                        else if (op === "is_not_empty") columnFilters.push({ remarks: { some: { nextFollowUpDate: { not: null } } } });
-                        else if (op === "today") {
-                            const start = new Date(now); start.setHours(0, 0, 0, 0);
-                            const end = new Date(now); end.setHours(23, 59, 59, 999);
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                        } else if (op === "yesterday") {
-                            const d = new Date(now); d.setDate(d.getDate() - 1);
-                            const start = new Date(d); start.setHours(0, 0, 0, 0);
-                            const end = new Date(d); end.setHours(23, 59, 59, 999);
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                        } else if (op === "tomorrow") {
-                            const d = new Date(now); d.setDate(d.getDate() + 1);
-                            const start = new Date(d); start.setHours(0, 0, 0, 0);
-                            const end = new Date(d); end.setHours(23, 59, 59, 999);
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                        } else if (op === "this_week") {
-                            const start = new Date(now.setDate(now.getDate() - now.getDay()));
-                            start.setHours(0, 0, 0, 0);
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start } } } });
-                        } else if (op === "exact_date" && val) {
-                            const start = new Date(val); start.setHours(0, 0, 0, 0);
-                            const end = new Date(val); end.setHours(23, 59, 59, 999);
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gte: start, lte: end } } } });
-                        } else if (op === "before" && val) {
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { lt: new Date(val) } } } });
-                        } else if (op === "after" && val) {
-                            columnFilters.push({ remarks: { some: { nextFollowUpDate: { gt: new Date(val) } } } });
-                        }
-                    } else if (colId === "__followUpStatus") {
-                        if (op === "is_empty") columnFilters.push({ OR: [{ remarks: { none: {} } }, { remarks: { every: { followUpStatus: "" } } }] });
-                        else columnFilters.push({ remarks: { some: { followUpStatus: getPrismaOp(op, val, val2) } } });
-                    } else if (colId === "__recentRemark" || colId === "__followup") {
-                        if (op === "is_empty") columnFilters.push({ remarks: { none: {} } });
-                        else columnFilters.push({ remarks: { some: { remark: getPrismaOp(op, val, val2) } } });
+                        columnFilters.push({ OR: [{ assignedTo: { has: val } }, { visibleToUsers: { has: val } }, { submittedBy: val }] });
                     }
                 } else if (!colId.startsWith("__")) {
-                    if (op === "is_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { AND: [{ values: { none: { fieldId: colId } } }, { internalValues: { none: { columnId: colId } } }] },
-                                { values: { some: { fieldId: colId, value: { in: ["", "null", "undefined"] } } } },
-                                { internalValues: { some: { columnId: colId, value: { in: ["", "null", "undefined"] } } } }
-                            ]
-                        });
-                    } else if (op === "is_not_empty") {
-                        columnFilters.push({
-                            OR: [
-                                { values: { some: { fieldId: colId, value: { notIn: ["", "null", "undefined"] } } } },
-                                { internalValues: { some: { columnId: colId, value: { notIn: ["", "null", "undefined"] } } } }
-                            ]
-                        });
-                    } else if (colType === "date") {
-                        // 📅 MASTER DATE LOGIC FOR CUSTOM COLUMNS
-                        const toISO = (d: Date) => d.toISOString().split('T')[0];
-
-                        if (op === "today") {
-                            const str = todayRef;
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
-                        } else if (op === "yesterday") {
-                            const d = new Date(now); d.setDate(d.getDate() - 1);
-                            const str = toISO(d);
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
-                        } else if (op === "tomorrow") {
-                            const d = new Date(now); d.setDate(d.getDate() + 1);
-                            const str = toISO(d);
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: str } } }, { internalValues: { some: { columnId: colId, value: str } } }] });
-                        } else if (op === "this_week") {
-                            const start = new Date(now.setDate(now.getDate() - now.getDay()));
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: toISO(start) } } } }, { internalValues: { some: { columnId: colId, value: { gte: toISO(start) } } } }] });
-                        } else if (op === "exact_date" && val) {
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
-                        } else if (op === "before" && val) {
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { lt: val } } } }, { internalValues: { some: { columnId: colId, value: { lt: val } } } }] });
-                        } else if (op === "after" && val) {
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gt: val } } } }, { internalValues: { some: { columnId: colId, value: { gt: val } } } }] });
-                        } else if (op === "between" && val && val2) {
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: { gte: val, lte: val2 } } } }, { internalValues: { some: { columnId: colId, value: { gte: val, lte: val2 } } } }] });
-                        } else {
-                            // Fallback for equals/equals_date
-                            columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: val } } }, { internalValues: { some: { columnId: colId, value: val } } }] });
-                        }
-                    } else {
-                        // Standard type-aware logic
-                        const c = getPrismaOp(op, val, val2);
-                        // Case insensitivity is already handled inside getPrismaOp for 'equals', 
-                        // but we ensure it's applied correctly to OR conditions for flexible matching.
-                        columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: c } } }, { internalValues: { some: { columnId: colId, value: c } } }] });
-                    }
+                    const pOp = getPrismaOp(op, val, val2);
+                    columnFilters.push({ OR: [{ values: { some: { fieldId: colId, value: pOp } } }, { internalValues: { some: { columnId: colId, value: pOp } } }] });
                 }
             });
-
-            if (columnFilters.length > 0) {
-                advancedFilters.push({ OR: columnFilters });
-            }
+            if (columnFilters.length > 0) advancedFilters.push({ OR: columnFilters });
         });
 
-        const whereFilter: any = {
-            formId,
-            ...permissionWhere,
-            AND: [
-                ...(search ? [{
-                    OR: [
-                        { submittedByName: { contains: search, mode: 'insensitive' } },
-                        { values: { some: { value: { contains: search, mode: 'insensitive' } } } },
-                        { internalValues: { some: { value: { contains: search, mode: 'insensitive' } } } },
-                        { remarks: { some: { remark: { contains: search, mode: 'insensitive' } } } },
-                        { remarks: { some: { followUpStatus: { contains: search, mode: 'insensitive' } } } }
-                    ]
-                }] : []),
-                ...(advancedFilters.length > 0 ? (conjunction === "AND" ? advancedFilters : [{ OR: advancedFilters }]) : [])
-            ]
-        };
-
-        // Resolve OrderBy
-        let orderBy: any = { submittedAt: "desc" };
-        if (sortBy === "__submittedAt") orderBy = { submittedAt: sortOrder };
-        else if (sortBy === "__contributor") orderBy = { submittedByName: sortOrder };
-        else {
-            // Sorting by dynamic values is extremely hard in Prisma (requires raw SQL or many-to-many join sorting)
-            // We'll keep default for now
-            orderBy = { submittedAt: sortOrder };
+        const finalAndFilters: any[] = [isMaster ? {} : permissionWhere];
+        if (search) {
+            finalAndFilters.push({
+                OR: [
+                    { submittedByName: { contains: search, mode: 'insensitive' } },
+                    { values: { some: { value: { contains: search, mode: 'insensitive' } } } }
+                ]
+            });
+        }
+        if (advancedFilters.length > 0) {
+            if (conjunction === "AND") finalAndFilters.push(...advancedFilters);
+            else finalAndFilters.push({ OR: advancedFilters });
         }
 
-        const [totalResponses, responses, filteredTotalCount] = await Promise.all([
-            prisma.formResponse.count({ where: { formId, ...permissionWhere } }),
+        const whereFilter: any = { formId, AND: finalAndFilters };
+
+        // Handle includeIds for persistence hub
+        if (includeIds.length > 0) {
+            const baseConditions = [...finalAndFilters];
+            delete whereFilter.AND;
+            whereFilter.OR = [
+                { AND: baseConditions },
+                { id: { in: includeIds } }
+            ];
+        }
+
+        const orderBy = sortBy === "__submittedAt" ? { submittedAt: sortOrder } : { submittedAt: sortOrder };
+
+        // 🚀 SYNC-OPTIMIZE: Combined count strategy for performance
+        const [items, countFiltered, countTotal] = await Promise.all([
             prisma.formResponse.findMany({
                 where: whereFilter,
-                include: {
-                    values: true,
-                    // @ts-ignore
-                    remarks: { orderBy: { createdAt: "desc" } },
-                    // @ts-ignore
-                    payments: { orderBy: { paymentDate: "desc" } }
-                },
                 orderBy,
                 skip,
                 take: limit
             }),
             prisma.formResponse.count({ where: whereFilter }),
+            // 💎 PRO-CORE: Skip heavy total count on every page-turn if filteredCount is available
+            includeMeta ? prisma.formResponse.count({ where: { formId, ...isMaster ? {} : permissionWhere } }) : Promise.resolve(0)
         ]);
 
-        const isAssignedToAny = isMaster ? true : responses.some(r => ((r as any).assignedTo || []).includes(userId));
+        const allResponseIds = items.map(r => r.id);
 
-        // Form Level Access Control (Simplified check based on the first few entries or overall flags)
-        const hasFormAccess = isMasterRole || isMaster ||
-            form.visibleToRoles.includes(userRole) ||
-            form.visibleToUsers.includes(userId) ||
-            isAssignedToAny ||
-            (form.visibleToRoles.length === 0 && form.visibleToUsers.length === 0);
-
-        if (!hasFormAccess) {
-            return NextResponse.json({ error: "Forbidden: You do not have access to this matrix" }, { status: 403 });
-        }
-
-        console.log(`[API] Access Granted. isMasterRole: ${isMasterRole}, isMaster: ${isMaster}`);
-
-        // We also need the internal columns for the form (Done in Promise.all above)
-        let processedInternalColumns = [...internalColumns];
-
-
-        // Filter columns by GAC for non-masters
-        if (!isMasterRole) {
-            // Filter internal columns
-            processedInternalColumns = processedInternalColumns.filter(col => {
-                const perm = colAccess[col.id];
-                if (perm === "hide") return false;
-
-                // Legacy visibility check
-                const roles = col.visibleToRoles || [];
-                const users = col.visibleToUsers || [];
-                if (roles.length === 0 && users.length === 0) return true;
-                return roles.includes(userRole) || users.includes(userId);
-            });
-
-            // Filter form fields
-            (form as any).fields = (form.fields || []).filter((f: any) => {
-                const perm = colAccess[f.id];
-                return perm !== "hide";
-            });
-        }
-
-        // Parallelize all remaining data fetches
-        const [internalValues, activities] = await Promise.all([
-            prisma.internalValue.findMany({
-                where: {
-                    responseId: { in: responses.map(r => r.id) },
-                    columnId: { in: processedInternalColumns.map(c => c.id) }
-                }
-            }),
-            prisma.formActivity.findMany({
-                where: { responseId: { in: responses.map(r => r.id) } },
-                orderBy: { createdAt: "desc" }
-            })
+        // Scoped Fetching of Relations (Only for the visible rows)
+        const [internalValues, allValues, allRemarks, allPayments] = await Promise.all([
+            prisma.internalValue.findMany({ where: { responseId: { in: allResponseIds } } }),
+            prisma.responseValue.findMany({ where: { responseId: { in: allResponseIds } } }),
+            prisma.formRemark.findMany({ 
+                where: { responseId: { in: allResponseIds } }, 
+                orderBy: { createdAt: "desc" },
+                take: allResponseIds.length * 2 
+            } as any),
+            prisma.formPayment.findMany({ where: { responseId: { in: allResponseIds } } } as any)
         ]);
 
-        // Resolve user data for UI mapping
-        const allUserIds = form.visibleToUsers || [];
-        const usersMap: Record<string, { email: string; name: string; imageUrl: string }> = {};
+        const stitchedResponses = items.map(r => ({
+            ...r,
+            values: allValues.filter((v: any) => v.responseId === r.id),
+            remarks: allRemarks.filter((rm: any) => rm.responseId === r.id),
+            payments: allPayments.filter((p: any) => p.responseId === r.id)
+        }));
 
-        if (allUserIds.length > 0) {
+        const allUserIds = (baseFormMeta?.visibleToUsers || []);
+        const usersMap: Record<string, any> = {};
+        if (includeMeta && allUserIds.length > 0) {
             try {
                 const clerk = await clerkClient();
                 const usersList = await clerk.users.getUserList({ userId: allUserIds, limit: 100 });
-                usersList.data
-                    .filter((u: any) => !u.banned)
-                    .forEach(u => {
-                        usersMap[u.id] = {
-                            email: u.emailAddresses[0]?.emailAddress || "Unknown",
-                            name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Unknown User",
-                            imageUrl: u.imageUrl || ""
-                        };
-                    });
+                usersList.data.forEach(u => usersMap[u.id] = { email: u.emailAddresses[0]?.emailAddress, name: `${u.firstName} ${u.lastName}`, imageUrl: u.imageUrl });
             } catch (err) {
-                console.error("Clerk fetch users mapping error:", err);
+                console.error("Clerk fetch error:", err);
             }
         }
 
-        const enrichedForm: any = {
+        const enrichedForm = includeMeta ? {
             ...form,
-            visibleToUsersData: allUserIds
-                .filter((uid: string) => usersMap[uid])
-                .map((uid: string) => ({
-                    id: uid,
-                    ...usersMap[uid]
-                }))
-        };
+            visibleToUsersData: allUserIds.filter((uid: string) => usersMap[uid]).map((uid: string) => ({ id: uid, ...usersMap[uid] }))
+        } : null;
 
+        const perfEnd = Date.now();
         return NextResponse.json({
-            responses,
-            totalCount: totalResponses,
-            filteredCount: filteredTotalCount,
+            ...(includeMeta ? {
+                form: enrichedForm,
+                internalColumns: internalColumns || [],
+                teamData: (teamData || []).map(u => ({ clerkId: u.clerkId, email: u.emailAddresses[0]?.emailAddress, firstName: u.firstName, lastName: u.lastName, imageUrl: u.imageUrl, role: (u.publicMetadata as any)?.role || 'STAFF' }))
+            } : {}),
+            responses: stitchedResponses,
+            internalValues,
+            totalCount: includeMeta ? countTotal : countFiltered,
+            filteredCount: countFiltered,
             page,
             limit,
-            totalPages: Math.ceil(filteredTotalCount / limit),
-            form: enrichedForm,
-            internalColumns: processedInternalColumns,
-            internalValues,
-            activities,
+            isMaster,
+            isPureMaster: reachedMasterRole,
             userRole,
-            isMaster: isMaster,
-            isPureMaster: isMasterRole, // Specifically for deletion and absolute power
-            clerkId: userId
+            clerkId: userId,
+            latency: `${perfEnd - perfStart}ms`
         });
-    } catch (error) {
-        console.error("GET Responses Error:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    } catch (error: any) {
+        const perfEnd = Date.now();
+        console.error("GET Optimized API Error:", error);
+        return NextResponse.json({ error: "Sync failed", latency: `${perfEnd - perfStart}ms` }, { status: 500 });
     }
 }
 
 // Update a specific value (Cell Inline Edit)
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = await currentUser();
@@ -548,28 +408,13 @@ export async function PATCH(
                 where: { id: responseId }
             });
 
-            // Column Level check first
+            // Access Logic
             const gac: any = form?.columnPermissions || { roles: {}, users: {} };
-            const rolePerm = gac.roles?.[userRole]?.[columnId];
-            const userPerm = gac.users?.[user.id]?.[columnId];
-            const finalPerm = userPerm || rolePerm;
-
             const isOwner = form?.createdBy === user.id;
             const isSubmitter = response?.submittedBy === user.id;
-            const isAssigned = response?.visibleToUsers?.includes(user.id) ||
-                response?.visibleToRoles?.includes(userRole) ||
-                (response as any)?.assignedTo?.includes(user.id);
+            const isAssigned = (response as any)?.assignedTo?.includes(user.id);
 
-            // Access Logic:
-            // 1. If GAC explicitly says 'edit' -> ALLOW
-            // 2. If Owner, Submitter, or Assigned -> ALLOW (unless GAC says hide/read)
-            if (finalPerm === "edit") {
-                // Allowed by GAC
-            } else if (isOwner || isSubmitter || isAssigned) {
-                if (finalPerm === "hide" || finalPerm === "read") {
-                    return NextResponse.json({ error: "Forbidden: Manual column restrictions active" }, { status: 403 });
-                }
-            } else {
+            if (!isOwner && !isSubmitter && !isAssigned) {
                 return NextResponse.json({ error: "Forbidden: You do not have access to this record" }, { status: 403 });
             }
         }
@@ -628,8 +473,12 @@ export async function PATCH(
                 });
             }
         }
+        
+        await prisma.formResponse.update({
+            where: { id: responseId },
+            data: { isTouched: true }
+        });
 
-        // 4️⃣ Create Activity Log
         if (oldValue !== value) {
             await prisma.formActivity.create({
                 data: {
@@ -644,6 +493,7 @@ export async function PATCH(
             });
         }
 
+        await emitMatrixUpdate({ formId, responseId, columnId, value, type: "CELL_UPDATE" });
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error("PATCH Response Value Error:", error);
@@ -654,24 +504,18 @@ export async function PATCH(
 // Bulk update values (For Excel-like paste)
 export async function PUT(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: formId } = await params;
         const user = await currentUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const { updates } = await req.json(); // Array of { responseId, columnId, value, isInternal }
         if (!Array.isArray(updates)) return NextResponse.json({ error: "Invalid updates format" }, { status: 400 });
 
-        const metaRole = (user?.publicMetadata?.role as string || "").toUpperCase();
-        const dbUser = await prisma.user.findUnique({ where: { clerkId: user.id } });
-        const dbRole = (dbUser?.role || "").toUpperCase();
-        const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
-
-        const isMaster = userRole === "ADMIN" || userRole === "MASTER" || userRole === "TL";
         const userName = `${user.firstName} ${user.lastName}`;
 
-        // Process updates in a transaction or loop (Prisma transaction is safer)
         await prisma.$transaction(async (tx) => {
             for (const update of updates) {
                 const { responseId, columnId, value, isInternal } = update;
@@ -720,6 +564,11 @@ export async function PUT(
                     }
                 }
 
+                await tx.formResponse.update({
+                    where: { id: responseId },
+                    data: { isTouched: true }
+                });
+
                 if (oldValue !== value) {
                     await tx.formActivity.create({
                         data: {
@@ -735,7 +584,8 @@ export async function PUT(
                 }
             }
         });
-
+        
+        await emitMatrixUpdate({ formId, type: "BULK_UPDATE", count: updates.length });
         return NextResponse.json({ success: true, count: updates.length });
     } catch (error) {
         console.error("PUT Bulk Update Error:", error);
@@ -746,11 +596,11 @@ export async function PUT(
 // Delete response(s) (MASTER only)
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { userId } = await auth();
         const { id: formId } = await params;
+        const { userId } = await auth();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const user = await currentUser();
@@ -760,35 +610,23 @@ export async function DELETE(
         const dbRole = (dbUser?.role || "").toUpperCase();
 
         const userRole = (metaRole || dbRole || "GUEST").toUpperCase();
-        const isMasterRole = userRole === "MASTER";
+        const isMasterRole = userRole === "MASTER" || userRole === "ADMIN";
 
         if (!isMasterRole) {
-            console.warn(`[API] DELETE Forbidden. userRole: ${userRole}, clerkId: ${userId}`);
             return NextResponse.json({
-                error: "Forbidden: Only users with MASTER role can delete data in this protocol.",
-                debug: { resolvedRole: userRole, clerkMetaRole: metaRole, dbRole: dbRole, userId }
+                error: "Forbidden: Only users with MASTER role can delete data in this protocol."
             }, { status: 403 });
         }
 
         const { searchParams } = new URL(req.url);
         const responseId = searchParams.get("responseId");
-        let bulk = searchParams.get("bulk"); // comma separated list of IDs
+        const bulk = searchParams.get("bulk"); // comma separated list of IDs
 
         let ids: string[] = [];
         if (bulk) {
             ids = bulk.split(",");
         } else if (responseId) {
             ids = [responseId];
-        } else {
-            // Check body for bulk delete
-            try {
-                const body = await req.json();
-                if (body.ids && Array.isArray(body.ids)) {
-                    ids = body.ids;
-                }
-            } catch (e) {
-                // No body or invalid json, continue
-            }
         }
 
         if (ids.length > 0) {
@@ -798,6 +636,7 @@ export async function DELETE(
                     formId: formId
                 }
             });
+            await emitMatrixUpdate({ formId, type: "BULK_DELETE", deletedCount: ids.length });
             return NextResponse.json({ success: true, deleted: ids.length });
         }
 

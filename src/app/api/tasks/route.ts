@@ -955,6 +955,15 @@ export async function POST(req: NextRequest) {
       }
     }));
 
+    // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
+    try {
+      console.log("🔥 API HIT HOI");
+      const { emitMatrixUpdate } = await import("@/lib/socket-server");
+      await emitMatrixUpdate();
+    } catch (e) {
+      console.error("❌ Matrix Sync Failed:", e);
+    }
+
     return NextResponse.json({ success: true, task }, { status: 201 });
 
   } catch (err: unknown) {
@@ -1040,11 +1049,11 @@ export async function GET(req: NextRequest) {
 
       let teamMemberIds: string[] = [];
       if (isTL) {
-          const members = await prisma.user.findMany({
-              where: { leaderId: userId } as any,
-              select: { clerkId: true }
-          });
-          teamMemberIds = members.map(m => m.clerkId);
+        const members = await prisma.user.findMany({
+          where: { leaderId: userId } as any,
+          select: { clerkId: true }
+        });
+        teamMemberIds = members.map(m => m.clerkId);
       }
 
       console.log(`[Tasks API Debug] User: ${userId}, Role: ${normalizedRole}, isTL: ${isTL}, TeamCount: ${teamMemberIds.length}, Privileged: ${userIsPrivilegedFixed}`);
@@ -1063,7 +1072,7 @@ export async function GET(req: NextRequest) {
             ] : [])
           ],
         };
-      
+
       console.log(`[Tasks API Debug] Filter Applied: ${JSON.stringify(userFilter)}`);
 
       const where: any = {
@@ -1071,6 +1080,11 @@ export async function GET(req: NextRequest) {
           userFilter,
         ]
       };
+
+      // 🛡️ UNIVERSAL HIDE PROTOCOL: Only Master/Admin see hidden tasks
+      if (!userIsPrivilegedFixed) {
+        where.AND.push({ isHidden: false });
+      }
 
       if (query) {
         where.AND.push({
@@ -1253,6 +1267,15 @@ export async function GET(req: NextRequest) {
     console.log(
       `📄 GET /api/tasks – Role: ${normalizedRole || "unknown"} – fetched ${enrichedTasks.length} tasks`
     );
+
+    // 🛰️ REAL-TIME SHARD (NO REFRESH ARCHITECTURE)
+    try {
+      console.log("🔥 API HIT HOI");
+      const { emitMatrixUpdate } = await import("@/lib/socket-server");
+      await emitMatrixUpdate();
+    } catch (e) {
+      console.error("❌ Matrix Sync Failed:", e);
+    }
 
     return NextResponse.json({
       tasks: enrichedTasks,

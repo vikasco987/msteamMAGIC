@@ -256,7 +256,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: `Invalid value for ${f}. Must be a string.` }, { status: 400 });
         }
       }
-      
+
       // @ts-ignore
       dataToUpdate[f] = v;
     }
@@ -293,39 +293,39 @@ export async function POST(req: NextRequest) {
           console.error("Failed to sync lead assignee details:", e);
         }
       } else {
-          dataToUpdate.assigneeId = null;
-          dataToUpdate.assigneeName = null;
-          dataToUpdate.assigneeEmail = null;
+        dataToUpdate.assigneeId = null;
+        dataToUpdate.assigneeName = null;
+        dataToUpdate.assigneeEmail = null;
       }
     }
 
     // 3. Sync Other Redundant Fields (Top-level <-> customFields)
     const syncableFields = [
-      "phone", "email", "shopName", "location", "accountNumber", "ifscCode", 
+      "phone", "email", "shopName", "location", "accountNumber", "ifscCode",
       "restId", "customerName", "packageAmount", "startDate", "endDate", "timeline"
     ];
-    
+
     const existingCF = { ...(existingTask.customFields as any || (dataToUpdate.customFields as any) || {}) };
     let cfNeedsUpdate = false;
-    
+
     for (const f of syncableFields) {
       if ((dataToUpdate as any)[f] !== undefined && existingCF[f] !== undefined) {
         existingCF[f] = (dataToUpdate as any)[f];
         cfNeedsUpdate = true;
       }
     }
-    
+
     if (cfNeedsUpdate) {
       dataToUpdate.customFields = existingCF;
     }
 
     // Optional validation: received should not exceed amount
     if (dataToUpdate.received !== undefined) {
-        const total = (dataToUpdate.amount as number) ?? existingTask.amount ?? 0;
-        const received = dataToUpdate.received as number;
-        if (received > total) {
-              return NextResponse.json({ error: "Received amount cannot exceed total" }, { status: 400 });
-        }
+      const total = (dataToUpdate.amount as number) ?? existingTask.amount ?? 0;
+      const received = dataToUpdate.received as number;
+      if (received > total) {
+        return NextResponse.json({ error: "Received amount cannot exceed total" }, { status: 400 });
+      }
     }
 
     const updatedTask = await prisma.task.update({
@@ -365,24 +365,33 @@ export async function POST(req: NextRequest) {
       const taskDetails = `[${cf.shopName || "N/A"}] - ${updatedTask.title}`;
 
       for (const [f, v] of Object.entries(finalUpdates)) {
-          for (const recipientId of finalRecipients) {
-            try {
-              await prisma.notification.create({
-                data: {
-                  userId: recipientId,
-                  type: "PAYMENT_ADDED",
-                  title: `📂 Task Update: ${f}`,
-                  content: `Field ${f} updated to ${v} for ${taskDetails}. By: ${userName}`,
-                  taskId: updatedTask.id
-                } as any
-              });
-            } catch (err) {
-              console.error(`Notif failed for ${recipientId}:`, err);
-            }
+        for (const recipientId of finalRecipients) {
+          try {
+            await prisma.notification.create({
+              data: {
+                userId: recipientId,
+                type: "PAYMENT_ADDED",
+                title: `📂 Task Update: ${f}`,
+                content: `Field ${f} updated to ${v} for ${taskDetails}. By: ${userName}`,
+                taskId: updatedTask.id
+              } as any
+            });
+          } catch (err) {
+            console.error(`Notif failed for ${recipientId}:`, err);
           }
+        }
       }
     } catch (e) {
       console.error("Failed to send notification for update:", e);
+    }
+
+    // 🚀 THE FINALE: BROADCAST TO MATRIX ⚡⚡⚡
+    try {
+      console.log("🔥 API HIT HOI");
+      const { emitMatrixUpdate } = await import("@/lib/socket-server");
+      await emitMatrixUpdate();
+    } catch (e) {
+      console.error("❌ Matrix Sync Failed:", e);
     }
 
     return NextResponse.json({ success: true, task: updatedTask }, { status: 200 });

@@ -19,32 +19,18 @@ export async function GET(req: Request) {
         const start = startOfDay(targetDate);
         const end = endOfDay(targetDate);
 
-        // Define valid status strings we track
-        const targetStatuses = [
-            "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Scheduled", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
-        ];
+        // 🛡️ ANALYTICAL ISOLATION: Fetch only remarks logged by THIS specific staff member today
+        const [remarks] = await Promise.all([
+            prisma.formRemark.findMany({ 
+                where: {
+                    createdById: userId,
+                    createdAt: { gte: start, lte: end }
+                }
+            })
+        ]);
 
-        // 1. Fetch remarks for the specific criteria
-        const whereClause: any = {
-            createdById: userId,
-            createdAt: { gte: start, lte: end },
-            followUpStatus: { in: targetStatuses }
-        };
-
-        // Note: type filter is logic-based after fetching for a specific lead on that day.
-        // We'll fetch all and filter by logic.
-        const remarks = await (prisma as any).formRemark.findMany({
-            where: whereClause,
-            select: {
-                responseId: true,
-                columnId: true,
-                followUpStatus: true,
-                createdAt: true
-            }
-        });
-
-        // 2. Identify Unique Leads (Response IDs) based on 'type'
         const responseIdInteractions = new Map<string, { type: 'NEW' | 'FOLLOWUP' }>();
+
         for (const r of remarks) {
             const respId = r.responseId;
             if (!responseIdInteractions.has(respId)) {
@@ -55,7 +41,6 @@ export async function GET(req: Request) {
             }
         }
 
-        // Filter based on requested type
         const targetResponseIds = Array.from(responseIdInteractions.entries())
             .filter(([_, info]) => {
                 if (type === "COMBINED") return true;
@@ -68,6 +53,8 @@ export async function GET(req: Request) {
         }
 
         // 3. Fetch full Response details grouped by Form
+        // 🛡️ CRITICAL FIX: The 'remarks' sub-query MUST be filtered by createdById: userId
+        // This prevents re-assigned lead remarks from leaking into the wrong staff card.
         const responses = await prisma.formResponse.findMany({
             where: { id: { in: targetResponseIds } },
             include: {
@@ -80,10 +67,7 @@ export async function GET(req: Request) {
                 values: true,
                 internalValues: true,
                 remarks: {
-                    where: {
-                        createdById: userId,
-                        createdAt: { gte: start, lte: end }
-                    },
+                    where: { createdById: userId, createdAt: { gte: start, lte: end } },
                     orderBy: { createdAt: 'desc' },
                     take: 1
                 }
@@ -100,12 +84,18 @@ export async function GET(req: Request) {
                     responses: []
                 };
             }
+            
+            // Preferred remark context
+            const relevantRemark = res.remarks[0];
+
             groupedByForm[res.formId].responses.push({
                 id: res.id,
                 submittedByName: res.submittedByName,
                 submittedAt: res.submittedAt,
-                lastStatus: res.remarks[0]?.followUpStatus || "N/A",
-                lastRemark: res.remarks[0]?.remark || "",
+                lastStatus: relevantRemark?.followUpStatus || "N/A",
+                lastRemark: relevantRemark?.text || relevantRemark?.remark || "",
+                interactionDate: relevantRemark?.createdAt || res.submittedAt, 
+                interactedBy: relevantRemark?.authorName || "Staff Member", 
                 values: res.values.map(v => ({ fieldId: v.fieldId, value: v.value })),
                 internalValues: res.internalValues.map(v => ({ columnId: v.columnId, value: v.value }))
             });

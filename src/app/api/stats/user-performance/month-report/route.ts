@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   try {
     const tasks = await prisma.task.findMany({
+      where: {
+        OR: [
+          { isHidden: false },
+          { isHidden: false }
+        ]
+      },
       select: {
         createdAt: true,
         amount: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
+import { emitMatrixUpdate } from "@/lib/socket-server";
 
 export const maxDuration = 300; // Allow 5 minutes for large bulk imports
 
@@ -147,6 +148,8 @@ export async function POST(
 
         // Helper to run batches
         const BATCH_SIZE = 500;
+        const allAffectedIds: string[] = [];
+        
         for (let i = 0; i < data.length; i += BATCH_SIZE) {
             const batch = data.slice(i, i + BATCH_SIZE);
             
@@ -201,7 +204,8 @@ export async function POST(
                         submittedBy: user.id,
                         submittedByName: userName,
                         submittedAt: new Date(),
-                        assignedTo: [user.id]
+                        assignedTo: [user.id],
+                        isTouched: false // 🚀 NEW: Start as untouched, let data presence toggle it
                     });
                     createdCount++;
                     if (!disableActivityLogs) {
@@ -218,24 +222,40 @@ export async function POST(
                 // 3. Build Column Values
                 // Create a case-insensitive, trimmed lookup for row keys to prevent blank uploads due to Excel formatting
                 const rowKeyMap = new Map<string, string>();
-                Object.keys(item.row).forEach(k => rowKeyMap.set(k.trim().toLowerCase(), k));
+                Object.keys(item.row).forEach(k => {
+                    const norm = k.trim().toLowerCase();
+                    if (!rowKeyMap.has(norm)) rowKeyMap.set(norm, k);
+                });
 
-                for (const excelHeaderRaw in updateColumnMap) {
-                    if (importMode === 'update' && excelHeaderRaw === matchExcelHeader) continue;
-                    
+                // 🚀 SMART TOUCH SYNC: Track if this row should be marked as touched
+                let shouldBeTouched = false;
+                const statusIndicators = ["STATUS", "CALLING", "LEAD", "RESULT", "REMARK", "NOTE", "FOLLOW", "FOLLOW-UP"];
+
+                for (let excelHeaderRaw in updateColumnMap) {
                     const mapping = updateColumnMap[excelHeaderRaw];
                     if (!mapping) continue;
 
                     // Support robust matching for headers with spaces/case differences
-                    const normalizedHeader = excelHeaderRaw.trim().toLowerCase();
-                    const actualKeyInRow = rowKeyMap.get(normalizedHeader) || excelHeaderRaw;
+                    const targetHeaderNorm = excelHeaderRaw.trim().toLowerCase();
+                    const actualKeyInRowRaw = rowKeyMap.get(targetHeaderNorm);
                     
-                    if (item.row[actualKeyInRow] === undefined) {
-                        console.warn(`[BulkImport] Missing key "${actualKeyInRow}" in row ${item.rowIndex + 1}`);
-                        continue;
+                    if (!actualKeyInRowRaw || item.row[actualKeyInRowRaw] === undefined) {
+                        // Fallback: try raw key if mapping key exactly matches Excel header
+                        if (item.row[excelHeaderRaw] === undefined) {
+                            console.warn(`[BulkImport] Missing key "${excelHeaderRaw}" in row ${item.rowIndex + 1}`);
+                            continue;
+                        }
                     }
 
-                    let valueToMap = item.row[actualKeyInRow]?.toString().trim() || "";
+                    const rowValueKey = actualKeyInRowRaw || excelHeaderRaw;
+                    let valueToMap = (item.row[rowValueKey] ?? "").toString().trim();
+
+                    // Check if this column is a status indicator and has data
+                    const col = intColMap.get(mapping.id);
+                    const colLabel = col?.label?.toUpperCase() || mapping.id.toUpperCase();
+                    if (valueToMap !== "" && statusIndicators.some(ind => colLabel.includes(ind))) {
+                        shouldBeTouched = true;
+                    }
 
                     // 🛡️ SMART UPLOAD SHIELD: Prevent blank Excel cells from erasing existing database values
                     if (valueToMap === "" && !item.isNew && (importMode === 'update' || importMode === 'upsert')) {
@@ -259,6 +279,7 @@ export async function POST(
                     // 🎯 SPECIAL HANDLING FOR FOLLOW-UP SYSTEM COLUMNS
                     const followUpCols = ["__followUpStatus", "__nextFollowUpDate", "__recentRemark", "__followup"];
                     if (followUpCols.includes(colIdToUpdate)) {
+                        shouldBeTouched = true; // Any system follow-up update touches the lead
                         const existingRemarks = await prisma.formRemark.findMany({
                             where: { responseId: item.responseId },
                             orderBy: { updatedAt: 'desc' },
@@ -267,8 +288,9 @@ export async function POST(
                         const latestRemark = existingRemarks[0];
 
                         const remarkData: any = {
-                            updatedBy: user.id,
-                            updatedByName: userName,
+                            createdById: user.id,
+                            authorName: userName,
+                            authorEmail: user.emailAddresses[0]?.emailAddress || null,
                             updatedAt: new Date(),
                         };
 
@@ -295,7 +317,7 @@ export async function POST(
                                 data: {
                                     ...remarkData,
                                     responseId: item.responseId,
-                                    remark: remarkData.remark || "Uploaded via Smart Update",
+                                    remark: remarkData.remark || valueToMap || "Uploaded via Smart Update",
                                     followUpStatus: remarkData.followUpStatus || "New"
                                 }
                             }));
@@ -365,6 +387,15 @@ export async function POST(
                         }
                     }
                 }
+
+                if (shouldBeTouched) {
+                    if (item.isNew) {
+                        const respIndex = responsesToCreate.findIndex(r => r.id === item.responseId);
+                        if (respIndex !== -1) responsesToCreate[respIndex].isTouched = true;
+                    } else {
+                        individualOpsMap.set(`touch_${item.responseId}`, prisma.formResponse.update({ where: { id: item.responseId }, data: { isTouched: true } }));
+                    }
+                }
             }
 
             // 4. Batch Database Operations
@@ -398,6 +429,16 @@ export async function POST(
             }
 
             successCount += validItems.length;
+            allAffectedIds.push(...validItems.map(item => item.responseId));
+        }
+
+        // 🛰️ REAL-TIME SYNERGY: Trigger the Matrix Hub Pulse across the fleet
+        if (successCount > 0) {
+            await emitMatrixUpdate({ 
+                pulseType: "BULK_IMPORT", 
+                count: successCount,
+                responseIds: allAffectedIds
+            });
         }
 
         return NextResponse.json({

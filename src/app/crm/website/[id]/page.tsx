@@ -92,7 +92,7 @@ import { useUser } from "@clerk/nextjs";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const CALL_STATUS_OPTIONS = [
-    "Scheduled", "Called", "Call Again", "Call done", "Not interested", "RNR", "RNR2 (Checked)", "RNR3", "Switch off", "Invalid Number", "Walked In", "Follow-up Done", "Missed", "Closed", "Walk-in scheduled"
+    "CALL AGAIN", "CALL DONE", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"
 ];
 
 const getExcelLabel = (index: number): string => {
@@ -231,6 +231,7 @@ interface FormResponse {
     values: ResponseValue[];
     submittedBy?: string; // Added for __assigned logic
     remarks?: any[]; // Added for __followup logic
+    payments?: any[]; // 🚀 PRO-CORE: Added for Payment Hub integration
     rowColor?: string; // Enhanced: custom highlight color
 }
 
@@ -243,6 +244,8 @@ interface MasterData {
         visibleToUsersData?: { id: string; email: string; name: string; imageUrl: string }[];
         id?: string; // Added for FormRemarkModal
         columnPermissions?: any; // Added for GAC logic
+        defaultColumnOrder?: string[];
+        defaultHiddenColumns?: string[];
     };
     responses: FormResponse[];
     internalColumns: InternalColumn[];
@@ -352,7 +355,13 @@ export default function CRMSpreadsheetPage() {
     const searchParams = useSearchParams();
     const [data, setData] = useState<MasterData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [isSyncing, setIsSyncing] = useState(false);
+    const [userRole, setUserRole] = useState<string>("GUEST");
+    const [isMaster, setIsMaster] = useState(false);
+    const [isPureMaster, setIsPureMaster] = useState(false);
+    const [isTL, setIsTL] = useState(false);
+    const [isMatrixLoaded, setIsMatrixLoaded] = useState(false); // 💎 PRO-CORE: Has data ever been fetched?
+    const [isSyncing, setIsSyncing] = useState(false); // 💎 Refreshing (Silent)
+    const [isDataSynced, setIsDataSynced] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -375,7 +384,6 @@ export default function CRMSpreadsheetPage() {
     const [editingCell, setEditingCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [focusedCell, setFocusedCell] = useState<{ rowId: string, colId: string } | null>(null);
     const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
-    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
     const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
     const [isAddingHubCols, setIsAddingHubCols] = useState(false);
     const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
@@ -388,6 +396,9 @@ export default function CRMSpreadsheetPage() {
     const [isPaymentHubOpen, setIsPaymentHubOpen] = useState(false);
     const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
     const [isLeadAssignHubOpen, setIsLeadAssignHubOpen] = useState(false);
+    const [selectedResponseActivities, setSelectedResponseActivities] = useState<FormActivity[]>([]);
+    const [isFetchingActivities, setIsFetchingActivities] = useState(false);
+    const [recentlyUpdatedIds, setRecentlyUpdatedIds] = useState<Record<string, number>>({});
     // Saare responses (bina pagination ke) sirf Today Follow-up cards ke liye
     const [allResponsesForFollowUps, setAllResponsesForFollowUps] = useState<any[]>([]);
     const [todayFollowUpsData, setTodayFollowUpsData] = useState<any[]>([]);
@@ -428,6 +439,28 @@ export default function CRMSpreadsheetPage() {
         api: formId ? `/api/crm/forms/${formId}/chat` : undefined,
         body: chatBody
     } as any) as any;
+
+    useEffect(() => {
+        const fetchActivities = async () => {
+            if (!selectedResponse) {
+                setSelectedResponseActivities([]);
+                return;
+            }
+            setIsFetchingActivities(true);
+            try {
+                const res = await fetch(`/api/crm/forms/${formId}/responses/${selectedResponse.id}/activities`);
+                if (!res.ok) throw new Error("Failed to fetch activities");
+                const result = await res.json();
+                setSelectedResponseActivities(result.activities || []);
+            } catch (err) {
+                console.error("Fetch activities error:", err);
+            } finally {
+                setIsFetchingActivities(false);
+            }
+        };
+
+        fetchActivities();
+    }, [selectedResponse?.id, formId]);
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         if (!(input || "").trim()) return;
@@ -556,39 +589,64 @@ export default function CRMSpreadsheetPage() {
         }
     }, [columnWidths, params.id]);
 
-    // Hidden Columns Persistence
-    useEffect(() => {
-        const saved = localStorage.getItem(`matrix_hidden_${params.id}`);
-        if (saved) {
-            try { setHiddenColumns(JSON.parse(saved)); } catch (e) { console.error(e); }
-        }
-    }, [params.id]);
 
-    useEffect(() => {
-        localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
-    }, [hiddenColumns, params.id]);
 
     const [columnOrder, setColumnOrder] = useState<string[]>([]);
 
     // Column Order Persistence
     useEffect(() => {
-        const saved = localStorage.getItem(`matrix_order_${params.id}`);
-        if (saved) {
-            try { setColumnOrder(JSON.parse(saved)); } catch (e) { console.error(e); }
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        const localOrder = localStorage.getItem(`matrix_order_${params.id}`);
+
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
+        if (!isPrivileged && data?.form?.defaultColumnOrder) {
+            setColumnOrder(data.form.defaultColumnOrder);
+            return;
         }
-    }, [params.id]);
+
+        if (localOrder) {
+            try { setColumnOrder(JSON.parse(localOrder)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultColumnOrder) {
+            setColumnOrder(data.form.defaultColumnOrder);
+        }
+    }, [params.id, data?.form?.defaultColumnOrder, userRole, isMaster, isPureMaster]);
 
     useEffect(() => {
-        if (columnOrder.length > 0) {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (columnOrder.length > 0 && isPrivileged) {
             localStorage.setItem(`matrix_order_${params.id}`, JSON.stringify(columnOrder));
         }
-    }, [columnOrder, params.id]);
+    }, [columnOrder, params.id, userRole, isMaster, isPureMaster]);
+
+    const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+
+    // Hidden Columns Persistence
+    useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        const localHidden = localStorage.getItem(`matrix_hidden_${params.id}`);
+
+        // 🛡️ RE-ENFORCEMENT PROTECTOR: If not TL/Master, ALWAYS use system default if it exists
+        if (!isPrivileged && data?.form?.defaultHiddenColumns) {
+            setHiddenColumns(data.form.defaultHiddenColumns);
+            return;
+        }
+
+        if (localHidden) {
+            try { setHiddenColumns(JSON.parse(localHidden)); } catch (e) { console.error(e); }
+        } else if (data?.form?.defaultHiddenColumns) {
+            setHiddenColumns(data.form.defaultHiddenColumns);
+        }
+    }, [params.id, data?.form?.defaultHiddenColumns, userRole, isMaster, isPureMaster]);
+
+    useEffect(() => {
+        const isPrivileged = (userRole === 'TL' || isMaster || isPureMaster);
+        if (isPrivileged) {
+            localStorage.setItem(`matrix_hidden_${params.id}`, JSON.stringify(hiddenColumns));
+        }
+    }, [hiddenColumns, params.id, userRole, isMaster, isPureMaster]);
 
     const [groupByColId, setGroupByColId] = useState<string | null>(null);
     const [selectedRows, setSelectedRows] = useState<string[]>([]);
-    const [userRole, setUserRole] = useState<string>("GUEST");
-    const [isMaster, setIsMaster] = useState(false);
-    const [isPureMaster, setIsPureMaster] = useState(false);
     const [density, setDensity] = useState<"compact" | "standard" | "comfortable">("compact");
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [sortBy, setSortBy] = useState<string>("__submittedAt");
@@ -610,35 +668,15 @@ export default function CRMSpreadsheetPage() {
     const [resizing, setResizing] = useState<{ id: string, startX: number, startWidth: number } | null>(null);
 
     const abortControllerRef = useRef<AbortController | null>(null);
+    const activeFetchIdRef = useRef<number>(0);
+    const tableRef = useRef<HTMLDivElement>(null);
 
     const prevFiltersRef = useRef({ conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id });
 
-    useEffect(() => {
-        const filtersChanged =
-            prevFiltersRef.current.conditions !== conditions ||
-            prevFiltersRef.current.filterConjunction !== filterConjunction ||
-            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
-            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
-            prevFiltersRef.current.sortBy !== sortBy ||
-            prevFiltersRef.current.sortOrder !== sortOrder ||
-            prevFiltersRef.current.paramsId !== params.id;
-
-        if (filtersChanged) {
-            prevFiltersRef.current = { conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, paramsId: params.id as string };
-            if (currentPage !== 1) setCurrentPage(1);
-        }
-
-        if (!isAddingRow) {
-            const pageToFetch = filtersChanged ? 1 : currentPage;
-            fetchData(pageToFetch, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentPage, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder, params.id, isAddingRow]);
 
 
 
 
-    const tableRef = useRef<HTMLDivElement>(null);
 
 
 
@@ -696,7 +734,9 @@ export default function CRMSpreadsheetPage() {
         return false;
     }, [data, isMaster, isPureMaster, userRole]);
 
-    const fetchData = async (page = 1, limit = 10, search = "", sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+    const fetchData = async (page = currentPage, limit = rowsPerPage, search = debouncedSearchTerm, sBy = sortBy, sOrder = sortOrder, conds = conditions, conjunction = filterConjunction, isSilent = false) => {
+        const fetchId = ++activeFetchIdRef.current;
+        setIsDataSynced(false);
         // 🔥 Race Condition Protection: Abort any pending requests before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -740,7 +780,9 @@ export default function CRMSpreadsheetPage() {
                 setUserRole(cachedJson.userRole);
                 setIsMaster(cachedJson.isMaster);
                 setIsPureMaster(cachedJson.isPureMaster);
-                setLoading(false); // Stop loading instantly so UI shows!
+                // 🚀 Performance: Clear ALL sync/loading indicators instantly if cache found
+                setIsSyncing(false); 
+                setLoading(false); 
             } catch (e) {
                 console.error("Cache parsing error", e);
             }
@@ -750,18 +792,29 @@ export default function CRMSpreadsheetPage() {
         if (!navigator.onLine) return; // if definitely offline, skip API
 
         try {
-            // 🔑 Performance Fix: Removed 99999 limit hack. 
-            // The backend already handles filtering, so we should always paginate.
+            // 💎 PRO-CORE: Skip heavy structural data if already loaded
+            const includeMeta = !isMatrixLoaded;
             const effectiveLimit = limit;
             const localToday = new Date().toISOString().split('T')[0];
             const conditionsParam = conds.length > 0 ? `&conditions=${encodeURIComponent(JSON.stringify(conds))}&conjunction=${conjunction}` : "";
-            const [dataRes, viewsRes, permRes] = await Promise.all([
-                fetch(`/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }),
-                fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal })
-            ]);
 
+            // 🚀 SYNC-OPTIMIZE: Only fetch metadata once. Subsequent syncs are lightweight.
+            const responsesUrl = `/api/crm/forms/${params.id}/responses?page=${page}&limit=${effectiveLimit}&search=${encodeURIComponent(search)}&sortBy=${sBy}&sortOrder=${sOrder}${conditionsParam}&today=${localToday}&meta=${includeMeta}&_t=${Date.now()}`;
+            
+            const fetchList: Promise<any>[] = [fetch(responsesUrl, { cache: 'no-store', signal })];
+            
+            // Only fetch views and extra perms during boot to save 2 requests per page-turn
+            if (includeMeta) {
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/views?_t=${Date.now()}`, { cache: 'no-store', signal }));
+                fetchList.push(fetch(`/api/crm/forms/${params.id}/column-permissions?_t=${Date.now()}`, { cache: 'no-store', signal }));
+            }
 
+            const results = await Promise.all(fetchList);
+            const dataRes = results[0];
+            const viewsRes = includeMeta ? results[1] : null;
+            const permRes = includeMeta ? results[2] : null;
+
+            if (!dataRes.ok) throw new Error("Sync engine failed");
             const json = await dataRes.json();
 
             // Inject offline edits before rendering
@@ -787,58 +840,74 @@ export default function CRMSpreadsheetPage() {
                 });
             }
 
-            // 4. Update the state
+            if (fetchId !== activeFetchIdRef.current) return;
             setData(prev => {
-                if (!prev || !json.responses) return json;
+                // 💎 PRO-CORE: If JSON is lightweight (meta=false), preserve existing structural data
+                const mergedBase = (!prev || json.form) ? json : { 
+                    ...prev, 
+                    ...json, 
+                    responses: json.responses || prev.responses,
+                    internalValues: json.internalValues || prev.internalValues
+                };
 
-                // CRITICAL: If there are cells currently 'saving', we must preserve their optimistic values
-                // even if the server just sent us old data. This prevents the "disappearing data" bug
-                // when fetchData races with a pending handleUpdateValue.
-                const updatedResponses = json.responses.map((res: any) => {
-                    const existingRes = prev.responses?.find((r: any) => r.id === res.id);
-                    if (!existingRes) return res;
+                const serverResponses = json.responses || [];
+                if (!prev || !isSilent) {
+                    return {
+                        ...mergedBase,
+                        // Ensure counts are preserved from prev if server omitted them (resilience)
+                        totalCount: (json.totalCount !== undefined && json.totalCount !== null) ? json.totalCount : (prev?.totalCount ?? 0),
+                        filteredCount: (json.filteredCount !== undefined && json.filteredCount !== null) ? json.filteredCount : (prev?.filteredCount ?? 0),
+                        totalPages: (json.totalPages !== undefined && json.totalPages !== null) ? json.totalPages : (prev?.totalPages ?? 0),
+                        page: json.page ?? (prev?.page ?? 1),
+                    };
+                }
 
-                    const mergedResponse = { ...res };
-                    // If this row has any cells in 'savingCells', we should consider keeping the local version
-                    // for those specific columns.
-                    savingCells.forEach(cellKey => {
-                        const [rowId, colId] = cellKey.split('-');
-                        if (rowId === res.id) {
-                            // Find the value from the previous local state (which was updated optimistically)
-                            const localCol = (existingRes as any).responses?.find((c: any) => c.columnId === colId);
-                            if (localCol) {
-                                // Update mergedResponse with the local value
-                                if (!mergedResponse.responses) mergedResponse.responses = [];
-                                const targetColIdx = mergedResponse.responses.findIndex((c: any) => c.columnId === colId);
-                                if (targetColIdx > -1) {
-                                    mergedResponse.responses[targetColIdx].value = localCol.value;
-                                } else {
-                                    mergedResponse.responses.push({ ...localCol });
-                                }
-                            } else {
-                                // Check for regular fields (not internal columns)
-                                if ((existingRes as any)[colId] !== undefined) {
-                                    (mergedResponse as any)[colId] = (existingRes as any)[colId];
-                                }
-                            }
-                        }
-                    });
-                    return mergedResponse;
+                // 💎 ATOMIC MERGE (Background/Silent updates only)
+                // Use Map for O(1) row lookup to update/insert without losing existing in-memory rows
+                const existingResponses = prev.responses || [];
+                const responseMap = new Map(existingResponses.map(r => [r.id, r]));
+                
+                serverResponses.forEach((res: any) => {
+                    const existing = responseMap.get(res.id);
+                    if (existing) {
+                        responseMap.set(res.id, { 
+                            ...existing, 
+                            ...res,
+                            remarks: res.remarks ?? existing.remarks,
+                            values: res.values ?? existing.values,
+                            payments: res.payments ?? existing.payments,
+                            rowColor: res.rowColor ?? existing.rowColor
+                        });
+                    } else {
+                        // If it's a new row not in current view, we can still add it 
+                        // though usually background updates target visible IDs
+                        responseMap.set(res.id, res);
+                    }
                 });
 
-                return { ...json, responses: updatedResponses };
+                return { 
+                    ...json, 
+                    responses: Array.from(responseMap.values()),
+                    totalCount: (json.totalCount !== undefined && json.totalCount !== null) ? json.totalCount : prev.totalCount,
+                    filteredCount: (json.filteredCount !== undefined && json.filteredCount !== null) ? json.filteredCount : prev.filteredCount,
+                };
             });
+
+            // Save sanitized cache (Merged state is better for offline/stale-while-revalidate)
+            // 🚪 Move outside functional update to avoid React side-effect issues
+            const syncJson = { ...json, responses: json.responses }; // mini snapshot
+            localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(syncJson));
+            
+            setIsDataSynced(true);
             setUserRole(json.userRole);
             setIsMaster(json.isMaster);
             setIsPureMaster(json.isPureMaster);
+            setIsTL(json.userRole === 'TL');
 
             // Set Pinned State
             if (json.form?.pinnedBy && Array.isArray(json.form.pinnedBy)) {
                 setIsPinned(json.form.pinnedBy.includes(json.clerkId));
             }
-
-            // Save safe cache
-            localStorage.setItem(`matrix_cache_${params.id}`, JSON.stringify(json));
 
             if (viewsRes.ok) {
                 const viewsJson = await viewsRes.json();
@@ -899,12 +968,10 @@ export default function CRMSpreadsheetPage() {
                 toast.error("Failed to sync matrix");
             }
         } finally {
-            if (!isSilent && !signal.aborted) {
-                const elapsed = Date.now() - syncStartTime;
-                if (elapsed < 800) {
-                    await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
-                }
+            if (!signal.aborted) {
                 setIsSyncing(false);
+                setLoading(false); // 🚀 Performance: Always clear booting state
+                setIsMatrixLoaded(true); // 💎 PRO-CORE: Mark as first-fetch complete
             }
         }
     };
@@ -1001,8 +1068,30 @@ export default function CRMSpreadsheetPage() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (isLoaded && user) fetchData();
-    }, [params.id, isLoaded, user]);
+        // 💎 SMART RESET: Only reset to page 1 if FILTERS have changed
+        const filtersChanged = 
+            prevFiltersRef.current.conditions !== conditions ||
+            prevFiltersRef.current.filterConjunction !== filterConjunction ||
+            prevFiltersRef.current.debouncedSearchTerm !== debouncedSearchTerm ||
+            prevFiltersRef.current.rowsPerPage !== rowsPerPage ||
+            prevFiltersRef.current.sortBy !== sortBy ||
+            prevFiltersRef.current.sortOrder !== sortOrder;
+
+        if (filtersChanged && currentPage !== 1) {
+            prevFiltersRef.current = { ...prevFiltersRef.current, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder };
+            setCurrentPage(1);
+            return;
+        }
+
+        // Update ref if not changed but page moved
+        prevFiltersRef.current = { ...prevFiltersRef.current, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder };
+        
+        if (isLoaded && user) {
+            // 🛡️ Silent fetch only if data is already present to prevent flicker, 
+            // but show loader on initial mount.
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, !!data);
+        }
+    }, [params.id, isLoaded, user, currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
 
     // Background mein limit ke saath records fetch karo (max 500 for cards/filters)
     // Yeh performance release ke liye zaroori hai
@@ -1012,7 +1101,7 @@ export default function CRMSpreadsheetPage() {
             try {
                 // 1. Fetch Today's Follow-ups specifically (Crucial for cards)
                 const followUpsRes = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=100&conditions=${encodeURIComponent(JSON.stringify([{ colId: "__nextFollowUpDate", op: "today" }]))}&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
                 if (followUpsRes.ok) {
@@ -1020,20 +1109,24 @@ export default function CRMSpreadsheetPage() {
                     setTodayFollowUpsData(json.responses || []);
                 }
 
-                // 2. Fetch Latest 500 records for Filter dropdowns and general data
+                // 2. Disabled redundant full-matrix background fetch to save DB connections
+                // (The grid already handles current page results)
+                /* 
                 const latestRes = await fetch(
-                    `/api/crm/forms/${params.id}/responses?page=1&limit=500&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
+                    `/api/crm/forms/${params.id}/responses?page=1&limit=100&sortBy=__submittedAt&sortOrder=desc&_t=${Date.now()}`,
                     { cache: 'no-store' }
                 );
-                if (latestRes.ok) {
-                    const json = await latestRes.json();
-                    setAllResponsesForFollowUps(json.responses || []);
-                }
+                if (latestRes.ok) { ... }
+                */
             } catch (err) {
                 console.error('Background fetch failed:', err);
             }
         };
-        fetchBackgroundData();
+        // 🚀 ULTRA LAZY LOAD: Delay background stat fetches to clear network pipeline for the main grid
+        const timerId = setTimeout(() => {
+            fetchBackgroundData();
+        }, 10000); // 10s delay to ensure grid is 100% interactive first
+        return () => clearTimeout(timerId);
     }, [params.id, isLoaded, user]);
 
     useEffect(() => {
@@ -1354,7 +1447,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1364,7 +1457,7 @@ export default function CRMSpreadsheetPage() {
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
         // Filter duplicate internal columns to avoid "extras"
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -1438,7 +1531,7 @@ export default function CRMSpreadsheetPage() {
         if (!deletedSystemCols.includes("__followup")) baseCols.push({ id: "__followup", label: "Follow-ups", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__recentRemark")) baseCols.push({ id: "__recentRemark", label: "Recent Remark", isPublic: false, type: "static" });
         if (!deletedSystemCols.includes("__nextFollowUpDate")) baseCols.push({ id: "__nextFollowUpDate", label: "Next Follow-up Date", isPublic: false, type: "date" });
-        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Follow-up Status", isPublic: false, type: "static" });
+        if (!deletedSystemCols.includes("__followUpStatus")) baseCols.push({ id: "__followUpStatus", label: "Calling Status", isPublic: false, type: "static" });
 
         const hasSalesHub = (data?.internalColumns || []).some((c: any) => c.label === "Amount");
         if (!deletedSystemCols.includes("__payment") && hasSalesHub) {
@@ -1447,7 +1540,7 @@ export default function CRMSpreadsheetPage() {
 
         (data.form?.fields || []).forEach(f => baseCols.push({ ...f, isInternal: false }));
 
-        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Next Follow up date"];
+        const systemLabels = ["Recent Remark", "Next Follow-up Date", "Calling Status", "Next Follow up date"];
         (data.internalColumns || []).forEach(ic => {
             if (!systemLabels.includes(ic.label)) {
                 baseCols.push({ ...ic, isInternal: true });
@@ -1474,6 +1567,49 @@ export default function CRMSpreadsheetPage() {
         newOrder[index] = newOrder[targetIndex];
         newOrder[targetIndex] = temp;
         setColumnOrder(newOrder);
+    };
+
+    const handleSaveGlobalLayout = async () => {
+        if (!isPureMaster) {
+            toast.error("Only Master Authority can push global protocols");
+            return;
+        }
+
+        const confirmPush = confirm("Push this layout as the GLOBAL MATRIX PROTOCOL? This will LOCK the format for all Sellers and Interns across the entire system.");
+        if (!confirmPush) return;
+
+        // CRITICAL: Calculate FULL current order to ensure ALL columns are explicitly synced
+        const fullCurrentOrder = allColumns.map(c => c.id);
+
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`/api/crm/forms/${params.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    defaultColumnOrder: fullCurrentOrder,
+                    defaultHiddenColumns: hiddenColumns
+                })
+            });
+            if (!res.ok) throw new Error("Push failed");
+
+            toast.success("Master Protocol Synchronized! Everyone is now locked to this format.", { icon: "🌎" });
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, true);
+        } catch (err) {
+            toast.error("Master protocol sync failed");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleResetToSystemDefault = () => {
+        localStorage.removeItem(`matrix_order_${params.id}`);
+        localStorage.removeItem(`matrix_hidden_${params.id}`);
+        if (data?.form) {
+            setColumnOrder(data.form.defaultColumnOrder || []);
+            setHiddenColumns(data.form.defaultHiddenColumns || []);
+            toast.success("Synchronized with Master Global Protocol");
+        }
     };
 
     const totalTableWidth = useMemo(() => {
@@ -1578,9 +1714,14 @@ export default function CRMSpreadsheetPage() {
 
     const filteredResponses = useMemo(() => {
         if (!data) return [];
+        const isServerFiltering = data.totalPages !== undefined;
         let results = data.responses || [];
 
-        const isServerFiltering = data.totalPages !== undefined;
+        // 🛡️ REDUNDANCY SHIELD: Skip client-side filtering if server already did the heavy lifting
+        // This ensures pagination fidelity (displaying full pages of filtered results)
+        if (isServerFiltering) {
+            return results;
+        }
 
         if (debouncedSearchTerm) {
             const term = debouncedSearchTerm.toLowerCase();
@@ -1593,10 +1734,6 @@ export default function CRMSpreadsheetPage() {
                 (r.remarks || []).some((rem: any) => (rem.remark || "").toLowerCase().includes(term) || (rem.followUpStatus || "").toLowerCase().includes(term))
             );
         }
-
-        // NOTE: We no longer short-circuit here. We allow local filtering to run as a second pass
-        // on the server's results. This ensures that local 'pendingUpdates' and specific 
-        // operators like 'is_empty' are always respected correctly.
 
         if (conditions.length > 0) {
             const before = results.length;
@@ -1738,12 +1875,12 @@ export default function CRMSpreadsheetPage() {
     }, [getColumns, columnWidths, isPureMaster]);
 
     const paginatedResponses = useMemo(() => {
-        // If server provided pagination, it's already sliced
-        if (data?.responses && data.totalPages !== undefined) return filteredResponses;
+        // 💎 SERVER SLICE REDUNDANCY: If server already paginated, don't slice again on client
+        if (data?.responses && (data.page !== undefined || data.totalPages !== undefined)) return filteredResponses;
 
         const start = (currentPage - 1) * rowsPerPage;
         return filteredResponses.slice(start, start + rowsPerPage);
-    }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages]);
+    }, [filteredResponses, currentPage, rowsPerPage, data?.totalPages, data?.page]);
 
     const tbodyScrollRef = useRef<HTMLDivElement>(null);
     const rowVirtualizer = useVirtualizer({
@@ -1887,17 +2024,6 @@ export default function CRMSpreadsheetPage() {
             document.removeEventListener('touchstart', handleClickOutside);
         };
     }, []);
-
-    useEffect(() => {
-        // Conditions/filterConjunction change pe saara data refetch karo
-        // IMPORTANT: yeh rowsPerPage se independent hai
-        // Jab filter active hai to fetchData khud hi limit=99999 use karega (see fetchData)
-        setCurrentPage(1);
-        if (isLoaded && user) {
-            fetchData(1, rowsPerPage, searchTerm, sortBy, sortOrder, conditions, filterConjunction);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conditions, filterConjunction]);
 
     const groupedResponses = useMemo(() => {
         if (!groupByColId || !data) return {};
@@ -2048,7 +2174,7 @@ export default function CRMSpreadsheetPage() {
         setEditingCell(null);
 
         const cellKey = `${responseId}-${columnId}`;
-        const previousData = data;
+        const previousVal = getCellValue(responseId, columnId, isInternal); // 💎 PRO-CORE: Backup only the specific cell
 
         // Prevent redundant saves if value hasn't changed
         const currentVal = getCellValue(responseId, columnId, isInternal);
@@ -2123,18 +2249,32 @@ export default function CRMSpreadsheetPage() {
             });
 
             if (!res.ok) {
-                // If it's a server error or timeout, treat as offline rather than rollback
-                if (res.status >= 500 || res.status === 408) {
-                    throw new Error(`Server error ${res.status}`);
-                }
-
+                // 💎 PRO-CORE: Atomic Rollback (Only revert the affected cell, preserving other concurrent edits)
                 if (res.status === 401 || res.status === 403) {
                     toast.error("Session expired. Please refresh.");
                     return;
                 }
 
-                toast.error("Sync failed");
-                setData(previousData); // Rollback for genuine validation/permission errors
+                toast.error("Sync failed: value rejected", { icon: '🛡️' });
+                // Target specifically this cell for rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             } else {
                 // 💎 Instant History Update
                 setData(prev => {
@@ -2177,8 +2317,26 @@ export default function CRMSpreadsheetPage() {
                 toast("Network error. Saved offline for later sync.", { icon: '📶' });
             } else {
                 console.error("Update error:", err);
-                toast.error("Matrix error");
-                setData(previousData); // Rollback
+                toast.error("Matrix sync error", { icon: '🛡️' });
+                // Atomic Rollback
+                setData(prev => {
+                    if (!prev) return prev;
+                    if (isInternal) {
+                        const nextIV = (prev.internalValues || []).map(iv => 
+                            (iv.responseId === responseId && iv.columnId === columnId) ? { ...iv, value: previousVal } : iv
+                        );
+                        return { ...prev, internalValues: nextIV };
+                    } else {
+                        const nextR = (prev.responses || []).map(r => {
+                            if (r.id !== responseId) return r;
+                            const nextV = (r.values || []).map(v => 
+                                v.fieldId === columnId ? { ...v, value: previousVal } : v
+                            );
+                            return { ...r, values: nextV };
+                        });
+                        return { ...prev, responses: nextR };
+                    }
+                });
             }
         } finally {
             setSavingCells(prev => {
@@ -2223,7 +2381,7 @@ export default function CRMSpreadsheetPage() {
                     // Update remarks for audit trail
                     updatedRow.remarks = [{
                         id: 'temp-' + Date.now(),
-                        remark: `Status action: ${value}`,
+                        remark: "",
                         followUpStatus: value,
                         createdAt: new Date().toISOString()
                     } as any, ...(r.remarks || [])];
@@ -2264,7 +2422,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2280,7 +2438,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     columnId: columnId
                 })
@@ -2312,7 +2470,7 @@ export default function CRMSpreadsheetPage() {
                     value,
                     isInternal,
                     type: 'STATUS_UPDATE',
-                    remark: `Status action: ${value}`,
+                    remark: ``,
                     followUpStatus: value,
                     formId: params.id,
                     tempId: crypto.randomUUID(),
@@ -2671,7 +2829,7 @@ export default function CRMSpreadsheetPage() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    remark: `Instant status transition to ${newStatus}`,
+                    remark: ``,
                     followUpStatus: newStatus
                 })
             });
@@ -2751,15 +2909,15 @@ export default function CRMSpreadsheetPage() {
 
         const statsSource = allResponsesForFollowUps.length > 0 ? allResponsesForFollowUps : (data?.responses || []);
 
-        const totalEntries = data.filteredCount || statsSource.length;
+        const totalEntries = data?.filteredCount || statsSource.length;
         const newToday = statsSource.filter(r => new Date(r.createdAt) >= today).length;
         const newThisMonth = statsSource.filter(r => new Date(r.createdAt) >= thisMonth).length;
 
         // Try to find a dropdown/status column
-        const statusCol = data.internalColumns.find((c: any) => c.type === 'dropdown');
+        const statusCol = data?.internalColumns?.find((c: any) => c.type === 'dropdown');
         let statusCounts: Record<string, number> = {};
 
-        if (statusCol && (data.internalValues || []).length > 0) {
+        if (statusCol && (data?.internalValues || []).length > 0) {
             const valuesToCount = statsSource === data.responses ? data.internalValues : data.internalValues; // Actually internalValues only match current responses
             // This is tricky because internalValues only come for the current page
             // For now, we'll only show status counts for the statsSource
@@ -2773,7 +2931,8 @@ export default function CRMSpreadsheetPage() {
             newToday,
             newThisMonth,
             statusCounts,
-            statusColName: statusCol?.label || "Status"
+            statusColName: statusCol?.label || "Status",
+            statusColId: statusCol?.id
         };
     }, [data]);
 
@@ -2804,10 +2963,23 @@ export default function CRMSpreadsheetPage() {
         }
     };
 
-    if (loading) return (
+    // 💎 PRO-CORE: Only show full-page boot screen if we have NEVER loaded data
+    if (loading && !isLoaded) return (
         <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center">
-            <div className="w-16 h-16 border-4 border-slate-900 border-t-indigo-600 rounded-full animate-spin mb-8 shadow-xl" />
-            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Booting Data Matrix v2.0</p>
+            <motion.div 
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="w-20 h-20 border-t-4 border-l-4 border-indigo-600 border-r-4 border-r-transparent border-b-4 border-b-transparent rounded-full animate-spin mb-8 shadow-[0_0_50px_rgba(79,70,229,0.3)]" 
+            />
+            <motion.p 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-[12px] font-black uppercase tracking-[0.4em] text-slate-800"
+            >
+                Booting Website Hub v2.2
+            </motion.p>
+            <p className="mt-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Syncing Global Streams...</p>
         </div>
     );
 
@@ -2821,6 +2993,19 @@ export default function CRMSpreadsheetPage() {
                                 canvasTheme === 'glass' ? 'bg-slate-200 bg-[url("https://www.transparenttextures.com/patterns/cubes.png")] text-slate-900' :
                                     'bg-[#f8fafc] text-slate-900'
             }`}>
+
+            {/* 🚀 PRO-SYNC: YouTube Style Top Progress Bar */}
+            <AnimatePresence>
+                {isSyncing && (
+                    <motion.div
+                        initial={{ scaleX: 0, opacity: 0 }}
+                        animate={{ scaleX: 1, opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.5, ease: "easeInOut" }}
+                        className="fixed top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 z-[9999] origin-left shadow-[0_2px_10px_rgba(99,102,241,0.5)]"
+                    />
+                )}
+            </AnimatePresence>
             {/* Deletion Progress Overlay */}
             <AnimatePresence>
                 {deleteProgress && (
@@ -3004,6 +3189,25 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <UploadCloud size={12} />
                                 Smart Update
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    if (sortBy === "__mtv") {
+                                        setSortBy("__submittedAt");
+                                        setSortOrder("desc");
+                                    } else {
+                                        setSortBy("__mtv");
+                                        setSortOrder("desc");
+                                    }
+                                }}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm ${sortBy === "__mtv"
+                                    ? 'bg-amber-100 text-amber-700 border-amber-200 animate-pulse ring-2 ring-amber-100'
+                                    : (['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'bg-white/10 text-white border-white/20 hover:bg-white/20' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50')}`}
+                                title="Prioritize Untouched Leads"
+                            >
+                                <Zap size={12} className={sortBy === "__mtv" ? "fill-current" : ""} />
+                                Untouched
                             </button>
 
                             <button
@@ -3201,8 +3405,12 @@ export default function CRMSpreadsheetPage() {
                         </div>
 
                         <div className="flex items-center gap-8">
-                            <div className="flex flex-col">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Core</p>
+                            <div
+                                onClick={handleClearFilters}
+                                className="flex flex-col cursor-pointer hover:bg-slate-50 p-2 rounded-xl transition-all active:scale-95 group"
+                                title="Reset Matrix Protocol"
+                            >
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5 group-hover:text-indigo-600 transition-colors">Total Core</p>
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg font-black text-slate-900">{data?.totalCount || "..."}</span>
                                     <span className="text-[9px] font-bold text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">+Live</span>
@@ -3219,8 +3427,15 @@ export default function CRMSpreadsheetPage() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col pr-8 border-r border-slate-100">
-                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">Attention Matrix</p>
+                            <div
+                                onClick={() => {
+                                    setConditions([{ colId: "__nextFollowUpDate", op: "today", val: "" }]);
+                                    toast.success("Focus Shift: Attention Matrix Locked (Today's Follow-ups)");
+                                }}
+                                className="flex flex-col pr-8 border-r border-slate-100 cursor-pointer hover:bg-amber-50 p-2 rounded-xl transition-all active:scale-95 group"
+                                title="Filter: Today's Follow-up Protocol"
+                            >
+                                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5 group-hover:text-amber-600">Attention Matrix</p>
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg font-black text-amber-600">{todayFollowUps.length}</span>
                                     <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
@@ -3321,96 +3536,7 @@ export default function CRMSpreadsheetPage() {
                     </div>
                 )}
 
-                {/* FLOATING ACCESS DOCK (Mac OS / Premium SaaS Style) */}
-                {(() => {
-                    const visibleUsers = data?.form?.visibleToUsers || [];
-                    const visibleRoles = data?.form?.visibleToRoles || [];
 
-                    const explicitUsers = (data?.form?.visibleToUsersData || []).map((u: any) => ({
-                        clerkId: u.id,
-                        firstName: u.name,
-                        lastName: "",
-                        email: u.email,
-                        role: visibleUsers.includes(u.id) ? "Specially Added User" : "",
-                        imageUrl: u.imageUrl
-                    }));
-
-                    const roleUsers = teamMembers.filter(m =>
-                        (m.role && visibleRoles.includes(m.role.toUpperCase())) ||
-                        m.role === 'ADMIN' || m.role === 'MASTER' ||
-                        (visibleUsers.length === 0 && visibleRoles.length === 0)
-                    ).filter(m => !explicitUsers.some((eu: any) => eu.clerkId === m.clerkId));
-
-                    const allWithAccess = [...explicitUsers, ...roleUsers];
-
-                    if (allWithAccess.length === 0) return null;
-
-                    return (
-                        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-4 py-2 bg-slate-900/95 backdrop-blur shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] rounded-full border border-slate-700/50 group/team cursor-pointer hover:bg-slate-900 transition-all hover:scale-[1.02]">
-                            <div className="flex items-center gap-2 border-r border-slate-700/50 pr-4">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Shared With</span>
-                            </div>
-                            <div className="flex -space-x-1.5 overflow-visible pl-1">
-                                {allWithAccess.slice(0, 5).map((m) => {
-                                    const initial = (m.firstName && m.firstName !== "Unknown User") ? m.firstName[0].toUpperCase() : (m.email ? m.email[0].toUpperCase() : '?');
-                                    return (
-                                        <div key={m.clerkId} className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-slate-800 items-center justify-center text-[10px] font-black text-slate-300 shadow-sm border border-slate-600 shrink-0 transition-transform group-hover/team:-translate-y-1 hover:!translate-y-0 hover:z-10 hover:ring-indigo-500 duration-200 overflow-hidden">
-                                            <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
-                                        </div>
-                                    );
-                                })}
-                                {allWithAccess.length > 5 && (
-                                    <div className="inline-flex h-7 w-7 rounded-full ring-2 ring-slate-900 bg-indigo-600 items-center justify-center text-[9px] font-black text-white shadow-sm border border-indigo-500 shrink-0 transition-transform group-hover/team:-translate-y-1">
-                                        +{allWithAccess.length - 5}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Center-Bottom Tooltip */}
-                            <div className="absolute bottom-[120%] left-1/2 -translate-x-1/2 w-[280px] bg-slate-900 border border-slate-700 shadow-2xl rounded-2xl p-3 opacity-0 invisible group-hover/team:opacity-100 group-hover/team:visible group-hover/team:-translate-y-2 transition-all duration-300 origin-bottom after:content-[''] after:absolute after:top-full after:left-0 after:w-full after:h-8">
-                                <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar">
-                                    {allWithAccess.map(m => {
-                                        return (
-                                            <div key={`navdetails-${m.clerkId}`} className="flex items-center gap-3 p-2 rounded-xl bg-slate-800/50 border border-transparent">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0 ring-2 ring-slate-900 overflow-hidden">
-                                                    <img src={getFallbackAvatar(m.clerkId, m.imageUrl)} alt="avatar" className="w-full h-full object-cover" />
-                                                </div>
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <p className="text-[10px] font-black text-white truncate uppercase tracking-widest leading-none">{(m.firstName && m.firstName !== "Unknown User") ? `${m.firstName} ${m.lastName || ''}` : m.email.split('@')[0]}</p>
-                                                        {m.role && <span className="text-[6px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 uppercase shrink-0 leading-none block border border-indigo-500/30 font-black tracking-widest">{m.role}</span>}
-                                                    </div>
-                                                    <p className="text-[8px] text-slate-400 truncate mt-1 leading-none">{m.email || 'No email'}</p>
-                                                </div>
-                                                {(isMaster || isPureMaster) && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (window.confirm(`Are you sure you want to remove access for ${m.firstName || m.email}?`)) {
-                                                                const isExplicit = explicitUsers.some((eu: any) => eu.clerkId === m.clerkId);
-                                                                const roleMatch = m.role && visibleRoles.includes(m.role.toUpperCase()) ? m.role.toUpperCase() : null;
-
-                                                                if (isExplicit) handleRemoveFormAccess(m.clerkId, null);
-                                                                else if (roleMatch) handleRemoveFormAccess(null, roleMatch);
-                                                            }
-                                                        }}
-                                                        className="p-1 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                                                        title="Revoke Access"
-                                                    >
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                                {/* Triangle arrow indicating down */}
-                                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 border-b border-r border-slate-700 rotate-45" />
-                            </div>
-                        </div>
-                    );
-                })()}
                 <AnimatePresence mode="wait">
                     {currentView === "table" ? (
                         <motion.div
@@ -3426,32 +3552,16 @@ export default function CRMSpreadsheetPage() {
                         >
                             <AnimatePresence>
                                 {isSyncing && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="fixed inset-0 z-[100000] flex flex-col items-center justify-center pointer-events-none transition-all duration-500"
-                                    >
-                                        <div className="flex flex-col items-center gap-6 p-12 rounded-[48px] bg-white/95 shadow-[0_32px_100px_rgba(0,0,0,0.25)] border border-slate-200/50 animate-pulse relative">
-                                            {/* Glow effect */}
-                                            <div className="absolute inset-0 bg-indigo-500/5 blur-3xl rounded-full" />
-
-                                            <div className="relative w-24 h-24">
-                                                <motion.div
-                                                    animate={{ rotate: 360, scale: [1, 1.05, 1] }}
-                                                    transition={{ rotate: { repeat: Infinity, duration: 3, ease: "linear" }, scale: { repeat: Infinity, duration: 2 } }}
-                                                    className="w-full h-full border-[6px] border-indigo-600/10 border-t-indigo-600 rounded-[32px] shadow-2xl shadow-indigo-200"
-                                                />
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <Bot size={40} className="text-indigo-600 animate-bounce" />
-                                                </div>
-                                            </div>
-                                            <div className="text-center space-y-2 relative z-10">
-                                                <h3 className="text-base font-black text-slate-900 uppercase tracking-[0.4em]">Intelligence Matrix</h3>
-                                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Neural Stream active...</p>
-                                            </div>
+                                    <div className="absolute top-0 left-0 right-0 z-[100] pointer-events-none">
+                                        <div className="h-[3px] w-full bg-indigo-600/10 overflow-hidden">
+                                            <motion.div
+                                                initial={{ x: "-100%" }}
+                                                animate={{ x: "100%" }}
+                                                transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                                                className="h-full w-1/3 bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.5)]"
+                                            />
                                         </div>
-                                    </motion.div>
+                                    </div>
                                 )}
                             </AnimatePresence>
                             <table
@@ -3927,8 +4037,8 @@ export default function CRMSpreadsheetPage() {
                                 <tbody>
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getVirtualItems()[0].start}px` }}
                                                 colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
                                                 className="border-none p-0"
                                             />
@@ -4588,7 +4698,7 @@ export default function CRMSpreadsheetPage() {
                                                                                             </span>
                                                                                         );
                                                                                     }
-                                                                                    if (col.label === "Follow-up Status") {
+                                                                                    if (col.label === "Calling Status") {
                                                                                         return (
                                                                                             <span className={`px-3 py-1.5 rounded-lg font-black text-[11px] uppercase tracking-widest border shadow-sm transition-all ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme)
                                                                                                 ? (val === 'Closed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' :
@@ -4626,8 +4736,8 @@ export default function CRMSpreadsheetPage() {
                                     })}
                                     {rowVirtualizer.getVirtualItems().length > 0 && (
                                         <tr>
-                                            <td 
-                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }} 
+                                            <td
+                                                style={{ height: `${rowVirtualizer.getTotalSize() - rowVirtualizer.getVirtualItems()[rowVirtualizer.getVirtualItems().length - 1].end}px` }}
                                                 colSpan={data?.form?.fields?.length ? data.form.fields.length + (data.internalColumns?.length || 0) + 1 : 100}
                                                 className="border-none p-0"
                                             />
@@ -4664,7 +4774,7 @@ export default function CRMSpreadsheetPage() {
                                         </select>
                                     </div>
                                     <div className={`text-sm ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-slate-400' : 'text-[#475467]'}`}>
-                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount || filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount || filteredResponses.length}</span> responses
+                                        Showing <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{(currentPage - 1) * rowsPerPage + 1}</span> to <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{Math.min(currentPage * rowsPerPage, data?.filteredCount ?? filteredResponses.length)}</span> of <span className={`font-semibold ${['dark', 'midnight', 'ocean', 'sunset', 'aurora'].includes(canvasTheme) ? 'text-white' : 'text-[#101828]'}`}>{data?.filteredCount ?? filteredResponses.length}</span> responses
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -4680,9 +4790,9 @@ export default function CRMSpreadsheetPage() {
                                     </button>
 
                                     <div className="flex items-center gap-1">
-                                        {Array.from({ length: data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
+                                        {Array.from({ length: data?.totalPages ?? Math.ceil(filteredResponses.length / rowsPerPage) }).map((_, i) => {
                                             const pageNum = i + 1;
-                                            const totalPages = data?.totalPages || Math.ceil(filteredResponses.length / rowsPerPage);
+                                            const totalPages = data?.totalPages ?? Math.ceil(filteredResponses.length / rowsPerPage);
 
                                             // Only show a few pages if too many
                                             if (Math.abs(pageNum - currentPage) > 2 && pageNum !== 1 && pageNum !== totalPages) {
@@ -4883,8 +4993,15 @@ export default function CRMSpreadsheetPage() {
 
                                         <div className="grid grid-cols-1 gap-4">
                                             {conditions.map((cond, index) => {
-                                                const field = [...(data?.form?.fields || []), ...(data?.internalColumns || [])].find(f => f.id === cond.colId);
-                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : [];
+                                                const field = [
+                                                    { id: "__submittedAt", label: "Submitted At (Portal Protocol)", type: "date" },
+                                                    { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                    { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                    { id: "__followUpStatus", label: "Lead Tracking Status (Portal Protocol)", type: "dropdown" },
+                                                    ...(data?.form?.fields || []),
+                                                    ...(data?.internalColumns || [])
+                                                ].find(f => f.id === cond.colId);
+                                                const operators = field ? ((FILTER_OPERATORS as any)[field.type] || FILTER_OPERATORS.text) : FILTER_OPERATORS.text;
                                                 const isInternalUserCol = field?.type === "user" || field?.id === "__assigned";
 
                                                 return (
@@ -4910,7 +5027,14 @@ export default function CRMSpreadsheetPage() {
                                                                     }}
                                                                 >
                                                                     <option value="">Select Field Protocol</option>
-                                                                    {[...(data?.form?.fields || []), ...(data?.internalColumns || [])].filter(f => f.type !== "static").map(f => (
+                                                                    {([
+                                                                        { id: "__submittedAt", label: "Submitted At", type: "date" },
+                                                                        { id: "__nextFollowUpDate", label: "Next Follow-up Date", type: "date" },
+                                                                        { id: "__assigned", label: "Assigned Users", type: "user" },
+                                                                        { id: "__followUpStatus", label: "Lead Tracking Status", type: "dropdown", options: CALL_STATUS_OPTIONS },
+                                                                        ...(data?.form?.fields || []),
+                                                                        ...(data?.internalColumns || [])
+                                                                    ] as any[]).filter(f => f.type !== "static").map(f => (
                                                                         <option key={f.id} value={f.id}>{f.label}</option>
                                                                     ))}
                                                                 </select>
@@ -4964,7 +5088,7 @@ export default function CRMSpreadsheetPage() {
                                                                                 }}
                                                                             >
                                                                                 <option value="">Option Metric</option>
-                                                                                {field?.options?.map((opt: any) => {
+                                                                                {(field as any)?.options?.map((opt: any) => {
                                                                                     const label = typeof opt === 'string' ? opt : opt.label;
                                                                                     return <option key={label} value={label}>{label}</option>;
                                                                                 })}
@@ -5389,8 +5513,8 @@ export default function CRMSpreadsheetPage() {
                             >
                                 <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-[#F9FAFB]">
                                     <div>
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Manage Columns</h3>
-                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Select columns to display in the matrix</p>
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">Matrix Column Protocol</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold mt-1">Configure global layout & visibility</p>
                                     </div>
                                     <button onClick={() => setIsColumnManagerOpen(false)} className="p-2 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-slate-200">
                                         <X size={16} className="text-slate-400" />
@@ -5454,25 +5578,45 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
-                                    {isMaster && (
-                                        <div className="flex gap-2">
+                                    {(isMaster || isPureMaster) && (
+                                        <div className="flex flex-col gap-2 p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Sparkles size={12} className="text-indigo-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Master Authority</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => addHubColumns('sales')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                >
+                                                    + Sales Hub
+                                                </button>
+                                                <button
+                                                    onClick={() => addHubColumns('remarks')}
+                                                    disabled={isAddingHubCols}
+                                                    className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
+                                                >
+                                                    + Remark Hub
+                                                </button>
+                                            </div>
                                             <button
-                                                onClick={() => addHubColumns('sales')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all border border-emerald-200"
+                                                onClick={handleSaveGlobalLayout}
+                                                className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
                                             >
-                                                + Sales Hub
-                                            </button>
-                                            <button
-                                                onClick={() => addHubColumns('remarks')}
-                                                disabled={isAddingHubCols}
-                                                className="flex-1 py-2 bg-rose-50 text-rose-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-100 transition-all border border-rose-200"
-                                            >
-                                                + Remark Hub
+                                                <ShieldCheck size={14} /> Push Global Format for All
                                             </button>
                                         </div>
                                     )}
-                                    <div className="flex justify-end">
+                                    <div className="flex justify-between items-center gap-2">
+                                        {isTL && (
+                                            <button
+                                                onClick={handleResetToSystemDefault}
+                                                className="px-4 py-2 text-slate-400 hover:text-slate-900 text-[10px] font-black uppercase tracking-widest transition-all"
+                                            >
+                                                Reset to Default
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => setIsColumnManagerOpen(false)}
                                             className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95"
@@ -6037,16 +6181,33 @@ export default function CRMSpreadsheetPage() {
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-4">
-                                    <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Total Records</p>
+                                    <div
+                                        onClick={() => { setConditions([]); setIsDynamicReportOpen(false); toast.success("Matrix Reset: All Records"); }}
+                                        className="p-6 bg-slate-50 rounded-2xl border border-slate-100 cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 group-hover:text-indigo-600 transition-colors">Total Records</p>
                                         <p className="text-3xl font-black text-slate-900">{dynamicStats.totalEntries}</p>
                                     </div>
-                                    <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">New Today</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "today", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Today's High-Priority Leads");
+                                        }}
+                                        className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100 cursor-pointer hover:bg-emerald-100 hover:border-emerald-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2 group-hover:bg-emerald-200 transition-colors">New Today</p>
                                         <p className="text-3xl font-black text-emerald-700">{dynamicStats.newToday}</p>
                                     </div>
-                                    <div className="p-6 bg-blue-50 rounded-2xl border border-blue-100">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">New This Month</p>
+                                    <div
+                                        onClick={() => {
+                                            setConditions([{ colId: "__submittedAt", op: "this_month", val: "" }]);
+                                            setIsDynamicReportOpen(false);
+                                            toast.success("Focus Shift: Monthly Yield Analysis");
+                                        }}
+                                        className="p-6 bg-blue-50 rounded-2xl border border-blue-100 cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all active:scale-95 group"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2 group-hover:bg-blue-200 transition-colors">New This Month</p>
                                         <p className="text-3xl font-black text-blue-700">{dynamicStats.newThisMonth}</p>
                                     </div>
                                 </div>
@@ -6056,9 +6217,20 @@ export default function CRMSpreadsheetPage() {
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-200 pb-2">{dynamicStats.statusColName} Breakdown</p>
                                         <div className="space-y-3">
                                             {Object.entries(dynamicStats.statusCounts).sort((a, b) => b[1] - a[1]).map(([status, count]) => (
-                                                <div key={status} className="flex items-center justify-between">
-                                                    <span className="text-sm font-bold text-slate-700">{status || "Unspecified"}</span>
-                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg">{count}</span>
+                                                <div
+                                                    key={status}
+                                                    onClick={() => {
+                                                        const colId = dynamicStats.statusColId || "";
+                                                        if (colId) {
+                                                            setConditions([{ colId, op: "equals", val: status }]);
+                                                            setIsDynamicReportOpen(false);
+                                                            toast.success(`Matrix Path: ${status}`);
+                                                        }
+                                                    }}
+                                                    className="flex items-center justify-between p-2 hover:bg-white rounded-xl cursor-pointer transition-all active:scale-[0.98] group"
+                                                >
+                                                    <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{status || "Unspecified"}</span>
+                                                    <span className="text-sm font-black text-indigo-600 px-3 py-1 bg-indigo-50 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-all">{count}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -6310,7 +6482,7 @@ export default function CRMSpreadsheetPage() {
                                                             </div>
 
                                                             <div className="grid grid-cols-1 gap-12 px-2">
-                                                                {[...data?.internalColumns?.map(c => ({ ...c, isInternal: true })) || [], ...data.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, isInternal: false })) || []].map((col) => {
+                                                                {[...(data?.internalColumns?.map(c => ({ ...c, label: c.label || c.id, isInternal: true })) || []), ...(data?.form?.fields?.filter(f => !["static", "header", "separator"].includes(f.type)).map(f => ({ ...f, label: f.label || f.id, isInternal: false })) || [])].map((col) => {
                                                                     const val = getCellValue(selectedResponse.id, col.id, col.isInternal);
                                                                     const isInternal = col.isInternal;
 
@@ -6436,12 +6608,18 @@ export default function CRMSpreadsheetPage() {
                                                         <div className="flex flex-col gap-10">
                                                             <div className="flex items-center justify-between px-6">
                                                                 <h3 className="text-[13px] font-black text-slate-400 uppercase tracking-[0.5em] flex items-center gap-6">Audit Lifecycle <div className="h-[2px] w-24 bg-slate-100 rounded-full" /></h3>
-                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0} Total Actions</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-100/80 px-5 py-2 rounded-full uppercase tracking-[0.2em]">{selectedResponseActivities.length} Total Actions</span>
                                                             </div>
 
-                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative">
-                                                                {(data?.activities?.filter(a => a.responseId === selectedResponse.id).length || 0) > 0 ? (
-                                                                    data.activities.filter(a => a.responseId === selectedResponse.id).map((act) => (
+                                                            <div className="space-y-10 px-6 border-l-[3px] border-slate-100 ml-6 relative min-h-[200px]">
+                                                                {isFetchingActivities ? (
+                                                                    <div className="space-y-8 pl-12">
+                                                                        {[1, 2, 3].map(i => (
+                                                                            <div key={i} className="h-32 w-full bg-slate-100 animate-pulse rounded-[56px]" />
+                                                                        ))}
+                                                                    </div>
+                                                                ) : selectedResponseActivities.length > 0 ? (
+                                                                    selectedResponseActivities.map((act: any) => (
                                                                         <div key={act.id} className="relative pl-12 pb-12 group/audit">
                                                                             <div className="absolute left-[-15px] top-2 w-7 h-7 rounded-full bg-white border-[6px] border-slate-100 group-hover/audit:border-indigo-500 group-hover/audit:scale-125 transition-all duration-500 shadow-xl flex items-center justify-center">
                                                                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover/audit:bg-indigo-500" />
@@ -6472,10 +6650,11 @@ export default function CRMSpreadsheetPage() {
                                                                     ))
                                                                 ) : (
                                                                     <div className="flex flex-col items-center justify-center py-24 bg-slate-50/50 rounded-[64px] border-2 border-dashed border-slate-200 ml-[-20px]">
-                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100 animate-pulse">
+                                                                        <div className="w-32 h-32 rounded-full bg-white flex items-center justify-center mb-10 shadow-2xl border border-slate-100">
                                                                             <Clock size={50} className="text-slate-200" />
                                                                         </div>
-                                                                        <p className="text-[14px] font-black text-slate-300 uppercase tracking-[0.6em]">Timeline Deactivated</p>
+                                                                        <h4 className="text-[14px] font-black text-slate-950 uppercase tracking-[0.4em] mb-4">Silent Timeline</h4>
+                                                                        <p className="text-[11px] font-bold text-slate-400 text-center max-w-[280px] leading-relaxed">No activity logs recorded for this protocol yet. The matrix is silent.</p>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -6539,7 +6718,7 @@ export default function CRMSpreadsheetPage() {
                     }}
                     availableColumns={[
                         { id: "__assigned", label: "Assigned To", isInternal: false, type: "user" },
-                        { id: "__followUpStatus", label: "Follow-up Status", isInternal: false, type: "text" },
+                        { id: "__followUpStatus", label: "Calling Status", isInternal: false, type: "text" },
                         { id: "__nextFollowUpDate", label: "Next Follow-up Date", isInternal: false, type: "date" },
                         { id: "__recentRemark", label: "Recent Remark", isInternal: false, type: "text" },
                         ...(data?.form.fields || []).map(f => ({ id: f.id, label: f.label, isInternal: false, type: f.type })),

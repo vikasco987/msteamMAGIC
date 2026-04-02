@@ -104,6 +104,8 @@ export default function TLDashboard() {
   const [tlList, setTlList] = useState<TL[]>([]);
   const [selectedTlId, setSelectedTlId] = useState<string>("");
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [isPrivileged, setIsPrivileged] = useState(false);
 
   useEffect(() => {
@@ -139,10 +141,12 @@ export default function TLDashboard() {
     }
   };
 
-  const fetchTeamStats = async (tlId?: string) => {
+  const fetchTeamStats = async (tlId?: string, month?: number, year?: number) => {
     try {
       setLoading(true);
-      const url = tlId ? `/api/stats/team/performance?tlId=${tlId}` : "/api/stats/team/performance";
+      const m = month !== undefined ? month : selectedMonth;
+      const y = year !== undefined ? year : selectedYear;
+      const url = tlId ? `/api/stats/team/performance?tlId=${tlId}&month=${m}&year=${y}` : `/api/stats/team/performance?month=${m}&year=${y}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch team stats");
       const data = await res.json();
@@ -159,7 +163,19 @@ export default function TLDashboard() {
     const tlId = e.target.value;
     setSelectedTlId(tlId);
     setSelectedMemberId(""); // Reset member when TL changes
-    fetchTeamStats(tlId);
+    fetchTeamStats(tlId, selectedMonth, selectedYear);
+  };
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const m = parseInt(e.target.value);
+    setSelectedMonth(m);
+    fetchTeamStats(selectedTlId, m, selectedYear);
+  };
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const y = parseInt(e.target.value);
+    setSelectedYear(y);
+    fetchTeamStats(selectedTlId, selectedMonth, y);
   };
 
   const handleMemberChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -240,13 +256,32 @@ export default function TLDashboard() {
             </div>
           )}
           
-          <div className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-sm font-black text-slate-700 dark:text-slate-300 shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
             <Calendar size={18} className="text-indigo-500" /> 
-            <span>Current Month</span>
+            <select 
+                value={selectedMonth}
+                onChange={handleMonthChange}
+                className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+            >
+                {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => (
+                    <option key={i} value={i}>{m}</option>
+                ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+            <select 
+                value={selectedYear}
+                onChange={handleYearChange}
+                className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+            >
+                <option value={2024}>2024</option>
+                <option value={2025}>2025</option>
+            </select>
           </div>
 
           <button 
-            onClick={() => fetchTeamStats(selectedTlId)}
+            onClick={() => fetchTeamStats(selectedTlId, selectedMonth, selectedYear)}
             className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all"
           >
             <Zap size={20} fill="currentColor" />

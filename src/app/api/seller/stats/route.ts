@@ -132,6 +132,7 @@ export async function GET(req: Request) {
     const tasks = await prisma.task.findMany({
       where: {
         createdByClerkId: { in: userIds },
+        isHidden: false,
         createdAt: {
           gte: startDate,
           lt: endDate,

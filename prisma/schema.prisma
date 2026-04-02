@@ -18,6 +18,7 @@ model Task {
   dueDate         DateTime?
   priority        String?
   projectId       String?
+  isHidden        Boolean  @default(false)
 
   assignerEmail   String?
   assigneeEmail   String?
@@ -265,6 +266,9 @@ model DynamicForm {
 
   pinnedBy        String[] @default([]) // Array of Clerk User IDs who pinned this form
 
+  defaultColumnOrder String[] @default([])
+  defaultHiddenColumns String[] @default([])
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -304,10 +308,12 @@ model FormResponse {
   rowColor        String?     // Custom highlight color for the row
 
   submittedAt     DateTime    @default(now())
+  isTouched       Boolean     @default(false)
 
   @@index([formId])
   @@index([submittedAt])
   @@index([submittedBy])
+  @@index([isTouched])
 }
 
 model ResponseValue {
@@ -383,6 +389,8 @@ model FormActivity {
   oldValue        String?
   newValue        String?
   createdAt       DateTime    @default(now())
+
+  @@index([responseId])
 }
 
 model SavedView {
@@ -427,6 +435,7 @@ model FormRemark {
   
   columnId          String?   // Link to InternalColumn for specific status tracking
   
+  @@index([responseId])
   @@index([columnId])
 }
 

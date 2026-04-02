@@ -17,6 +17,7 @@ interface Remark {
     remark: string;
     nextFollowUpDate?: string;
     followUpStatus?: string;
+    leadStatus?: string;
     authorName: string;
     createdAt: string;
 }
@@ -38,7 +39,7 @@ export default function FollowUpBoard() {
     const [data, setData] = useState<ResponseData[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
-    const [activeTab, setActiveTab] = useState<"today" | "overdue" | "upcoming" | "closed">("today");
+    const [activeTab, setActiveTab] = useState<"today" | "overdue" | "upcoming" | "closed" | "uninterested">("today");
     const [userRole, setUserRole] = useState("GUEST");
 
     // NEW ADVANCED FILTERS
@@ -126,6 +127,15 @@ export default function FollowUpBoard() {
         return [...set].sort();
     }, [data]);
 
+    const interactionStatuses = useMemo(() => {
+        const set = new Set<string>();
+        // Master list seed
+        ["CALL AGAIN", "CALL DONE", "RNR", "MEETING", "INTERESTED", "ONBOARDED", "CLOSED", "FOLLOW UP", "SCHEDULED", "PAYMENT PENDING", "BUSY", "CONNECTED", "REJECTED"].forEach(s => set.add(s));
+        // Real data seed
+        data.forEach(d => d.remarks.forEach(r => { if (r.followUpStatus) set.add(r.followUpStatus) }));
+        return [...set].sort();
+    }, [data]);
+
     const filteredData = useMemo(() => {
         const now = startOfDay(new Date());
 
@@ -145,10 +155,26 @@ export default function FollowUpBoard() {
             // 2. Advanced Filters
             if (filterForm !== "all" && res.form.title !== filterForm) return false;
             if (filterAuthor !== "all" && latest.authorName !== filterAuthor) return false;
-            if (filterInteractionStatus !== "all" && latest.followUpStatus !== filterInteractionStatus) return false;
+            
+            // 🔥 NORMALIZE STATUS FILTER (TRIM & CASE)
+            if (filterInteractionStatus !== "all") {
+                const s1 = (latest.followUpStatus || "Scheduled").trim().toUpperCase();
+                const s2 = filterInteractionStatus.trim().toUpperCase();
+                if (s1 !== s2) return false;
+            }
 
             // 3. Tab Filtering
-            if (latest.followUpStatus === "Closed") {
+            const status = (latest.followUpStatus || "").toUpperCase();
+            const leadStatus = (res.remarks[0]?.leadStatus || "").toUpperCase();
+            const isUninterested = status === "UNINTERESTED" || status === "NOT INTERESTED" || status === "REJECTED" || 
+                                 leadStatus === "UNINTERESTED" || leadStatus === "NOT INTERESTED" || 
+                                 leadStatus === "REJECTED";
+
+            if (isUninterested) {
+                return activeTab === "uninterested";
+            }
+
+            if (status === "CLOSED" || status === "ONBOARDED" || leadStatus === "ONBOARDED") {
                 return activeTab === "closed";
             }
 
@@ -166,13 +192,24 @@ export default function FollowUpBoard() {
 
     const stats = useMemo(() => {
         const now = startOfDay(new Date());
-        const counts = { today: 0, overdue: 0, upcoming: 0, closed: 0 };
+        const counts = { today: 0, overdue: 0, upcoming: 0, closed: 0, uninterested: 0 };
 
         data.forEach(res => {
             const latest = res.remarks[0];
             if (!latest) return;
 
-            if (latest.followUpStatus === "Closed") {
+            const status = (latest.followUpStatus || "").toUpperCase();
+            const leadStatus = (res.remarks[0]?.leadStatus || "").toUpperCase();
+            const isUninterested = status === "UNINTERESTED" || status === "NOT INTERESTED" || status === "REJECTED" || 
+                                 leadStatus === "UNINTERESTED" || leadStatus === "NOT INTERESTED" || 
+                                 leadStatus === "REJECTED";
+
+            if (isUninterested) {
+                counts.uninterested++;
+                return;
+            }
+
+            if (status === "CLOSED" || status === "ONBOARDED" || leadStatus === "ONBOARDED") {
                 counts.closed++;
                 return;
             }
@@ -256,9 +293,7 @@ export default function FollowUpBoard() {
                             className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                         >
                             <option value="all">All Statuses</option>
-                            <option value="Scheduled">Scheduled</option>
-                            <option value="Missed">Missed</option>
-                            <option value="Closed">Closed</option>
+                            {interactionStatuses.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
                     <div className="flex items-end justify-between px-2">
@@ -284,6 +319,7 @@ export default function FollowUpBoard() {
                         { id: "overdue", label: "Overdue", icon: AlertCircle, count: stats.overdue, color: "rose" },
                         { id: "upcoming", label: "Upcoming", icon: Bell, count: stats.upcoming, color: "amber" },
                         { id: "closed", label: "Closed", icon: CheckCircle2, count: stats.closed, color: "emerald" },
+                        { id: "uninterested", label: "Uninterested", icon: Trash2, count: stats.uninterested, color: "slate" },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -405,15 +441,13 @@ export default function FollowUpBoard() {
                                                         >
                                                             <ExternalLink size={16} />
                                                         </a>
-                                                        {(userRole === "ADMIN" || userRole === "MASTER") && (
-                                                            <button
-                                                                onClick={() => handleRemoveFollowUp(res.id)}
-                                                                className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
-                                                                title="Exclude from Board"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        )}
+                                                        <button
+                                                            onClick={() => handleRemoveFollowUp(res.id)}
+                                                            className="p-2.5 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all border border-rose-100"
+                                                            title="Exclude from Board"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -440,7 +474,7 @@ export default function FollowUpBoard() {
             )}
 
             {/* Hidden Tailwind Colors used in dynamic classes */}
-            <div className="hidden border-indigo-500 border-rose-500 border-amber-500 border-emerald-500 bg-indigo-500 bg-rose-500 bg-amber-500 bg-emerald-500 text-indigo-500 text-rose-500 text-amber-500 text-emerald-500 group-hover:bg-indigo-50 group-hover:bg-rose-50 group-hover:bg-amber-50 group-hover:bg-emerald-50 group-hover:text-indigo-500 group-hover:text-rose-500 group-hover:text-amber-500 group-hover:text-emerald-500 shadow-indigo-500/10 shadow-rose-500/10 shadow-amber-500/10 shadow-emerald-500/10"></div>
+            <div className="hidden border-indigo-500 border-rose-500 border-amber-500 border-emerald-500 border-slate-500 bg-indigo-500 bg-rose-500 bg-amber-500 bg-emerald-500 bg-slate-500 text-indigo-500 text-rose-500 text-amber-500 text-emerald-500 text-slate-500 group-hover:bg-indigo-50 group-hover:bg-rose-50 group-hover:bg-amber-50 group-hover:bg-emerald-50 group-hover:bg-slate-50 group-hover:text-indigo-500 group-hover:text-rose-500 group-hover:text-amber-500 group-hover:text-emerald-500 group-hover:text-slate-500 shadow-indigo-500/10 shadow-rose-500/10 shadow-amber-500/10 shadow-emerald-500/10 shadow-slate-500/10"></div>
         </div>
     );
 }

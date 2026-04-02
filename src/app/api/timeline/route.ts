@@ -25,18 +25,25 @@ export async function GET(req: Request) {
 
     // Filter logic based on role
     let whereClause: any = {};
+    const isMaster = role === "ADMIN" || role === "MASTER";
+
     if (id) {
       whereClause = { id };
-    } else if (role === "ADMIN" || role === "MASTER") {
+    } else if (isMaster) {
       whereClause = {}; // See everything
     } else {
-      // Sellers see tasks they created or are assigned to
+      // Sellers see tasks they created or are assigned to AND are not hidden
       whereClause = {
-        OR: [
-          { createdByClerkId: userId },
-          { assigneeIds: { has: userId } },
-          { assigneeEmail: email },
-          { assignerEmail: email }
+        AND: [
+          { isHidden: false },
+          {
+            OR: [
+              { createdByClerkId: userId },
+              { assigneeIds: { has: userId } },
+              { assigneeEmail: email },
+              { assignerEmail: email }
+            ]
+          }
         ]
       };
     }

@@ -26,12 +26,15 @@ interface BoardFiltersProps {
   setSelectedStatuses: (statuses: string[]) => void;
   selectedAssignees: string[];
   setSelectedAssignees: (assignees: string[]) => void;
+  selectedAssigners: string[];
+  setSelectedAssigners: (assigners: string[]) => void;
   selectedDates: string[];
   setSelectedDates: (dates: string[]) => void;
   // allCategories now expects the full { label, value } array
   allCategories: { label: string; value: string }[];
   allStatuses: string[];
   allAssignees: string[];
+  allAssigners: string[];
 }
 
 export const BoardFilters: React.FC<BoardFiltersProps> = ({
@@ -47,14 +50,17 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
   setSelectedStatuses,
   selectedAssignees,
   setSelectedAssignees,
+  selectedAssigners,
+  setSelectedAssigners,
   selectedDates,
   setSelectedDates,
   allCategories, // Now explicitly used for rendering
   allStatuses,
   allAssignees,
+  allAssigners,
 }) => {
   const [openDropdown, setOpenDropdown] = useState<
-    "category" | "assignee" | "status" | "date" | null
+    "category" | "assignee" | "assigner" | "status" | "date" | null
   >(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +82,7 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
   };
 
   const handleClearFilter = (
-    filterType: "category" | "status" | "assignee" | "date"
+    filterType: "category" | "status" | "assignee" | "assigner" | "date"
   ) => {
     switch (filterType) {
       case "category":
@@ -87,6 +93,9 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
         break;
       case "assignee":
         setSelectedAssignees([]);
+        break;
+      case "assigner":
+        setSelectedAssigners([]);
         break;
       case "date":
         setSelectedDates([]);
@@ -99,7 +108,7 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
     items: string[] | { value: string; label: string }[],
     selected: string[],
     setSelected: (val: string[]) => void,
-    filterType: "category" | "status" | "assignee" | "date" // Added for clearing
+    filterType: "category" | "status" | "assignee" | "assigner" | "date" // Added for clearing
   ) => (
     <div className="absolute z-20 mt-2 w-64 max-h-60 overflow-y-auto rounded-lg bg-white shadow-xl ring-1 ring-gray-200">
       {items.length === 0 && (
@@ -251,7 +260,6 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
               "status"
             )}
         </div>
-
         {/* 👤 Assignee Filter */}
         <div className="relative">
           <button
@@ -271,6 +279,28 @@ export const BoardFilters: React.FC<BoardFiltersProps> = ({
               selectedAssignees,
               setSelectedAssignees,
               "assignee"
+            )}
+        </div>
+
+        {/* 👤 Assigner Filter */}
+        <div className="relative">
+          <button
+            onClick={() => toggleDropdown("assigner")}
+            className={`flex items-center justify-between gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ease-in-out ${
+              selectedAssigners.length > 0
+                ? "bg-purple-100 text-purple-800 border-purple-300"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            } border`}
+          >
+            {getFilterButtonText("Assigner", selectedAssigners, allAssigners)}
+            {openDropdown === "assigner" ? <FaCaretUp /> : <FaCaretDown />}
+          </button>
+          {openDropdown === "assigner" &&
+            renderCheckboxDropdown(
+              allAssigners,
+              selectedAssigners,
+              setSelectedAssigners,
+              "assigner"
             )}
         </div>
 

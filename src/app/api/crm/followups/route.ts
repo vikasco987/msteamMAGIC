@@ -30,7 +30,11 @@ export async function GET(req: NextRequest) {
             where: {
                 remarks: {
                     some: {
-                        nextFollowUpDate: { not: null }
+                        OR: [
+                            { nextFollowUpDate: { not: null } },
+                            { followUpStatus: { in: ["UNINTERESTED", "NOT INTERESTED", "REJECTED"] } },
+                            { leadStatus: { in: ["UNINTERESTED", "REJECTED", "NOT INTERESTED"] } }
+                        ]
                     }
                 }
             },
@@ -53,7 +57,7 @@ export async function GET(req: NextRequest) {
             const assignees = (res as any).assignedTo || [];
             const isAssignedToMe = assignees.includes(userId);
             const isSubmittedByMe = res.submittedBy === userId;
-            
+
             const isAssignedToTeam = isTL && teamMemberIds.some(id => assignees.includes(id));
             const isSubmittedByTeam = isTL && teamMemberIds.includes(res.submittedBy || "");
 

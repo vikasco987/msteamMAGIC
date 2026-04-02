@@ -19,8 +19,12 @@ export async function GET() {
 
     const activeUserMap = new Map<string, string>();
     activeAttendanceLogs.forEach(log => {
+      // 🚀 EXCLUSION CRITERIA: Remove specific users from ticker monitoring if requested
+      const employeeName = log.employeeName || "Unknown User";
+      if (employeeName.toLowerCase().includes("vishal sood")) return;
+
       if (log.userId && !activeUserMap.has(log.userId)) {
-        activeUserMap.set(log.userId, log.employeeName || "Unknown User");
+        activeUserMap.set(log.userId, employeeName);
       }
     });
 
@@ -85,7 +89,12 @@ export async function GET() {
       late: Array.from(lateMap.values()).map(({ name, latenessStr }) => ({ name, latenessStr }))
     });
   } catch (err) {
-    console.error("Ticker fetch error:", err);
-    return NextResponse.json({ early: [], late: [] }, { status: 500 });
+    console.error("Ticker fetch error (Connection or Query failure):", err);
+    // 🛡️ Fail-safe: Return empty results to prevent dashboard crash if DB is unreachable
+    return NextResponse.json({ 
+        date: moment().tz("Asia/Kolkata").format("DD MMM YYYY"),
+        early: [], 
+        late: [] 
+    }, { status: 200 });
   }
 }
