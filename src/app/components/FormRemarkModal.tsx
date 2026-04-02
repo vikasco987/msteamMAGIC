@@ -26,6 +26,13 @@ interface Props {
     initialData?: { remark?: string, nextFollowUpDate?: string, followUpStatus?: string, leadStatus?: string };
 }
 
+const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "NOT INTERESTED", "UNINTERESTED", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
+const LEAD_STATUS_OPTIONS = [
+    "Will Share today", "Will let me know in 2 days", "NOT INTERESTED", "UNINTERESTED", "Onboarded", 
+    "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
+    "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW"
+];
+
 export default function FormRemarkModal({ formId, responseId, columnId, userRole, onClose, onSave, initialData }: Props) {
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(false); // ⚡ Instant Launch Protocol
@@ -105,7 +112,6 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
                 return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
             };
 
-            const CALL_STATUS_OPTIONS = ["CALL AGAIN", "CALL DONE", "NOT INTERESTED", "UNINTERESTED", "RNR", "INVALID NUMBER", "SWITCH OFF", "RNR 2", "RNR3", "INCOMING NOT AVAIABLE", "MEETING", "DUPLICATE", "WRONG NUMBER"];
 
             recognition.onresult = (event: any) => {
                 let fullFinal = "";
@@ -328,11 +334,6 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
     // 🛑 REMOVED: Automatic date calculation (User wants manual control)
 
-    const LEAD_STATUS_OPTIONS = [
-        "Will Share today", "Will let me know in 2 days", "NOT INTERESTED", "UNINTERESTED", "Onboarded", 
-        "Will Let me know 7 days", "Customer Will Call", "Meeting Fix", "already applyed", 
-        "language barrier", "Already Done", "Delivery Partners", "CUSTOMER WILL LET ME KNOW"
-    ];
 
     useEffect(() => {
         fetchRemarks();
