@@ -34,8 +34,8 @@ export async function POST(
         const body = await req.json();
         const { remark, nextFollowUpDate, followUpStatus, leadStatus, columnId } = body;
 
-        if (!remark) {
-            return NextResponse.json({ error: "Remark text is required" }, { status: 400 });
+        if (!remark && !followUpStatus && !nextFollowUpDate && !leadStatus) {
+            return NextResponse.json({ error: "No interaction data provided" }, { status: 400 });
         }
 
         const cleanedFormId = id.trim();
