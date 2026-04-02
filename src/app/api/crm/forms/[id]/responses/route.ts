@@ -78,12 +78,7 @@ export async function GET(
             }),
             prisma.user.findMany({
                 where: { 
-                    OR: [
-                        { publicMetadata: { path: ["role"], equals: "STAFF" } },
-                        { publicMetadata: { path: ["role"], equals: "TL" } },
-                        { publicMetadata: { path: ["role"], equals: "ADMIN" } },
-                        { publicMetadata: { path: ["role"], equals: "MASTER" } }
-                    ]
+                    role: { in: ["STAFF", "TL", "ADMIN", "MASTER"] }
                 }
             }),
             prisma.internalColumn.findMany({ where: { formId }, orderBy: { order: "asc" } }),
