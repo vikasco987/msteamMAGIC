@@ -1066,7 +1066,9 @@ export default function CRMSpreadsheetPage() {
         prevFiltersRef.current = { ...prevFiltersRef.current, conditions, filterConjunction, debouncedSearchTerm, rowsPerPage, sortBy, sortOrder };
         
         if (isLoaded && user) {
-            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction);
+            // 🛡️ Silent fetch only if data is already present to prevent flicker, 
+            // but show loader on initial mount.
+            fetchData(currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction, !!data);
         }
     }, [params.id, isLoaded, user, currentPage, rowsPerPage, debouncedSearchTerm, sortBy, sortOrder, conditions, filterConjunction]);
 
