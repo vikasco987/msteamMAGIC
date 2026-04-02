@@ -369,8 +369,7 @@ export default function FormRemarkModal({ formId, responseId, columnId, userRole
 
     const handleSubmit = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
-        const finalRemark = form.remark || `Status interaction: ${form.followUpStatus}`;
-        if (!finalRemark && !columnId) return toast.error("Please enter a remark.");
+        const finalRemark = form.remark.trim();
         
         const payload = { 
             remark: finalRemark,

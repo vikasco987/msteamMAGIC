@@ -94,19 +94,22 @@ export async function POST(
         ]);
 
         // 🛡️ FINANCIAL & TAXONOMY SYNC (STAYING ACCURATE)
+        // Fetch ALL internal columns for this form to ensure we find any variations in naming
         const remarkCols = await prisma.internalColumn.findMany({
-            where: {
-                formId: cleanedFormId,
-                OR: [
-                    { label: { in: ["Recent Remark", "Next Follow-up Date", "Follow-up Status", "Lead Status", "Status", "STATUS", "Calling Status"] } },
-                    { label: { contains: "Calling Date", mode: 'insensitive' } }
-                ]
-            }
+            where: { formId: cleanedFormId }
         });
 
         const syncToValue = async (colLabel: string, val: string) => {
             if (!val) return;
-            const col = remarkCols.find(c => c.label.toUpperCase().trim() === colLabel.toUpperCase().trim());
+            // 🔎 Robust Case-Insensitive Search
+            const col = remarkCols.find(c => {
+                const label = c.label.toLowerCase().trim();
+                const target = colLabel.toLowerCase().trim();
+                return label === target || 
+                       (target === "status" && ["follow-up status", "calling status", "lead status", "status"].includes(label)) ||
+                       (target === "next follow-up date" && ["next follow-up date", "follow up date", "next update", "calling date"].includes(label));
+            });
+            
             if (!col) return;
             const existing = await (prisma as any).internalValue.findFirst({ where: { responseId: cleanedResponseId, columnId: col.id } });
             if (existing) {
@@ -119,18 +122,31 @@ export async function POST(
         const masterStatus = followUpStatus || leadStatus || null;
         const syncTasks: Promise<void>[] = [];
 
+        // 🎯 Status Sync (Robust Variants)
         if (masterStatus) {
-            const variants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status"];
+            const variants = ["Status", "STATUS", "Follow-up Status", "Calling Status", "Lead Status", "CALLING STATUS", "LEAD STATUS"];
             variants.forEach(v => syncTasks.push(syncToValue(v, masterStatus)));
         }
 
-        syncTasks.push(syncToValue("Recent Remark", remark));
-        if (nextFollowUpDate) syncTasks.push(syncToValue("Next Follow-up Date", String(nextFollowUpDate)));
+        // 🎯 Remark Sync (Only if actual text is provided)
+        if (remark && remark.trim()) {
+            syncTasks.push(syncToValue("Recent Remark", remark.trim()));
+            syncTasks.push(syncToValue("RECENT REMARK", remark.trim()));
+        }
         
-        // 📅 CLOCK SYNC
+        // 🎯 Date Sync
+        if (nextFollowUpDate) {
+            const dateVariants = ["Next Follow-up Date", "Next Interaction", "Follow up Date", "CALLING DATE", "NEXT DATE"];
+            dateVariants.forEach(v => syncTasks.push(syncToValue(v, String(nextFollowUpDate))));
+        }
+        
+        // 📅 CLOCK SYNC (Stamp TODAY's date for calling date columns)
         const todayStr = new Date().toISOString().split('T')[0];
-        const actualCallingCols = remarkCols.filter(c => c.label.toLowerCase().includes("calling date"));
-        actualCallingCols.forEach(col => syncTasks.push(syncToValue(col.label, todayStr)));
+        const callingDateCols = remarkCols.filter(c => {
+            const l = c.label.toLowerCase();
+            return l.includes("calling date") || l.includes("today calling");
+        });
+        callingDateCols.forEach(col => syncTasks.push(syncToValue(col.label, todayStr)));
 
         // Execute all syncs in parallel
         await Promise.all(syncTasks);
