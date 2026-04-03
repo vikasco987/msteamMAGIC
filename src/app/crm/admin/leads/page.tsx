@@ -73,6 +73,7 @@ export default function LeadDistributionTerminal() {
     const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const [customSelectCount, setCustomSelectCount] = useState<string>("");
     const [forms, setForms] = useState<any[]>([]);
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
@@ -183,6 +184,17 @@ export default function LeadDistributionTerminal() {
         setSelectedAssignee("");
         setActiveStatus("");
         setSearch("");
+    };
+
+    const handleSelectSpecificCount = () => {
+        const count = parseInt(customSelectCount);
+        if (isNaN(count) || count <= 0) {
+            toast.error("Please enter a valid count");
+            return;
+        }
+        const toSelect = leads.slice(0, count).map(l => l.id);
+        setSelectedIds(toSelect);
+        toast.success(`Selected top ${toSelect.length} leads`);
     };
 
     return (
@@ -346,6 +358,24 @@ export default function LeadDistributionTerminal() {
                                 <button onClick={() => setPage(p => Math.max(1, p - 1))} className="w-11 h-11 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all border border-transparent hover:border-slate-200 active:scale-90"><ArrowRight size={20} className="rotate-180" /></button>
                                 <div className="px-8 py-2 text-[12px] font-black uppercase text-slate-900 tracking-widest">Page <span className="text-indigo-600 text-xl">{page}</span> OF {Math.ceil(total / 25) || 1}</div>
                                 <button onClick={() => setPage(p => p + 1)} className="w-11 h-11 rounded-2xl bg-slate-50 text-slate-400 hover:text-indigo-600 transition-all border border-transparent hover:border-slate-200 active:scale-90"><ArrowRight size={20} /></button>
+                                
+                                <div className="h-10 w-px bg-slate-200 mx-2" />
+                                
+                                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl shadow-inner border border-slate-200">
+                                    <input 
+                                        type="number" 
+                                        placeholder="QTY" 
+                                        className="w-16 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:border-indigo-600 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        value={customSelectCount}
+                                        onChange={(e) => setCustomSelectCount(e.target.value)}
+                                    />
+                                    <button 
+                                        onClick={handleSelectSpecificCount}
+                                        className="px-5 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-sm active:scale-95"
+                                    >
+                                        Select
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

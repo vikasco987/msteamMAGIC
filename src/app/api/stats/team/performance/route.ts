@@ -113,8 +113,22 @@ export async function GET(req: Request) {
     });
 
     // --- DATE RANGES ---
+    const monthParam = searchParams.get("month");
+    const yearParam = searchParams.get("year");
+
     const now = new Date();
-    const startOfCurrentMonth = startOfMonth(now);
+    let startOfTargetMonth: Date;
+    let endOfTargetMonth: Date;
+
+    if (monthParam && yearParam) {
+      const targetMonth = parseInt(monthParam);
+      const targetYear = parseInt(yearParam);
+      startOfTargetMonth = startOfMonth(new Date(targetYear, targetMonth, 1));
+      endOfTargetMonth = endOfDay(new Date(targetYear, targetMonth + 1, 0)); // Last day of that month
+    } else {
+      startOfTargetMonth = startOfMonth(now);
+      endOfTargetMonth = endOfDay(now);
+    }
     
     // Today
     const todayS = startOfDay(now);
@@ -131,8 +145,8 @@ export async function GET(req: Request) {
     const lastWeekS = startOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
     const lastWeekE = endOfWeek(subWeeks(now, 1), { weekStartsOn: 1 });
 
-    // Earliest date needed: min of startOfCurrentMonth and lastWeekS
-    const earliestDate = startOfCurrentMonth < lastWeekS ? startOfCurrentMonth : lastWeekS;
+    // Earliest date needed: min of startOfTargetMonth and lastWeekS
+    const earliestDate = startOfTargetMonth < lastWeekS ? startOfTargetMonth : lastWeekS;
 
     // 2. Fetch Tasks for the whole team
     const tasks = await prisma.task.findMany({
@@ -162,8 +176,8 @@ export async function GET(req: Request) {
         const member = memberMap[task.createdByClerkId];
         
         if (member) {
-            // Month-to-date stats (for the matrix/table)
-            if (createdDate >= startOfCurrentMonth) {
+            // Target Month-to-date stats (for the matrix/table)
+            if (createdDate >= startOfTargetMonth && createdDate <= endOfTargetMonth) {
                 member.revenue += amount;
                 member.received += received;
                 member.sales += 1;
@@ -189,12 +203,12 @@ export async function GET(req: Request) {
         }
     });
 
-    // 4. Calculate Team Totals (Current Month)
+    // 4. Calculate Team Totals (Target Month Range)
     const teamStats = {
         leaderName,
-        totalRevenue: tasks.filter(t => t.createdAt >= startOfCurrentMonth).reduce((sum, t) => sum + (t.amount || 0), 0),
-        totalReceived: tasks.filter(t => t.createdAt >= startOfCurrentMonth).reduce((sum, t) => sum + (t.received || 0), 0),
-        totalSales: tasks.filter(t => t.createdAt >= startOfCurrentMonth).length,
+        totalRevenue: tasks.filter(t => new Date(t.createdAt) >= startOfTargetMonth && new Date(t.createdAt) <= endOfTargetMonth).reduce((sum, t) => sum + (t.amount || 0), 0),
+        totalReceived: tasks.filter(t => new Date(t.createdAt) >= startOfTargetMonth && new Date(t.createdAt) <= endOfTargetMonth).reduce((sum, t) => sum + (t.received || 0), 0),
+        totalSales: tasks.filter(t => new Date(t.createdAt) >= startOfTargetMonth && new Date(t.createdAt) <= endOfTargetMonth).length,
         memberPerformance: Object.values(memberMap).sort((a: any, b: any) => b.revenue - a.revenue)
     };
 
