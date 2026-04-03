@@ -50,6 +50,8 @@ function DayReportContent() {
   const [isPrivileged, setIsPrivileged] = useState(false);
   const [chartData, setChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
     if (isLoaded && user) {
@@ -119,6 +121,22 @@ function DayReportContent() {
     setEndDate("");
   };
 
+  const handleMonthChange = (month: number) => {
+    setSelectedMonth(month);
+    const start = new Date(selectedYear, month, 1);
+    const end = new Date(selectedYear, month + 1, 0);
+    setStartDate(format(start, 'yyyy-MM-dd'));
+    setEndDate(format(end, 'yyyy-MM-dd'));
+  };
+
+  const handleYearChange = (year: number) => {
+    setSelectedYear(year);
+    const start = new Date(year, selectedMonth, 1);
+    const end = new Date(year, selectedMonth + 1, 0);
+    setStartDate(format(start, 'yyyy-MM-dd'));
+    setEndDate(format(end, 'yyyy-MM-dd'));
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0b0f19] p-4 lg:p-8 space-y-8">
       {/* Header & Back Button */}
@@ -169,21 +187,28 @@ function DayReportContent() {
               </select>
           </div>
 
-          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
-              <Calendar size={18} className="text-emerald-500" />
-              <input 
-                type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none"
-              />
-              <span className="text-slate-400 font-bold px-1">to</span>
-              <input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none"
-              />
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:border-indigo-500/50 transition-all">
+            <Calendar size={18} className="text-indigo-500" /> 
+            <select 
+              value={selectedMonth}
+              onChange={(e) => handleMonthChange(parseInt(e.target.value))}
+              className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+            >
+              {Array.from({ length: 12 }).map((_, i) => (
+                <option key={i} value={i}>
+                  {new Date(2024, i, 1).toLocaleString('en-US', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+            <select 
+              value={selectedYear}
+              onChange={(e) => handleYearChange(parseInt(e.target.value))}
+              className="bg-transparent text-sm font-black text-slate-700 dark:text-slate-300 outline-none cursor-pointer border-l border-slate-200 dark:border-slate-800 ml-2 pl-2"
+            >
+              {[2024, 2025, 2026].map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
           </div>
 
           {(tlId || memberId || startDate || endDate) && (

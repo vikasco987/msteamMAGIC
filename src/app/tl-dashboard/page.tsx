@@ -261,7 +261,7 @@ export default function TLDashboard() {
             </div>
           )}
           
-          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm hover:border-indigo-500/50 transition-all">
             <Calendar size={18} className="text-indigo-500" /> 
             <select 
               value={selectedMonth}
@@ -270,7 +270,7 @@ export default function TLDashboard() {
             >
               {Array.from({ length: 12 }).map((_, i) => (
                 <option key={i} value={i}>
-                  {new Date(0, i).toLocaleString('en-US', { month: 'long' })}
+                  {new Date(2024, i, 1).toLocaleString('en-US', { month: 'long' })}
                 </option>
               ))}
             </select>
