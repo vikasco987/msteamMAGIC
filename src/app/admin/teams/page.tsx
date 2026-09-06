@@ -226,6 +226,7 @@ export default function TeamManagementPage() {
                         </div>
                     ))}
                 </div>
+                </div>
             ) : (
                 <div className="grid gap-8 mb-12">
                     {/* Team Hierarchy Tab */}

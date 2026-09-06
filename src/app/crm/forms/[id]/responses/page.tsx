@@ -4913,7 +4913,6 @@ export default function CRMSpreadsheetPage() {
                                                                 }
                                                             }}
                                                             className={`px-5 border-b transition-colors relative select-none ${isDarkCanvas
-                                                    className={`px-5 border-b transition-colors relative select-none ${isDarkCanvas
                                                                 ? 'border-white/5 group-hover:bg-white/5'
                                                                 : 'border-[#EAECF0] group-hover:bg-[#F9FAFB]'
                                                                 } ${isSticky ? `sticky z-30 shadow-[1px_0_0_#EAECF0] ${isDarkCanvas ? 'bg-slate-900' : 'bg-white'}` : ''} ${isEditing ? (isDarkCanvas ? 'bg-slate-800 ring-2 ring-inset ring-indigo-500 z-40 shadow-xl' : 'bg-white ring-2 ring-inset ring-indigo-500 z-40 shadow-xl') : ''} ${isFocused && !isEditing ? 'ring-2 ring-inset ring-indigo-500 z-50' : ''} ${isLocked ? (isDarkCanvas ? 'bg-white/5 cursor-not-allowed' : 'bg-[#F9FAFB]/50 cursor-not-allowed') : 'cursor-text'} 
